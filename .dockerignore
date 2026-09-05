@@ -1,0 +1,10 @@
+.git
+.agents
+.codex
+.DS_Store
+.env
+data
+target
+frontend/node_modules
+frontend/dist
+frontend/*.tsbuildinfo

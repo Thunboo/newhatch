@@ -1,0 +1,61 @@
+services:
+  analyzer:
+    build:
+      context: .
+      dockerfile: crates/analyzer/Dockerfile
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      CAPTURE_INTERFACE: ${CAPTURE_INTERFACE:-eth0}
+      DATA_DIR: /data
+      FLAG_REGEX: ${FLAG_REGEX:-FLAG_[A-Za-z0-9]+}
+      SEGMENT_DURATION: ${SEGMENT_DURATION:-30m}
+      SEGMENT_RETENTION_COUNT: ${SEGMENT_RETENTION_COUNT:-3}
+      FLOW_IDLE_TIMEOUT: ${FLOW_IDLE_TIMEOUT:-30s}
+      MAX_STREAM_BYTES: ${MAX_STREAM_BYTES:-4MiB}
+      RUST_LOG: ${RUST_LOG:-newhatch=info}
+    volumes:
+      - ./data:/data
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+    ports:
+      - "${FRONTEND_PORT:-8080}:8080"
+    extra_hosts:
+      - host.docker.internal:host-gateway
+    volumes:
+      - ./logo.png:/usr/share/nginx/html/logo.png:ro
+    depends_on:
+      - analyzer
+    restart: unless-stopped
+
+  suricata:
+    image: jasonish/suricata:7.0
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    command:
+      - -i
+      - ${CAPTURE_INTERFACE:-eth0}
+      - ${SURICATA_BPF_FILTER:-tcp and (port 8080)}
+    volumes:
+      - ./data/suricata:/var/log/suricata
+    restart: unless-stopped
+
+  test-flag:
+    image: nginx:1.27-alpine
+    profiles:
+      - test
+    ports:
+      - "18080:18080"
+    volumes:
+      - ./test/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./test/html:/usr/share/nginx/html:ro
+    restart: unless-stopped
