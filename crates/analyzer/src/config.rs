@@ -42,9 +42,11 @@ impl Config {
             bail!("SEGMENT_RETENTION_COUNT must be greater than zero");
         }
 
+        // Basically - nproc
         let available_workers = std::thread::available_parallelism()
             .map(usize::from)
             .unwrap_or(1);
+        // If env-var is available - take its value, other - min=1 and nproc with max of 8 logical cores
         let flow_workers = parse_env("FLOW_WORKERS", available_workers.clamp(1, 8))?;
         if flow_workers == 0 {
             bail!("FLOW_WORKERS must be greater than zero");
