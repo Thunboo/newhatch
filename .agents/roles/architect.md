@@ -20,6 +20,7 @@
 
 ## Перед Решением
 
+- Проверить `PROJECT.md`.
 - Проверить `README.md`.
 - Проверить `docs/agent-decisions.md`.
 - Проверить `docs/architecture.md`.

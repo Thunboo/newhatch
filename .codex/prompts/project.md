@@ -10,6 +10,7 @@ Build a lightweight high-performance A/D CTF traffic analyzer with Packmate-like
 Before production code, read:
 
 - `AGENTS.md`
+- `PROJECT.md`
 - `README.md`
 - `docs/agent-decisions.md`
 - relevant files in `docs/`

@@ -1,6 +1,6 @@
 # Decisions
 
-Журнал важных решений.
+A compact log of decisions and implementation choices for future agent sessions.
 
 ## Canonical Source
 
@@ -106,11 +106,24 @@ Docs updated:
 - Segment format v1 is a 52-byte versioned header, CRC32, C2S bytes, then S2C bytes.
 - Analyzer and Suricata use host networking with packet capabilities; frontend publishes port 8080 from a bridge network.
 
+## Implemented Choices (2026-09-06)
+
+- `PROJECT.md` is the detailed product brief; `README.md` is the short operator runbook.
+- `newhatch` remains the internal name and `Нюхач` is the UI/display name.
+- Source TCP ports are unique. Deletion is soft so a later create on the same port restores the row.
+- Session API pages are capped at 200 rows; payload substring search scans at most 2,000 metadata-prefiltered candidates per request.
+- The Sources UI performs local search by name or port and local sorting by name or port.
+- Root `logo.png` is the canonical logo. Compose mounts it into frontend nginx, and `/logo.png` is served with `Cache-Control: no-store`.
+- The opt-in `test-flag` Compose profile exposes an nginx fixture on TCP port 18080.
+- Current Suricata Compose operation is passive IDS only. Its BPF filter is configured separately and is not synchronized with Sources.
+
 ## Unresolved Details
 
 - WebSocket parser.
-- Suricata correlation mechanism.
+- Suricata EVE ingestion, correlation mechanism and live filter synchronization.
 - Extremely long-lived TCP session handling.
 - Packet loss/reassembly gap behavior.
+- Segment tail recovery and SQLite reconciliation.
+- VLAN and IPv6 extension-header handling.
 - Exact request/reply linkage model for flag-containing server responses.
 - Meaning of `docs/todo.md` "Auto-removal" note: cleanup policy, query budget or write batching.

@@ -1,13 +1,13 @@
 # Backlog
 
-Задачи, которые пока не взяты в работу.
+Tasks that are not currently being implemented.
 
 ## Project Setup
 
 - [x] Create initial Rust workspace for analyzer/backend.
 - [x] Create TypeScript frontend scaffold.
 - [x] Create Docker Compose scaffold for `analyzer`, `frontend`, `suricata`.
-- [x] Add basic config loading for `CAPTURE_INTERFACE`, `FLAG_REGEX`, `SEGMENT_DURATION`, `SEGMENT_RETENTION_COUNT`, `DATA_DIR`.
+- [x] Add runtime configuration loading and validation for capture, storage, queue and flow limits.
 
 ## Architecture Decisions To Finalize
 
@@ -31,7 +31,7 @@
 - [x] TCP flow tracking and bidirectional session identity.
 - [x] TCP reassembly with split-flag-safe stream scanning.
 - [x] HTTP/1.x metadata parsing.
-- [ ] WebSocket upgrade/frame extraction.
+- [ ] WebSocket frame extraction after the implemented HTTP Upgrade classification.
 - [x] Append-only segment writer.
 - [x] SQLite metadata schema and initial indexes.
 - [x] Session list API with bounded pagination/cursors.

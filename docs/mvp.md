@@ -17,6 +17,8 @@ The player should be able to:
 
 The player should not need to manually create PCAP files.
 
+The internal project/service name is `newhatch`. The current browser title and sidebar branding use the display name `Нюхач` and the root `logo.png` asset.
+
 ## Primary Screens
 
 ### 1. Sources / Services
@@ -30,6 +32,8 @@ Minimum UI actions:
 - assign monitored TCP port
 - enable/disable source
 - delete source
+- search sources by name or TCP port
+- sort sources by name or TCP port
 
 Example:
 
@@ -43,7 +47,7 @@ legacy          31337   no
 
 Changes to enabled monitored ports should update the capture filter.
 
-Implementation details for live filter replacement may be deferred if necessary, but the product model must support it.
+Current status: source CRUD, enable/disable, delete, local search/sorting and live analyzer BPF replacement are implemented. TCP ports are unique. Suricata's separate filter is not synchronized yet.
 
 ## 2. Session List
 
@@ -174,6 +178,8 @@ The UI should not request or render unbounded result sets.
 
 Pagination or cursor-based loading is required.
 
+Current API coverage includes every metadata filter listed above except an upper/end-time bound; it provides `started_after` for the recent-time constraint. The current UI exposes source, protocol, contains-flag and payload filters. Endpoint IP/port and time controls remain API-only. Session API pages are capped at 200 rows, and one payload-search request scans at most 2,000 metadata-prefiltered candidates.
+
 ## Suricata UX
 
 Suricata is enrichment, not a prerequisite.
@@ -186,19 +192,32 @@ Minimum MVP integration target:
 
 If full correlation is not stable enough for the first coding milestone, the core analyzer must remain usable without it.
 
+Current status: `suricata_alerts` exists in session metadata and the UI can display a non-zero count, but no EVE ingestion or correlation path populates it. The Compose service is passive and cannot block traffic.
+
 ## Configuration
 
 Expected environment/configuration values include:
 
 ```text
 CAPTURE_INTERFACE=<interface>
+LISTEN_ADDR=0.0.0.0:3000
 FLAG_REGEX=<regex>
 SEGMENT_DURATION=30m
 SEGMENT_RETENTION_COUNT=3
 DATA_DIR=/data
+FLOW_WORKERS=<available CPUs clamped to 1..8>
+PACKET_QUEUE_CAPACITY=8192
+STORAGE_QUEUE_CAPACITY=2048
+FLOW_IDLE_TIMEOUT=30s
+MAX_ACTIVE_FLOWS_PER_WORKER=16384
+MAX_STREAM_BYTES=4MiB
+FRONTEND_PORT=8080
+SURICATA_BPF_FILTER=<separate passive IDS filter>
 ```
 
 Source/service port configuration may live in SQLite and be edited from the UI/API.
+
+Current status: `CAPTURE_INTERFACE` is configured through the environment. There is no interface selector in the UI yet.
 
 If early boot requires at least one source, a simple bootstrap mechanism may be added without replacing runtime source management.
 
@@ -211,6 +230,8 @@ analyzer
 frontend
 suricata
 ```
+
+An opt-in `test-flag` service is available under the `test` Compose profile. It exposes `GET /flag` on TCP port `18080` for local end-to-end capture checks and is not part of normal runtime.
 
 SQLite and segment files are local files mounted into the analyzer container.
 

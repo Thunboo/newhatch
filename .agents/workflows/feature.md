@@ -4,7 +4,7 @@
 
 ## Шаги
 
-1. Прочитать `README.md`, `docs/agent-decisions.md` и релевантный документ из `docs/`.
+1. Прочитать `PROJECT.md`, `README.md`, `docs/agent-decisions.md` и релевантный документ из `docs/`.
 2. Сопоставить feature с MVP scope: sources, sessions, detail, search, flag UX, Suricata enrichment или storage/capture foundation.
 3. Найти затронутые boundaries: capture, flow/reassembly, protocol parsing, flag scanning, storage, API, UI.
 4. Проверить, что feature не вводит запрещенную инфраструктуру или raw packet persistence.

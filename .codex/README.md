@@ -1,23 +1,23 @@
 # .codex
 
-Локальные настройки и справочные материалы для работы Codex в этом проекте.
+Local context and reference material for Codex work in this repository.
 
 ## Назначение
 
-Эта папка помогает быстро восстановить рабочий контекст Codex между сессиями.
-Проектные решения остаются в `README.md` и `docs/`, а здесь лежат короткие подсказки, команды и чеклисты.
+This folder restores working context between sessions. Product direction remains in `PROJECT.md`, startup instructions in `README.md`, and technical decisions in `docs/`.
 
-## Структура
+## Structure
 
-- `context.md` - быстрый контекст проекта.
-- `commands.md` - команды разработки и проверок.
-- `preferences.md` - предпочтения по стилю работы.
-- `prompts/` - проектные промпты и инструкции.
-- `checklists/` - чеклисты перед началом и завершением работы.
+- `context.md` - compact project state.
+- `commands.md` - development and validation commands.
+- `preferences.md` - collaboration and implementation preferences.
+- `prompts/` - reusable project prompts.
+- `checklists/` - before-work and before-finish checks.
 
 ## Read First
 
 - `AGENTS.md`.
-- `README.md`.
+- `PROJECT.md` for product context and current implementation status.
+- `README.md` for startup instructions.
 - `docs/agent-decisions.md`.
 - `.codex/context.md`.

@@ -4,7 +4,7 @@
 
 ## Project Snapshot
 
-- Название: `newhatch`.
+- Internal name: `newhatch`; UI/display name: `Нюхач`.
 - Продукт: lightweight high-performance A/D CTF traffic analyzer.
 - Цель: дать Packmate-like workflow и UI при меньшем расходе CPU/RAM на vulnbox.
 - Нормальный режим: live capture с интерфейса, без ручного создания PCAP.
@@ -16,12 +16,13 @@
 
 Перед архитектурой или production-кодом читать:
 
-1. `README.md` - цель, стек, ограничения и capture model.
-2. `docs/agent-decisions.md` - фиксированные решения и запреты.
-3. `docs/architecture.md` - pipeline, concurrency, reassembly, Suricata model.
-4. `docs/storage.md` - SQLite + append-only segment storage.
-5. `docs/mvp.md` - MVP UX, screens, filters, configuration.
-6. `docs/todo.md` - текущие заметки пользователя.
+1. `PROJECT.md` - product goal, stack, constraints and current implementation status.
+2. `README.md` - quick-start runbook.
+3. `docs/agent-decisions.md` - фиксированные решения и запреты.
+4. `docs/architecture.md` - pipeline, concurrency, reassembly, Suricata model.
+5. `docs/storage.md` - SQLite + append-only segment storage.
+6. `docs/mvp.md` - MVP UX, screens, filters, configuration.
+7. `docs/todo.md` - текущие заметки пользователя.
 
 Служебные файлы:
 

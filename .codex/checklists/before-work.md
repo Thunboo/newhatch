@@ -1,6 +1,7 @@
 # Before Work
 
 - [ ] Прочитать `AGENTS.md`.
+- [ ] Прочитать `PROJECT.md`.
 - [ ] Прочитать `README.md`.
 - [ ] Прочитать `docs/agent-decisions.md`.
 - [ ] Открыть релевантные документы: `docs/architecture.md`, `docs/storage.md`, `docs/mvp.md`, `docs/todo.md`.

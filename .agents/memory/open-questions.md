@@ -15,6 +15,8 @@ Questions that should be clarified before the related implementation step.
 ## Implementation Choices
 
 - WebSocket parser crate.
-- Suricata correlation and live filter synchronization.
+- Suricata EVE ingestion, correlation and live filter synchronization. Current Compose operation is passive and uses a separate static BPF expression.
 - `PACKET_MMAP` ring sizing after capture benchmarks.
 - VLAN-aware BPF and IPv6 extension-header behavior.
+- Crash-tail repair and SQLite reconciliation for append-only segments.
+- Production policy for very long-lived or highly gapped TCP sessions.

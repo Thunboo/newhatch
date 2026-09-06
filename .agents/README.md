@@ -1,25 +1,24 @@
 # .agents
 
-Рабочая зона для AI-агентов: роли, процессы, память, задачи, передачи контекста и отчеты.
+Workspace for AI-agent roles, workflows, memory, tasks, handoffs and reports.
 
 ## Назначение
 
-Эта папка не заменяет проектные документы в `README.md` и `docs/`.
-Она хранит сжатый рабочий слой для быстрых будущих сессий Codex:
-что за проект, какие решения нельзя менять без разрешения, какие роли и workflow использовать.
+This folder does not replace `PROJECT.md`, `README.md` or `docs/`. It keeps a compact working layer for future Codex sessions: project state, fixed decisions, roles and repeatable workflows.
 
-## Структура
+## Structure
 
-- `roles/` - описания ролей агентов.
-- `workflows/` - повторяемые сценарии работы.
-- `memory/` - устойчивый проектный контекст, решения, glossary и open questions.
-- `tasks/` - списки задач.
-- `handoffs/` - заметки для передачи работы между сессиями.
-- `reports/` - отчеты по проверкам, аудитам и ревью.
+- `roles/` - agent role definitions.
+- `workflows/` - repeatable work procedures.
+- `memory/` - durable project context, decisions, glossary and open questions.
+- `tasks/` - active, backlog and completed work.
+- `handoffs/` - notes passed between sessions.
+- `reports/` - validation, audit and review reports.
 
-## Источники Правды
+## Sources of Truth
 
-- `README.md`.
+- `PROJECT.md` - product brief and implementation status.
+- `README.md` - quick-start runbook.
 - `docs/agent-decisions.md`.
 - `docs/architecture.md`.
 - `docs/storage.md`.

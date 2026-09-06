@@ -105,6 +105,12 @@ tcp and (port 8080 or port 9000)
 
 The exact implementation may use classic BPF/eBPF or library abstractions, but the filtering decision must happen before userspace packet processing.
 
+### Current Capture Status
+
+The implemented analyzer opens a nonblocking `AF_PACKET/SOCK_RAW` socket, binds it to `CAPTURE_INTERFACE`, enables kernel receive timestamps and attaches a generated classic BPF program with `SO_ATTACH_FILTER`. Source changes rebuild the socket and filter. Capture pauses when there are no enabled sources.
+
+`PACKET_MMAP` is not implemented yet; the current path uses `recvmsg`. The parser supports untagged Ethernet frames carrying IPv4/TCP or IPv6/TCP without extension headers. VLAN tags, IP fragments and IPv6 extension-header walking remain deferred.
+
 ## Concurrency Model
 
 The packet-processing hot path should avoid a global mutex.
@@ -140,6 +146,8 @@ protocol
 
 Direction normalization should allow the same bidirectional TCP connection to resolve to one internal session identity.
 
+The current implementation hashes normalized client/server endpoints into worker-local `HashMap` flow tables. Each worker has a bounded packet channel and a configurable active-flow limit.
+
 ### Backpressure
 
 All inter-task channels on the ingest path must be bounded.
@@ -171,6 +179,8 @@ Reassembly must account for at least:
 - partial/incomplete sessions
 
 The session storage format should represent reconstructed bytes, not original packets.
+
+The current assembler uses a bounded byte vector plus a `BTreeMap` for pending out-of-order ranges. It trims retransmitted overlap, finalizes on RST, both-direction FIN, or idle timeout, and marks timed-out, truncated or not-fully-closed sessions as incomplete. Behavior under very large gaps and long-lived connections still needs production policy and testing.
 
 ## Flag Detection
 
@@ -209,6 +219,8 @@ flag_direction: none | c2s | s2c | both
 flag_count: integer
 ```
 
+The implementation performs incremental scans with a 4 KiB overlap and repeats an exact full-stream scan when the session is finalized. The per-direction stream size is bounded by `MAX_STREAM_BYTES`.
+
 ## Protocol Parsing
 
 MVP:
@@ -234,6 +246,8 @@ Support:
 - direction
 - text/binary distinction where practical
 - payload presentation in the session UI
+
+Current status: HTTP Upgrade/101 traffic is classified as `websocket`, but WebSocket frames are not decoded yet.
 
 ### Raw TCP
 
@@ -270,6 +284,16 @@ Do not invent a tight coupling before implementation evidence justifies it.
 
 Store Suricata correlation as metadata, not inside payload segment records unless needed for recovery.
 
+### Current Suricata Status
+
+The Compose service runs Suricata passively on the configured interface and writes logs under `data/suricata`. It cannot block traffic in this mode. `SURICATA_BPF_FILTER` is currently a separate static expression and is not rebuilt from UI Sources. EVE ingestion, alert details and session correlation are not implemented; the SQLite/UI `suricata_alerts` field is a reserved placeholder and remains zero.
+
+## API and UI Boundary
+
+The Axum API exposes source CRUD, cursor-based session listing, individual session metadata, directional payload retrieval and flag-match ranges. Session listing supports metadata filters for source, flag presence, protocol, client/server IP and port, and start time. Pages are capped at 200 rows. Payload search is a byte-substring scan over at most 2,000 metadata-prefiltered candidates per request.
+
+The React UI currently exposes source, protocol, flag-only and payload filters for sessions. Sources can be searched and sorted locally by name or TCP port. The UI is branded `Нюхач`; `newhatch` remains the internal repository/service name.
+
 ## Timestamp Model
 
 Do not use "time when application logic happened" as the primary packet time.
@@ -284,6 +308,8 @@ ended_at   = last observed packet timestamp
 ```
 
 Use a compact integer representation in storage, preferably Unix nanoseconds or microseconds.
+
+The current implementation stores Unix microseconds. It uses the kernel receive timestamp when available and falls back to the current system time.
 
 ## Failure Isolation
 

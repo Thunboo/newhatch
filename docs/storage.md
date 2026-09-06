@@ -20,14 +20,14 @@ The storage layer must:
 data/
 ├── index.sqlite
 └── segments/
-    ├── 2026-09-05T120000.seg
-    ├── 2026-09-05T123000.seg
-    └── 2026-09-05T130000.seg
+    ├── 1788580800000000.seg
+    ├── 1788582600000000.seg
+    └── 1788584400000000.seg
 ```
 
 SQLite stores metadata and indexes.
 
-Segment files store reconstructed session payloads.
+Segment files store reconstructed session payloads. Current filenames are the segment creation time in Unix microseconds followed by `.seg`.
 
 ## Persistence Unit
 
@@ -44,7 +44,7 @@ Packets can be discarded after their relevant information has been incorporated 
 
 ## Append-Only Segment Files
 
-Create a new segment periodically.
+Create a new segment periodically. The current writer checks rotation when it appends a completed session; it does not run a separate wall-clock rotation task.
 
 Configuration:
 
@@ -96,7 +96,7 @@ record_length  = 5291
 Payload retrieval:
 
 ```text
-pread(segment, record_length, byte_offset)
+seek(segment, byte_offset) + read_exact(record_length)
 ```
 
 This allows direct access without scanning preceding records.
@@ -149,9 +149,9 @@ It should contain enough information to:
 - correlate Suricata alerts
 - support UI pagination
 
-## Proposed Schema
+## Implemented Schema
 
-Exact SQL types may change during implementation.
+The current schema is created idempotently at startup. SQLite uses WAL mode, `synchronous=NORMAL`, foreign keys and a five-second busy timeout.
 
 ### `sources`
 
@@ -159,12 +159,13 @@ Exact SQL types may change during implementation.
 CREATE TABLE sources (
     id          INTEGER PRIMARY KEY,
     name        TEXT NOT NULL,
-    port        INTEGER NOT NULL,
-    enabled     INTEGER NOT NULL DEFAULT 1
+    port        INTEGER NOT NULL UNIQUE CHECK (port BETWEEN 1 AND 65535),
+    enabled     INTEGER NOT NULL DEFAULT 1 CHECK (enabled IN (0, 1)),
+    deleted     INTEGER NOT NULL DEFAULT 0 CHECK (deleted IN (0, 1))
 );
 ```
 
-A unique constraint on source naming/port semantics may be added after the source-management UX is finalized.
+Source deletion is soft. Creating a source on a previously deleted port restores that row; active TCP ports remain unique.
 
 ### `segments`
 
@@ -180,42 +181,36 @@ CREATE TABLE segments (
 
 ### `sessions`
 
-Conceptual schema:
-
 ```sql
 CREATE TABLE sessions (
-    id              INTEGER PRIMARY KEY,
-
-    segment_id      INTEGER NOT NULL,
-    segment_offset  INTEGER NOT NULL,
-    record_length   INTEGER NOT NULL,
-
-    started_at      INTEGER NOT NULL,
-    ended_at        INTEGER NOT NULL,
-
-    source_id       INTEGER NOT NULL,
-
-    src_ip          BLOB NOT NULL,
-    src_port        INTEGER NOT NULL,
-    dst_ip          BLOB NOT NULL,
-    dst_port        INTEGER NOT NULL,
-
-    protocol        INTEGER NOT NULL,
-
-    bytes_c2s       INTEGER NOT NULL,
-    bytes_s2c       INTEGER NOT NULL,
-
-    contains_flag   INTEGER NOT NULL DEFAULT 0,
-    flag_direction  INTEGER NOT NULL DEFAULT 0,
-    flag_count      INTEGER NOT NULL DEFAULT 0,
-
-    suricata_alerts INTEGER NOT NULL DEFAULT 0
+    id                  INTEGER PRIMARY KEY,
+    segment_id          INTEGER NOT NULL REFERENCES segments(id),
+    segment_offset      INTEGER NOT NULL,
+    record_length       INTEGER NOT NULL,
+    started_at          INTEGER NOT NULL,
+    ended_at            INTEGER NOT NULL,
+    source_id           INTEGER NOT NULL REFERENCES sources(id),
+    client_ip           BLOB NOT NULL,
+    client_port         INTEGER NOT NULL,
+    server_ip           BLOB NOT NULL,
+    server_port         INTEGER NOT NULL,
+    protocol            INTEGER NOT NULL,
+    bytes_c2s           INTEGER NOT NULL,
+    bytes_s2c           INTEGER NOT NULL,
+    contains_flag       INTEGER NOT NULL DEFAULT 0,
+    flag_direction      INTEGER NOT NULL DEFAULT 0,
+    flag_count          INTEGER NOT NULL DEFAULT 0,
+    suricata_alerts     INTEGER NOT NULL DEFAULT 0,
+    incomplete          INTEGER NOT NULL DEFAULT 0,
+    http_method         TEXT,
+    http_host           TEXT,
+    http_path           TEXT,
+    http_status         INTEGER,
+    http_content_type   TEXT
 );
 ```
 
-IP representation should be compact and index-friendly. Do not assume textual IP storage is optimal.
-
-Protocol and flag direction may be compact integer enums.
+IPv4 addresses are stored as 4-byte blobs and IPv6 addresses as 16-byte blobs. Protocol and flag direction are compact integer enums. `suricata_alerts` is reserved but is not populated until correlation is implemented.
 
 ## Initial Indexes
 
@@ -258,20 +253,13 @@ capture/reassembly workers
  segment append SQLite batch
 ```
 
-Prefer batching metadata writes.
-
-Example policy:
+The current writer blocks for the first completed session, drains up to 499 additional queued sessions, appends all payload records, flushes and syncs the active segment, then commits the corresponding SQLite rows in one transaction:
 
 ```text
-commit when:
-  >= 500 sessions
-OR
-  >= 100 ms since previous commit
+batch size: 1..500 sessions
 ```
 
-These values are initial design examples, not fixed constants.
-
-SQLite should use WAL mode unless implementation testing demonstrates a better mode.
+There is no time-based batch flush yet. The `rows >= 5000 OR query time >= 100 ms` note in `docs/todo.md` remains unresolved and must not be conflated with this 500-session writer batch.
 
 ## Retention
 
@@ -283,7 +271,7 @@ When creating a new segment beyond the retention count:
 4. remove the segment file
 5. keep processing
 
-The precise crash-safe order must be finalized during implementation.
+The current implementation removes session and segment metadata in one SQLite transaction, commits it, and then removes the segment file. A file-removal failure is logged and leaves an orphan file rather than dangling SQLite pointers. Full crash reconciliation is still pending.
 
 Example metadata removal:
 
@@ -342,6 +330,8 @@ reconcile recoverable records with SQLite
 
 Full recovery behavior can be implemented incrementally, but the storage format must not prevent it.
 
+Current status: the write order above is implemented, including segment `sync_data` before the SQLite session transaction. Startup tail scanning, truncation and reconciliation are not implemented yet.
+
 ## Initial Binary Record Layout
 
 Version 1 uses a fixed 52-byte little-endian header:
@@ -364,7 +354,7 @@ The header is followed by C2S bytes and then S2C bytes. The writer appends and s
 
 Payload search is required, but no full-text engine should be introduced in MVP.
 
-Recommended design:
+Implemented design:
 
 ```text
 user query
@@ -379,7 +369,7 @@ candidate session ids/ranges
 Rust scans only selected payload ranges
    |
    v
-substring/regex matches
+byte-substring matches
 ```
 
 Example:
@@ -391,6 +381,8 @@ payload contains = "FLAG{"
 ```
 
 First reduce candidates through SQLite, then scan only the corresponding segment ranges.
+
+The current API scans no more than 2,000 metadata-prefiltered candidate sessions per request, in pages of at most 200. Search is a literal byte-substring match, not a regular expression.
 
 Do not duplicate all payload text into SQLite FTS for MVP.
 

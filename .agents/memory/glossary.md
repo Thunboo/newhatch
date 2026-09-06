@@ -1,8 +1,8 @@
 # Glossary
 
-Термины проекта и их значения.
+Project terms and their meanings.
 
-## Термины
+## Terms
 
 - A/D CTF - Attack/Defence CTF format where teams attack services and defend their own vulnbox.
 - vulnbox - constrained machine running team services during an A/D game.
@@ -14,6 +14,7 @@
 - `PACKET_MMAP` / RX ring - Linux packet capture mechanism to reduce syscall overhead.
 - Rust analyzer - core Rust service that captures, tracks flows, reassembles streams, detects flags, parses protocols and serves API.
 - Suricata - parallel IDS/enrichment source; not in the Rust analyzer hot path.
+- EVE JSON - Suricata event output format planned as the alert ingestion source; ingestion is not implemented yet.
 - session - reconstructed bidirectional TCP conversation visible to the user.
 - C2S - client to server reconstructed byte stream.
 - S2C - server to client reconstructed byte stream.
@@ -32,3 +33,4 @@
 - retention - rotation/removal policy for old segments and their metadata.
 - Community ID - possible Suricata correlation identifier to evaluate.
 - backpressure - explicit behavior when bounded queues fill.
+- test flag fixture - opt-in nginx service from the `test` Compose profile, exposed on TCP port `18080`.

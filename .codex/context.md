@@ -1,63 +1,81 @@
 # Codex Context
 
-Краткий контекст для будущих сессий Codex.
+## Product
 
-## What This Project Is
+`newhatch` is the internal name of a lightweight A/D CTF traffic analyzer. The UI/display name is `Нюхач`. It provides a Packmate-like sources, sessions, payload inspection, search and stolen-flag workflow while targeting constrained vulnbox resources.
 
-`newhatch` is a lightweight high-performance A/D CTF traffic analyzer.
-It should feel familiar to a Packmate user while staying lighter on CPU/RAM.
+Read `PROJECT.md` for the product brief and implementation summary. Treat `README.md` as the short startup runbook.
 
-Core loop:
+## Core Pipeline
 
 ```text
 NIC
  |
- | kernel BPF: only monitored TCP ports
+ | classic kernel BPF: enabled monitored TCP ports only
  v
-AF_PACKET / PACKET_MMAP
+Linux AF_PACKET socket (nonblocking recvmsg)
  |
  v
-Rust analyzer
+consistent flow-worker sharding
  |
- +-> TCP flow tracking
- +-> TCP reassembly
- +-> streaming flag detection
- +-> HTTP/WebSocket parsing
+ +-> bounded TCP reassembly: C2S and S2C
+ +-> streaming plus final flag scan
+ +-> HTTP metadata / WebSocket-upgrade classification
  |
  v
-SESSION metadata -> SQLite
-SESSION payload  -> append-only segments
+session metadata -> SQLite
+session payload  -> versioned append-only segment files
 ```
 
-Suricata receives the same monitored traffic in parallel and provides optional alert enrichment.
-It must not be in the Rust analyzer hot path.
+Suricata is an optional passive IDS running in parallel. It is not in the analyzer hot path, and its EVE output is not ingested or correlated yet.
 
 ## Current Repository State
 
-- Rust workspace and analyzer/backend live in `crates/analyzer`.
-- React/TypeScript/Vite frontend lives in `frontend`.
-- `compose.yaml` runs analyzer, frontend and Suricata.
-- The first vertical slice implements source CRUD, kernel BPF capture, flow reassembly, flag scanning, segment/SQLite storage, browsing/search APIs and payload UI.
-- `README.md` lists current limitations and startup instructions.
+- `crates/analyzer`: Rust/Tokio capture, flow, reassembly, protocol classification, storage and Axum API.
+- `frontend`: React/TypeScript/Vite UI branded `Нюхач`.
+- `compose.yaml`: analyzer, frontend, passive Suricata and opt-in `test-flag` services.
+- `test/`: nginx test endpoint at `GET /flag` on TCP port `18080`.
+- Root `logo.png`: canonical UI logo mounted directly into frontend nginx.
+- Default UI URL: `http://localhost:8080`.
 
-## Important Not To Break
+## Implemented Behavior
 
-- Kernel filtering before userspace.
-- Session-oriented persistence.
-- No raw packet persistence in MVP.
-- No database row per packet.
-- SQLite metadata only.
-- Payloads stored in custom append-only segment files.
-- Flag detection after TCP reassembly.
-- Flag-containing server replies should remain linked to the triggering client/player payload through metadata/pointers.
-- MVP protocols only: `raw_tcp`, HTTP/1.x, WebSocket.
-- Packmate-like UX, not generic SIEM dashboard.
+- Source CRUD with unique TCP ports, soft deletion and live analyzer BPF rebuilds.
+- Local Sources search by name/port and sorting by name/port.
+- Cursor-based session browsing; API page size is capped at 200.
+- Metadata filters for source, flag presence, protocol, endpoint IP/port and start time.
+- Bounded payload substring search over at most 2,000 metadata-prefiltered candidates per request.
+- Text and hex payload views plus flag-match highlighting.
+- Version 1 segment records: 52-byte header, CRC32, C2S bytes, then S2C bytes.
+- Segment rotation/retention and batched SQLite inserts of up to 500 sessions.
 
-## Useful Docs
+## Known Limitations
 
-- `README.md` - product goal and stack.
-- `docs/agent-decisions.md` - fixed decisions and unresolved details.
-- `docs/architecture.md` - system architecture.
-- `docs/storage.md` - storage design.
-- `docs/mvp.md` - UX and MVP scope.
-- `docs/todo.md` - user notes.
+- Capture is Linux-only and has not yet been exercised on the final vulnbox topology.
+- `PACKET_MMAP` is not implemented; capture currently uses `recvmsg`.
+- No VLAN parsing or IPv6 extension-header walking.
+- WebSocket upgrades are classified, but frames are not decoded.
+- No Suricata EVE ingestion, session correlation or live source-filter synchronization.
+- No crash-tail repair/reconciliation for the latest segment.
+- No explicit request/reply payload-range linkage for flag-containing server responses.
+- The UI exposes only source, protocol, flag and payload filters although the API supports more endpoint/time filters.
+
+## Guardrails
+
+- Filter irrelevant traffic in the kernel before userspace.
+- Persist sessions, never raw packets or one database row per packet.
+- Keep payload bytes out of SQLite.
+- Keep queues and active flow state bounded; make drops observable.
+- Keep Suricata optional and outside the Rust hot path.
+- Keep MVP protocol scope to raw TCP, HTTP/1.x and WebSocket.
+- Do not introduce heavyweight infrastructure without explicit user approval.
+
+## Documentation Map
+
+- `PROJECT.md`: product brief and implementation status.
+- `README.md`: quick start.
+- `docs/agent-decisions.md`: fixed decisions and implementation choices.
+- `docs/architecture.md`: system design and component status.
+- `docs/storage.md`: SQLite/segment format and persistence behavior.
+- `docs/mvp.md`: target UX and current coverage.
+- `docs/todo.md`: unresolved user notes.

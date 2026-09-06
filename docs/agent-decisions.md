@@ -2,6 +2,8 @@
 
 This file contains project decisions that the coding agent should treat as fixed unless the user explicitly changes them.
 
+`PROJECT.md` is the product brief and implementation summary. `README.md` is the short operator runbook.
+
 ## Fixed Technology Decisions
 
 Use:
@@ -138,6 +140,8 @@ monitored traffic
 
 The analyzer must still function if Suricata is unavailable.
 
+The current Compose service is a passive IDS sensor. It does not block traffic. Inline `drop` behavior is a future, separate deployment decision because false positives can break checkers and SLA during an A/D game.
+
 ### 11. Packmate-Like UX
 
 The UI should be conceptually similar to Packmate:
@@ -199,6 +203,9 @@ The following may still require implementation-time decisions:
 - exact Suricata correlation mechanism
 - exact handling of extremely long-lived TCP sessions
 - exact behavior under packet loss or reassembly gaps
+- exact request/reply payload-range linkage for flag-containing server responses
+- crash-tail repair and SQLite reconciliation
+- VLAN and IPv6 extension-header handling
 
 These are not permission to replace the agreed architecture.
 
@@ -218,5 +225,13 @@ The first executable slice currently uses:
 - React, TypeScript, Vite and npm for the frontend
 - host networking plus `NET_RAW`/`NET_ADMIN` for analyzer capture; frontend remains on a published bridge port
 - a 30-second configurable flow idle timeout and a configurable per-direction stream byte limit
+- unique source ports with soft deletion/restoration
+- cursor-based session pages capped at 200 rows
+- payload substring search capped at 2,000 metadata-prefiltered candidates per request
+- basic untagged Ethernet/IPv4/IPv6 TCP parsing; VLAN and IPv6 extension-header handling remain deferred
+- WebSocket upgrade classification without frame decoding
+- a passive Suricata container with a separately configured static BPF filter; EVE ingestion and session correlation are not implemented
+- an opt-in nginx flag-capture fixture on TCP port 18080
+- UI display name `Нюхач`, local Sources search/sorting, and root `logo.png` as the canonical logo asset
 
-These are implementation decisions, not changes to the fixed architecture. Current limitations are recorded in `README.md`.
+These are implementation decisions, not changes to the fixed architecture. Current limitations are summarized in `PROJECT.md`, `docs/architecture.md` and `.agents/tasks/active.md`.

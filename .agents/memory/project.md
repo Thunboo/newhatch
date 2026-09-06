@@ -1,98 +1,80 @@
 # Project Memory
 
-Устойчивые факты о проекте.
-
 ## Summary
 
-`newhatch` is a lightweight, high-performance traffic analysis tool for Attack/Defence CTF competitions.
-It should provide a Packmate-like workflow and UI while using fewer resources on a typical vulnbox.
+`newhatch` is the internal project name. The user-facing UI name is `Нюхач`.
 
-This is not a general-purpose enterprise IDS/SIEM platform.
+The product is a lightweight, high-performance traffic analyzer for Attack/Defence CTF competitions. It aims for a Packmate-like workflow with lower CPU and RAM use on a constrained vulnbox. It is not a general-purpose enterprise IDS or SIEM.
 
-## Product Goal
+## Documentation Ownership
 
-- High packet/session processing throughput.
-- Low CPU and RAM overhead on constrained vulnboxes.
-- No userspace work for traffic the user did not explicitly monitor.
-- Responsive UI during long A/D games.
+- `PROJECT.md`: product brief, fixed product direction and implementation summary.
+- `README.md`: short startup and operator runbook.
+- `docs/agent-decisions.md`: fixed technical decisions and current implementation choices.
+- `docs/architecture.md`: capture, flow, reassembly, protocol, storage and Suricata design.
+- `docs/storage.md`: implemented SQLite and append-only segment model.
+- `docs/mvp.md`: target UX plus current UI/API coverage.
+- `docs/todo.md`: unresolved user notes; do not silently resolve them.
+
+## Product Goals
+
+- High packet/session throughput with bounded memory.
+- No userspace work for traffic outside explicitly monitored TCP ports.
+- Responsive session browsing during an A/D game.
 - Immediate visibility of stolen-flag traffic.
-- Simple Docker Compose deployment.
+- Simple local deployment through Docker Compose.
 
-## User Workflow
+## Normal Workflow
 
-1. Start the stack.
-2. Choose a network interface.
-3. Configure monitored sources/services by TCP port.
-4. Provide `FLAG_REGEX`.
-5. Browse reconstructed sessions.
-6. Inspect client/server reconstructed traffic.
-7. Search payloads and filter flag-containing sessions.
+1. Configure `CAPTURE_INTERFACE` and `FLAG_REGEX` in `.env`.
+2. Start analyzer and frontend.
+3. Add monitored sources/services by TCP port in the UI.
+4. Browse reconstructed sessions and inspect C2S/S2C payloads.
+5. Search payloads or filter flag-containing sessions.
 
-The user should not manually create PCAP files for normal operation.
+Normal operation is live capture; users should not create PCAP files manually.
 
 ## Core Stack
 
-- Rust.
-- Tokio.
-- Linux `AF_PACKET`.
-- `PACKET_MMAP` / RX ring where useful.
-- kernel BPF capture filters.
-- Suricata as parallel IDS/enrichment.
-- SQLite for metadata/indexes only.
-- custom append-only segment files for reconstructed payloads.
-- TypeScript frontend.
-- Docker Compose.
+- Rust and Tokio.
+- Linux `AF_PACKET` with classic kernel BPF filters.
+- `PACKET_MMAP` / RX ring remains a future measured optimization.
+- Suricata as optional parallel IDS/enrichment.
+- SQLite for metadata and indexes only.
+- Versioned append-only segment files for reconstructed payload bytes.
+- React, TypeScript and Vite frontend.
+- Docker Compose runtime.
+
+## Current Implementation
+
+- `crates/analyzer`: live capture, packet parsing, flow sharding, TCP reassembly, flag scanning, HTTP metadata classification, storage and Axum API.
+- `frontend`: operational Sessions and Sources views. The UI is branded `Нюхач`; Sources supports local name/port search and sorting.
+- `compose.yaml`: analyzer and frontend runtime, a passive Suricata service, and the opt-in `test-flag` profile.
+- `test/`: nginx fixture on TCP port `18080`; `GET /flag` returns a test flag.
+- Root `logo.png` is the canonical UI logo. Compose mounts it directly into frontend nginx and disables browser caching for that path.
+- Default UI URL: `http://localhost:8080`.
+
+## Implemented Boundaries
+
+- Sources are unique by TCP port and soft-deleted in SQLite.
+- Enabled source changes rebuild the analyzer capture socket and BPF program.
+- Ethernet parsing supports untagged IPv4 and basic IPv6/TCP; VLAN and IPv6 extension headers are not handled yet.
+- WebSocket upgrades are classified, but frames are not decoded.
+- Session list API pagination is cursor-based with a maximum page size of 200.
+- Payload substring search scans at most 2,000 metadata-prefiltered candidates per request.
+- Suricata is passive and independent. EVE ingestion, alert correlation and live filter synchronization are not implemented.
+- Segment tail recovery/reconciliation is not implemented.
 
 ## Core Data Model
 
-The user-visible entity is a reconstructed bidirectional TCP session:
+The user-visible entity is a reconstructed bidirectional TCP session with metadata plus C2S and S2C byte streams. Raw packets are not persisted. SQLite stores metadata and direct segment locations; segment files store payload bytes.
 
-```text
-SESSION
-  ├── metadata
-  ├── client -> server reconstructed bytes
-  └── server -> client reconstructed bytes
-```
+## Current Open Decisions
 
-Individual raw packets are not persisted in MVP.
-
-## MVP Protocols
-
-- `raw_tcp`
-- `http` / HTTP/1.x
-- `websocket`
-
-Out of MVP: broad generic DPI, DNS analysis, UDP session model, HTTP/2, QUIC, arbitrary protocol plugins.
-
-## Flag Detection
-
-- Global config: `FLAG_REGEX=<regex>`.
-- Scan reconstructed stream data, not individual packets.
-- Store per-session metadata: `contains_flag`, `flag_direction`, `flag_count`.
-- Directions: `none`, `c2s`, `s2c`, `both`.
-- UI must highlight flag sessions and support "show only traffic containing flags".
-- When a server reply contains a flag, the product should make it possible to inspect what the client/player sent to get that flag.
-- This should use SQLite metadata and segment pointers, not payload bytes stored directly in SQLite.
-
-## Expected Environment
-
-- Typical Attack/Defence CTF game.
-- Working sizing assumption: 1 Gbit network, about 8 hours, about 20 teams, about 5 players per team.
-- Constrained CPU/RAM on vulnbox.
-
-## Current Code
-
-- `crates/analyzer`: Rust capture, flow/reassembly, storage and Axum API.
-- `frontend`: React/TypeScript/Vite operational UI.
-- `compose.yaml`: analyzer, frontend and Suricata runtime.
-- UI URL: `http://localhost:8080`.
-- Current limitations and next milestones are listed in `README.md` and `.agents/tasks/active.md`.
-
-## Canonical Docs
-
-- `README.md`
-- `docs/agent-decisions.md`
-- `docs/architecture.md`
-- `docs/storage.md`
-- `docs/mvp.md`
-- `docs/todo.md`
+- WebSocket frame parser and representation.
+- Suricata event correlation and filter synchronization.
+- Request/reply linkage for flag-containing server responses.
+- Long-lived session policy and behavior under large reassembly gaps.
+- Crash-tail recovery/reconciliation.
+- VLAN and IPv6 extension-header handling.
+- Meaning of the `rows >= 5000 OR query time >= 100 ms` auto-removal note.

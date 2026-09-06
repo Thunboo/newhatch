@@ -1,137 +1,85 @@
-## App Logic:
+# Analyzer Logic
 
-```
-                        ┌─────────────────────┐
-                        │       api.rs        │
-                        │      Axum API       │
-                        │                     │
-                        │ sources / sessions  │
-                        │ payload / flags     │
-                        └─────────┬───────────┘
-                                  │
-                           читает / меняет
-                                  │
-                                  ▼
-┌─────────────┐           ┌──────────────────┐
-│ Linux NIC   │           │      SQLite      │
-│ eth0 / etc. │           │   index.sqlite   │
-└──────┬──────┘           │                  │
-       │                  │ sources          │
-       │ Ethernet frames  │ session metadata │
-       ▼                  └────────▲─────────┘
-┌──────────────────┐               │
-│    capture.rs    │               │ metadata
-│                  │               │
-│ AF_PACKET socket │               │
-│ kernel BPF       │               │
-└────────┬─────────┘               │
-         │                         │
-         │ raw frame               │
-         ▼                         │
-┌──────────────────┐               │
-│    packet.rs     │               │
-│                  │               │
-│ Ethernet         │               │
-│ IPv4 / IPv6      │               │
-│ TCP parsing      │               │
-│ C2S / S2C        │               │
-└────────┬─────────┘               │
-         │ ClassifiedPacket        │
-         ▼                         │
-┌─────────────────────────────┐    │
-│          flow.rs            │    │
-│                             │    │
-│ worker #0 ─┐                │    │
-│ worker #1 ─┤ FlowKey hash   │    │
-│ worker #2 ─┤                │    │
-│ worker #N ─┘                │    │
-│                             │    │
-│ TCP reassembly              │    │
-│ C2S stream                  │    │
-│ S2C stream                  │    │
-│ FLAG regex                  │    │
-└─────────────┬───────────────┘    │
-              │                    │
-              │ finished flow      │
-              ▼                    │
-┌─────────────────────────────┐    │
-│       protocol.rs           │    │
-│                             │    │
-│ Raw TCP / HTTP / WebSocket  │    │
-│ HTTP metadata extraction    │    │
-└─────────────┬───────────────┘    │
-              │ CompletedSession   │
-              ▼                    │
-┌─────────────────────────────┐    │
-│        storage/             │────┘
-│                             │
-│ storage writer thread       │
-│ batches ≤500 sessions       │
-│                             │
-│ metadata ───────► SQLite    │
-│ payload  ───────► segments  │
-└─────────────────────────────┘
+This document is a code-oriented map of `crates/analyzer`. Product and architecture decisions remain in `PROJECT.md` and `docs/`.
+
+## Runtime
+
+```text
+Config::from_env
+      |
+      v
+Catalog::open -> SQLite migration
+      |
+      +-> storage writer thread
+      +-> flow worker tasks
+      +-> capture task
+      `-> Axum API
 ```
 
-## Now more distinctivly:
-### `main.rs`
-```
-Config::from_env()
-        │
-        ▼
-Catalog::open()
-        │
-        ├────► SQLite
-        │
-        ▼
-storage::start_writer()
-        │
-        ▼
-flow::start_workers()
-        │
-        ▼
-capture::run()   ← Tokio task
+`main.rs` creates the catalog, bounded storage queue and flow workers. Capture runs as a Tokio task while the API serves requests. Source mutations notify capture through a watch channel.
 
-In parallel:    api::serve()
+## Data Path
+
+```text
+Linux NIC
+   |
+   v
+capture.rs
+AF_PACKET + classic kernel BPF + receive timestamp
+   |
+   v
+packet.rs
+Ethernet/IP/TCP parse + source match + C2S/S2C normalization
+   |
+   v
+flow.rs
+consistent worker shard + TCP stream assembly + flag scan
+   |
+   v
+protocol.rs
+raw TCP / HTTP / WebSocket-upgrade classification
+   |
+   v
+storage/
+payload segment append + SQLite metadata transaction
 ```
+
+## Modules
+
+### `config.rs`
+
+Loads and validates capture, API, storage, queue and flow limits from environment variables. `FLAG_REGEX` is compiled as a byte regex and must not match an empty string.
 
 ### `capture.rs`
 
-Uses Linux abstractions (similar to what is used in tcpdump) with BPF Filtering on Kernel level
-```
-libc::socket(
-    libc::AF_PACKET,
-    libc::SOCK_RAW | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
-    ...
-)
-```
+On Linux, opens a nonblocking `AF_PACKET/SOCK_RAW` socket bound to `CAPTURE_INTERFACE`. It installs a generated classic BPF program for enabled source ports and rebuilds the socket when Sources change. Queue saturation drops packets and emits logarithmically throttled warnings.
 
-### `domain.rs`
-
-It declares `Source` struct - basically, it's all our defined sources to be filtered from traffic. Sources list is editable via api calls:
-```
-UI
- │
- │ POST /api/sources
- ▼
-api.rs
- │
- ▼
-SQLite
- │
- └───► watch channel ──► capture.rs ──► rebuild BPF filter
-```
-Then these sources are being captured by `capture.rs`
+The current path uses `recvmsg`; `PACKET_MMAP` is not implemented yet.
 
 ### `packet.rs`
 
-It's a TCP packet rebuilder. It gathers raw Ethernet frames, then checks the IPv4 / v6, and other data and then outputs a proper TCP Packet.
-It is also responsible for C2S / S2C direction recognition logic.
+Parses untagged Ethernet frames carrying IPv4/TCP or basic IPv6/TCP. It does not reassemble TCP. It matches source or destination TCP ports against enabled Sources, normalizes client/server endpoints and assigns C2S or S2C direction.
+
+VLAN tags, IPv4 fragments and IPv6 extension headers are not handled yet.
 
 ### `flow.rs`
 
-There is a StreamAssembler, that checks TCP seq number to make sure that we reconstruct TCP Packet in right order
+Hashes normalized flow keys into worker-local flow tables. `StreamAssembler` orders payload by TCP sequence number, trims retransmitted overlap and buffers out-of-order ranges within configured limits.
+
+Flags are scanned incrementally with overlap and counted exactly again at finalization. A flow is finalized on RST, both-direction FIN, idle timeout or worker shutdown. Timed-out, truncated or not-fully-closed sessions are marked incomplete.
 
 ### `protocol.rs`
 
-Upon `flow.rs` built C2S / S2C Packets being gathered - this part of code classifies TCP Connection with top-level protocols, like HTTP / WS (or other)
+Classifies finalized streams as `raw_tcp`, `http` or `websocket`. It extracts HTTP method, host, path, response status and content type with `httparse`. WebSocket Upgrade/101 is recognized, but frames are not decoded.
+
+### `storage/`
+
+One blocking writer thread drains batches of up to 500 completed sessions. It appends versioned C2S/S2C records to rotating segment files, syncs segment data, then commits metadata to SQLite. Payload retrieval uses the recorded segment filename, byte offset and record length and validates record identity, lengths and CRC32.
+
+### `api.rs`
+
+The Axum API provides health, Source CRUD, cursor-based session listing, metadata filtering, bounded payload substring search, directional payload retrieval and flag-match ranges. Blocking SQLite and file operations run through `spawn_blocking`.
+
+## Suricata
+
+Suricata is not part of this crate's processing path. It runs as an optional passive parallel Compose service. EVE ingestion and session correlation are not implemented yet.

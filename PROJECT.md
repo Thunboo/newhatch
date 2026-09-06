@@ -43,12 +43,11 @@ This is **not** intended to become a general-purpose enterprise IDS platform.
 - TypeScript frontend
 - Docker Compose
 
-## Зачем нам Suricata
+## Why Suricata
 
-Suricata works in parallel with newhatch-analyzer as an optional IDS-Layer. Analyzer is still a source of TCP-Sessions and as a flag leakage detector. Suricata adds an attacks signatures and prioritizes sessions for investigation.
+Suricata runs in parallel with the Rust analyzer as an optional IDS layer. The analyzer remains the source of reconstructed TCP sessions and flag-leak evidence; Suricata adds attack signatures, protocol/security alerts and triage context.
 
-In Attack/Defence it helps to recognise the exploit and prepare temporarely block rule, until service is patched. Current configuration works passively, not blocking anything; Auto `drop` requires carefull usage to prevent false-positive triggers, breaking judges checker and losing SLA.
-Overall Suricata integration is still in development.
+In Attack/Defence, that context can help identify an exploit and prepare a narrow temporary blocking rule while the service is patched. The current Compose configuration is passive and does not block traffic. Inline `drop` would require separate deployment work and carefully reviewed rules to avoid false positives that break checkers and SLA. EVE ingestion and session correlation are not implemented yet.
 
 ## Explicitly Not Used
 
@@ -222,6 +221,8 @@ The first executable vertical slice includes:
 - SQLite metadata plus versioned append-only payload segments
 - source CRUD, bounded session browsing, payload retrieval and payload search APIs
 - a TypeScript/React UI for sources, filters, session browsing and text/hex payload inspection
-- Docker Compose services for analyzer, frontend and parallel Suricata capture
+- `Нюхач` UI branding plus local source search and sorting by name or port
+- Docker Compose services for analyzer, frontend and parallel passive Suricata capture
+- an opt-in nginx flag-capture fixture on TCP port 18080
 
 The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and VLAN-aware kernel filtering remain incomplete.
