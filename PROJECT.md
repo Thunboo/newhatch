@@ -214,7 +214,7 @@ Do not assume that rewriting something in Rust alone guarantees higher performan
 
 The first executable vertical slice includes:
 
-- Linux `AF_PACKET` live capture with a classic kernel BPF port filter
+- Linux cooked `AF_PACKET` live capture with a classic kernel BPF port filter, including L3 WireGuard/TUN interfaces
 - bounded packet queues and consistently sharded flow workers
 - bidirectional TCP stream reconstruction with basic out-of-order and retransmit handling
 - flag detection over reconstructed streams
@@ -227,4 +227,4 @@ The first executable vertical slice includes:
 - an opt-in nginx flag-capture fixture on TCP port 18080
 - single-user Argon2id authentication, bounded server-side sessions, loopback-only API and nginx team-CIDR access control; see `docs/authentication.md`
 
-The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and VLAN-aware kernel filtering remain incomplete.
+The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and target-host VLAN validation remain incomplete.

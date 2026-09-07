@@ -51,6 +51,22 @@ pub fn parse_ethernet_tcp(frame: &[u8], timestamp_micros: i64) -> Option<TcpPack
     )
 }
 
+pub fn parse_ip_tcp(packet: &[u8], timestamp_micros: i64) -> Option<TcpPacket> {
+    let (src_ip, dst_ip, tcp_offset, network_end) = match packet.first()? >> 4 {
+        4 => parse_ipv4(packet, 0)?,
+        6 => parse_ipv6(packet, 0)?,
+        _ => return None,
+    };
+    parse_tcp(
+        packet,
+        timestamp_micros,
+        src_ip,
+        dst_ip,
+        tcp_offset,
+        network_end,
+    )
+}
+
 pub fn classify(packet: TcpPacket, sources: &[Source]) -> Option<ClassifiedPacket> {
     let (source_id, direction, client, server) = if let Some(source) = sources
         .iter()
@@ -175,7 +191,7 @@ mod tests {
 
     use crate::domain::Source;
 
-    use super::{classify, parse_ethernet_tcp};
+    use super::{classify, parse_ethernet_tcp, parse_ip_tcp};
 
     #[test]
     fn parses_and_classifies_ipv4_tcp() {
@@ -207,5 +223,26 @@ mod tests {
         )
         .unwrap();
         assert_eq!(classified.source_id, 1);
+    }
+
+    #[test]
+    fn parses_layer_three_ipv4_from_cooked_packet_socket() {
+        let mut packet = vec![0u8; 20 + 20 + 3];
+        packet[0] = 0x45;
+        packet[2..4].copy_from_slice(&(43u16).to_be_bytes());
+        packet[9] = 6;
+        packet[12..16].copy_from_slice(&[100, 97, 52, 206]);
+        packet[16..20].copy_from_slice(&[100, 97, 69, 83]);
+        packet[20..22].copy_from_slice(&51_465u16.to_be_bytes());
+        packet[22..24].copy_from_slice(&18_080u16.to_be_bytes());
+        packet[24..28].copy_from_slice(&100u32.to_be_bytes());
+        packet[32] = 5 << 4;
+        packet[33] = 0x18;
+        packet[40..43].copy_from_slice(b"GET");
+
+        let parsed = parse_ip_tcp(&packet, 123).unwrap();
+        assert_eq!(parsed.src.port, 51_465);
+        assert_eq!(parsed.dst.port, 18_080);
+        assert_eq!(parsed.payload, b"GET");
     }
 }

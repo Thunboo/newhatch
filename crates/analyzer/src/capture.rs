@@ -53,19 +53,18 @@ mod linux {
     use tokio::{io::unix::AsyncFd, sync::mpsc};
 
     use crate::{
-        packet::{classify, parse_ethernet_tcp, ClassifiedPacket},
+        packet::{classify, parse_ip_tcp, ClassifiedPacket},
         storage::Catalog,
     };
 
     use super::{load_sources, worker_index};
 
     const ETH_P_ALL: u16 = 0x0003;
-    const ETH_P_IP: u32 = 0x0800;
-    const ETH_P_IPV6: u32 = 0x86dd;
     const IPPROTO_TCP: u32 = 6;
 
     const BPF_LD: u16 = 0x00;
     const BPF_LDX: u16 = 0x01;
+    const BPF_ALU: u16 = 0x04;
     const BPF_JMP: u16 = 0x05;
     const BPF_RET: u16 = 0x06;
     const BPF_H: u16 = 0x08;
@@ -74,6 +73,7 @@ mod linux {
     const BPF_IND: u16 = 0x40;
     const BPF_MSH: u16 = 0xa0;
     const BPF_JEQ: u16 = 0x10;
+    const BPF_AND: u16 = 0x50;
     const BPF_JA: u16 = 0x00;
     const BPF_K: u16 = 0x00;
 
@@ -112,7 +112,7 @@ mod linux {
                         let mut guard = ready.context("wait for packet socket")?;
                         match socket.get_ref().recv(&mut frame) {
                             Ok(Some((length, timestamp))) => {
-                                if let Some(packet) = parse_ethernet_tcp(&frame[..length], timestamp) {
+                                if let Some(packet) = parse_ip_tcp(&frame[..length], timestamp) {
                                     if let Some(packet) = classify(packet, &sources) {
                                         let worker = worker_index(&packet.flow_key, workers.len());
                                         if workers[worker].try_send(packet).is_err() {
@@ -148,7 +148,9 @@ mod linux {
             let raw_fd = unsafe {
                 libc::socket(
                     libc::AF_PACKET,
-                    libc::SOCK_RAW | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
+                    // SOCK_DGRAM strips interface-specific L2 headers, giving us
+                    // the same IP layout on Ethernet, WireGuard/TUN and loopback.
+                    libc::SOCK_DGRAM | libc::SOCK_NONBLOCK | libc::SOCK_CLOEXEC,
                     i32::from(ETH_P_ALL.to_be()),
                 )
             };
@@ -275,32 +277,33 @@ mod linux {
 
     fn build_filter(ports: &[u16]) -> Vec<libc::sock_filter> {
         let mut filter = vec![
-            statement(BPF_LD | BPF_H | BPF_ABS, 12),
-            jump(BPF_JMP | BPF_JEQ | BPF_K, ETH_P_IP, 1, 0),
+            statement(BPF_LD | BPF_B | BPF_ABS, 0),
+            statement(BPF_ALU | BPF_AND | BPF_K, 0xf0),
+            jump(BPF_JMP | BPF_JEQ | BPF_K, 0x40, 1, 0),
             statement(BPF_JMP | BPF_JA, 0),
-            statement(BPF_LD | BPF_B | BPF_ABS, 23),
+            statement(BPF_LD | BPF_B | BPF_ABS, 9),
             jump(BPF_JMP | BPF_JEQ | BPF_K, IPPROTO_TCP, 1, 0),
             statement(BPF_RET | BPF_K, 0),
-            statement(BPF_LDX | BPF_B | BPF_MSH, 14),
-            statement(BPF_LD | BPF_H | BPF_IND, 14),
+            statement(BPF_LDX | BPF_B | BPF_MSH, 0),
+            statement(BPF_LD | BPF_H | BPF_IND, 0),
         ];
         append_port_checks(&mut filter, ports);
-        filter.push(statement(BPF_LD | BPF_H | BPF_IND, 16));
+        filter.push(statement(BPF_LD | BPF_H | BPF_IND, 2));
         append_port_checks(&mut filter, ports);
         filter.push(statement(BPF_RET | BPF_K, 0));
 
         let ipv6_start = filter.len();
-        filter[2].k = (ipv6_start - 3) as u32;
+        filter[3].k = (ipv6_start - 4) as u32;
         filter.extend([
-            jump(BPF_JMP | BPF_JEQ | BPF_K, ETH_P_IPV6, 1, 0),
+            jump(BPF_JMP | BPF_JEQ | BPF_K, 0x60, 1, 0),
             statement(BPF_RET | BPF_K, 0),
-            statement(BPF_LD | BPF_B | BPF_ABS, 20),
+            statement(BPF_LD | BPF_B | BPF_ABS, 6),
             jump(BPF_JMP | BPF_JEQ | BPF_K, IPPROTO_TCP, 1, 0),
             statement(BPF_RET | BPF_K, 0),
-            statement(BPF_LD | BPF_H | BPF_ABS, 54),
+            statement(BPF_LD | BPF_H | BPF_ABS, 40),
         ]);
         append_port_checks(&mut filter, ports);
-        filter.push(statement(BPF_LD | BPF_H | BPF_ABS, 56));
+        filter.push(statement(BPF_LD | BPF_H | BPF_ABS, 42));
         append_port_checks(&mut filter, ports);
         filter.push(statement(BPF_RET | BPF_K, 0));
         filter
@@ -324,6 +327,82 @@ mod linux {
 
     const fn jump(code: u16, k: u32, jt: u8, jf: u8) -> libc::sock_filter {
         libc::sock_filter { code, jt, jf, k }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::{
+            build_filter, BPF_ABS, BPF_ALU, BPF_AND, BPF_B, BPF_H, BPF_IND, BPF_JA, BPF_JEQ,
+            BPF_JMP, BPF_K, BPF_LD, BPF_LDX, BPF_MSH, BPF_RET,
+        };
+
+        #[test]
+        fn cooked_filter_accepts_only_configured_tcp_ports() {
+            let filter = build_filter(&[18_080]);
+            let mut ipv4 = tcp_packet(4, 51_465, 18_080);
+            assert_ne!(execute(&filter, &ipv4), 0);
+            ipv4[22..24].copy_from_slice(&8080u16.to_be_bytes());
+            assert_eq!(execute(&filter, &ipv4), 0);
+            ipv4[20..22].copy_from_slice(&18_080u16.to_be_bytes());
+            assert_ne!(execute(&filter, &ipv4), 0);
+
+            let mut ipv6 = tcp_packet(6, 51_465, 18_080);
+            assert_ne!(execute(&filter, &ipv6), 0);
+            ipv6[42..44].copy_from_slice(&8080u16.to_be_bytes());
+            assert_eq!(execute(&filter, &ipv6), 0);
+        }
+
+        fn tcp_packet(version: u8, source: u16, destination: u16) -> Vec<u8> {
+            let mut packet = vec![0u8; if version == 4 { 40 } else { 60 }];
+            packet[0] = (version << 4) | if version == 4 { 5 } else { 0 };
+            let tcp = if version == 4 {
+                packet[9] = 6;
+                20
+            } else {
+                packet[6] = 6;
+                40
+            };
+            packet[tcp..tcp + 2].copy_from_slice(&source.to_be_bytes());
+            packet[tcp + 2..tcp + 4].copy_from_slice(&destination.to_be_bytes());
+            packet
+        }
+
+        fn execute(filter: &[libc::sock_filter], packet: &[u8]) -> u32 {
+            let (mut accumulator, mut index, mut pc) = (0u32, 0usize, 0usize);
+            loop {
+                let instruction = filter[pc];
+                pc += 1;
+                match instruction.code {
+                    code if code == BPF_LD | BPF_B | BPF_ABS => {
+                        accumulator = u32::from(packet[instruction.k as usize]);
+                    }
+                    code if code == BPF_LD | BPF_H | BPF_ABS => {
+                        let offset = instruction.k as usize;
+                        accumulator =
+                            u32::from(u16::from_be_bytes([packet[offset], packet[offset + 1]]));
+                    }
+                    code if code == BPF_LD | BPF_H | BPF_IND => {
+                        let offset = index + instruction.k as usize;
+                        accumulator =
+                            u32::from(u16::from_be_bytes([packet[offset], packet[offset + 1]]));
+                    }
+                    code if code == BPF_LDX | BPF_B | BPF_MSH => {
+                        index = usize::from(packet[instruction.k as usize] & 0x0f) * 4;
+                    }
+                    code if code == BPF_ALU | BPF_AND | BPF_K => accumulator &= instruction.k,
+                    code if code == BPF_JMP | BPF_JEQ | BPF_K => {
+                        pc += usize::from(if accumulator == instruction.k {
+                            instruction.jt
+                        } else {
+                            instruction.jf
+                        });
+                    }
+                    code if code == BPF_JMP | BPF_JA => pc += instruction.k as usize,
+                    code if code == BPF_RET | BPF_K => return instruction.k,
+                    code => panic!("unsupported test instruction: {code:#x}"),
+                }
+            }
+        }
     }
 }
 

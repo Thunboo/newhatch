@@ -59,7 +59,7 @@ Normal operation is live capture; users should not create PCAP files manually.
 
 - Sources are unique by TCP port and soft-deleted in SQLite.
 - Enabled source changes rebuild the analyzer capture socket and BPF program.
-- Ethernet parsing supports untagged IPv4 and basic IPv6/TCP; VLAN and IPv6 extension headers are not handled yet.
+- Cooked `AF_PACKET/SOCK_DGRAM` capture strips interface-specific L2 headers and supports basic IPv4/IPv6 TCP consistently on Ethernet, WireGuard/TUN, loopback and Docker bridge interfaces. IPv6 extension headers and target-host VLAN behavior are not handled/validated yet.
 - WebSocket upgrades are classified, but frames are not decoded.
 - Session list API pagination is cursor-based with a maximum page size of 200.
 - Payload substring search scans at most 2,000 metadata-prefiltered candidates per request.
@@ -79,5 +79,5 @@ Single-user authentication is implemented: required Argon2id PHC credentials, to
 - Request/reply linkage for flag-containing server responses.
 - Long-lived session policy and behavior under large reassembly gaps.
 - Crash-tail recovery/reconciliation.
-- VLAN and IPv6 extension-header handling.
+- Target-host VLAN behavior and IPv6 extension-header handling.
 - Meaning of the `rows >= 5000 OR query time >= 100 ms` auto-removal note.

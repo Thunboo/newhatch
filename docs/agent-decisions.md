@@ -228,7 +228,7 @@ The first executable slice currently uses:
 - unique source ports with soft deletion/restoration
 - cursor-based session pages capped at 200 rows
 - payload substring search capped at 2,000 metadata-prefiltered candidates per request
-- basic untagged Ethernet/IPv4/IPv6 TCP parsing; VLAN and IPv6 extension-header handling remain deferred
+- cooked L3 `AF_PACKET/SOCK_DGRAM` capture for consistent IPv4/IPv6 parsing across Ethernet, WireGuard/TUN, loopback and Docker bridge interfaces; IPv6 extension headers and target-host VLAN behavior remain deferred
 - WebSocket upgrade classification without frame decoding
 - a passive Suricata container with a separately configured static BPF filter; EVE ingestion and session correlation are not implemented
 - an opt-in nginx flag-capture fixture on TCP port 18080

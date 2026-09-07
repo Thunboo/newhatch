@@ -14,11 +14,15 @@ docker compose --profile test up -d test-flag
 
 В newhatch откройте Sources и добавьте включенный source с TCP-портом `18080`, например `flag-test`.
 
+Для проверки VPN-интерфейса отправляйте запрос с другого VPN-узла на VPN-адрес vulnbox. Например, если трафик приходит на `wt0`, установите `CAPTURE_INTERFACE=wt0`, пересоздайте analyzer через `docker compose up -d --build --force-recreate analyzer`, а `curl` запускайте с другой машины. Запрос с vulnbox к собственному адресу может пройти через `lo` и не проверяет входящий VPN-трафик.
+
 После обновления capture filter выполните:
 
 ```bash
 curl "http://localhost:18080/flag?player=team01&payload=demo-exploit"
 ```
+
+Команда с `localhost` проверяет захват на `lo`/Docker bridge. Она не является проверкой `ens3` или VPN-интерфейса. Фактический путь можно увидеть командой `sudo tcpdump -ni any 'tcp port 18080'`.
 
 Query string имитирует данные, отправленные игроком. В найденной session поток C2S содержит HTTP-запрос с `player` и `payload`, а S2C содержит JSON с флагом. Строка флага подходит как для regex `FLAG\{[^}\r\n]+\}`, так и для compose-default `FLAG_[A-Za-z0-9]+`.
 

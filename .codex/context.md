@@ -13,7 +13,7 @@ NIC
  |
  | classic kernel BPF: enabled monitored TCP ports only
  v
-Linux AF_PACKET socket (nonblocking recvmsg)
+Linux cooked AF_PACKET/SOCK_DGRAM socket (nonblocking recvmsg; consistent L3 packets from Ethernet and WireGuard/TUN)
  |
  v
 consistent flow-worker sharding
@@ -58,7 +58,7 @@ Required `AUTH_USERNAME` and Argon2id `AUTH_PASSWORD_HASH`; see `docs/authentica
 
 - Capture is Linux-only and has not yet been exercised on the final vulnbox topology.
 - `PACKET_MMAP` is not implemented; capture currently uses `recvmsg`.
-- No VLAN parsing or IPv6 extension-header walking.
+- Target-host VLAN behavior remains unvalidated; no IPv6 extension-header walking.
 - WebSocket upgrades are classified, but frames are not decoded.
 - No Suricata EVE ingestion, session correlation or live source-filter synchronization.
 - No crash-tail repair/reconciliation for the latest segment.

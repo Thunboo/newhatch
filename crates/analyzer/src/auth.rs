@@ -30,9 +30,8 @@ pub struct AuthConfig {
 impl AuthConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         Self::parse(
-            env::var("AUTH_USERNAME").map_err(|_| {
-                anyhow::anyhow!("AUTH_USERNAME is required and must be valid text")
-            })?,
+            env::var("AUTH_USERNAME")
+                .map_err(|_| anyhow::anyhow!("AUTH_USERNAME is required and must be valid text"))?,
             env::var("AUTH_PASSWORD_HASH").map_err(|_| {
                 anyhow::anyhow!("AUTH_PASSWORD_HASH is required and must be valid text")
             })?,

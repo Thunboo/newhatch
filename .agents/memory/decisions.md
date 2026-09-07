@@ -96,6 +96,7 @@ Docs updated:
 ## Implemented Choices (2026-09-05)
 
 - Capture uses direct Linux `libc` APIs for `AF_PACKET`, classic BPF attachment and kernel timestamps.
+- Capture uses cooked `AF_PACKET/SOCK_DGRAM`; kernel BPF and Rust parsing operate on L3 IP offsets so WireGuard/TUN and Ethernet interfaces share one path. This replaced Ethernet-only `SOCK_RAW` after a real `wt0` capture exposed the mismatch.
 - Capture socket is nonblocking/Tokio-backed; `PACKET_MMAP` remains the next measured optimization.
 - Source changes rebuild the capture socket and BPF program.
 - Flows are deterministically sharded to worker-local tables.
@@ -130,6 +131,6 @@ nginx startup validates and renders `AUTH_ALLOWED_SUBNETS`. Empty/missing means 
 - Extremely long-lived TCP session handling.
 - Packet loss/reassembly gap behavior.
 - Segment tail recovery and SQLite reconciliation.
-- VLAN and IPv6 extension-header handling.
+- Target-host VLAN behavior and IPv6 extension-header handling.
 - Exact request/reply linkage model for flag-containing server responses.
 - Meaning of `docs/todo.md` "Auto-removal" note: cleanup policy, query budget or write batching.

@@ -107,9 +107,9 @@ The exact implementation may use classic BPF/eBPF or library abstractions, but t
 
 ### Current Capture Status
 
-The implemented analyzer opens a nonblocking `AF_PACKET/SOCK_RAW` socket, binds it to `CAPTURE_INTERFACE`, enables kernel receive timestamps and attaches a generated classic BPF program with `SO_ATTACH_FILTER`. Source changes rebuild the socket and filter. Capture pauses when there are no enabled sources.
+The implemented analyzer opens a nonblocking `AF_PACKET/SOCK_DGRAM` socket, binds it to `CAPTURE_INTERFACE`, enables kernel receive timestamps and attaches a generated classic BPF program with `SO_ATTACH_FILTER`. Cooked packet mode strips interface-specific link-layer headers, so the parser receives the same L3 IP layout from Ethernet, WireGuard/TUN, loopback and Docker bridge interfaces. Source changes rebuild the socket and filter. Capture pauses when there are no enabled sources.
 
-`PACKET_MMAP` is not implemented yet; the current path uses `recvmsg`. The parser supports untagged Ethernet frames carrying IPv4/TCP or IPv6/TCP without extension headers. VLAN tags, IP fragments and IPv6 extension-header walking remain deferred.
+`PACKET_MMAP` is not implemented yet; the current path uses `recvmsg`. The parser supports IPv4/TCP or IPv6/TCP without extension headers. IP fragments and IPv6 extension-header walking remain deferred. Link-layer VLAN parsing is unnecessary in cooked mode, but VLAN deployment behavior still needs target-host validation.
 
 ## Concurrency Model
 
