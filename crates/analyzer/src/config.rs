@@ -1,6 +1,13 @@
-use std::{env, net::SocketAddr, path::PathBuf, str::FromStr, time::Duration};
+use std::{
+    env,
+    net::{IpAddr, SocketAddr},
+    path::PathBuf,
+    str::FromStr,
+    time::Duration,
+};
 
 use anyhow::{bail, Context, Result};
+use serde::Serialize;
 
 #[derive(Clone, Debug)]
 pub struct Config {
@@ -16,6 +23,16 @@ pub struct Config {
     pub flow_idle_timeout: Duration,
     pub max_active_flows_per_worker: usize,
     pub max_stream_bytes: usize,
+    pub ingress_mode: IngressMode,
+    pub collector_listen_addr: SocketAddr,
+    pub collector_allowed_ips: Vec<IpAddr>,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
+#[serde(rename_all = "lowercase")]
+pub enum IngressMode {
+    Local,
+    Receiver,
 }
 
 impl Config {
@@ -55,6 +72,19 @@ impl Config {
             bail!("FLOW_WORKERS must be greater than zero");
         }
 
+        let ingress_mode = match env_string("PACKET_INGRESS_MODE", "local").as_str() {
+            "local" => IngressMode::Local,
+            "receiver" => IngressMode::Receiver,
+            _ => bail!("PACKET_INGRESS_MODE must be local or receiver"),
+        };
+        let collector_listen_addr = env_string("COLLECTOR_LISTEN_ADDR", "0.0.0.0:39090")
+            .parse()
+            .context("invalid COLLECTOR_LISTEN_ADDR")?;
+        let collector_allowed_ips = parse_ip_list("COLLECTOR_ALLOWED_IPS")?;
+        if ingress_mode == IngressMode::Receiver && collector_allowed_ips.is_empty() {
+            bail!("COLLECTOR_ALLOWED_IPS must contain at least one IP in receiver mode");
+        }
+
         Ok(Self {
             capture_interface,
             listen_addr,
@@ -68,12 +98,28 @@ impl Config {
             flow_idle_timeout: parse_duration_env("FLOW_IDLE_TIMEOUT", "30s")?,
             max_active_flows_per_worker: parse_env("MAX_ACTIVE_FLOWS_PER_WORKER", 16_384usize)?,
             max_stream_bytes: parse_size_env("MAX_STREAM_BYTES", "4MiB")?,
+            ingress_mode,
+            collector_listen_addr,
+            collector_allowed_ips,
         })
     }
 
     pub fn sqlite_path(&self) -> PathBuf {
         self.data_dir.join("index.sqlite")
     }
+}
+
+fn parse_ip_list(name: &str) -> Result<Vec<IpAddr>> {
+    let value = env::var(name).unwrap_or_default();
+    value
+        .split(',')
+        .map(str::trim)
+        .filter(|item| !item.is_empty())
+        .map(|item| {
+            item.parse()
+                .with_context(|| format!("invalid IP in {name}"))
+        })
+        .collect()
 }
 
 fn env_string(name: &str, default: &str) -> String {

@@ -1,6 +1,7 @@
 pub mod api;
 pub mod auth;
 pub mod capture;
+pub mod collector;
 pub mod config;
 pub mod domain;
 pub mod flow;

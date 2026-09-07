@@ -7,6 +7,26 @@ export type Source = {
 
 export type SourceInput = Omit<Source, "id">;
 
+export type Collector = {
+  collector_id: string;
+  connected: boolean;
+  peer: string;
+  connected_at: number;
+  last_activity: number;
+  captured_packets: number;
+  sent_packets: number;
+  dropped_packets: number;
+  queue_depth: number;
+  reconnect_count: number;
+  receiver_dropped_packets: number;
+  last_error: string | null;
+};
+
+export type CollectorsResponse = {
+  mode: "local" | "receiver";
+  collectors: Collector[];
+};
+
 export type Protocol = "raw_tcp" | "http" | "websocket";
 export type FlagDirection = "none" | "c2s" | "s2c" | "both";
 
@@ -54,4 +74,3 @@ export type SessionFilters = {
   payload?: string;
   cursor?: number;
 };
-

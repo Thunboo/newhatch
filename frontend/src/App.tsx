@@ -13,6 +13,7 @@ import {
   Radio,
   RefreshCw,
   Search,
+  Server,
   Settings2,
   Trash2,
   X,
@@ -29,9 +30,10 @@ import type {
   SessionFilters,
   Source,
   SourceInput,
+  Collector,
 } from "./types";
 
-type View = "sessions" | "sources";
+type View = "sessions" | "sources" | "collectors";
 type PayloadMode = "text" | "hex";
 type SourceSort = "name-asc" | "name-desc" | "port-asc" | "port-desc";
 
@@ -46,6 +48,8 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   const [view, setView] = useState<View>("sessions");
   const [online, setOnline] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
+  const [collectors, setCollectors] = useState<Collector[]>([]);
+  const [ingressMode, setIngressMode] = useState<"local" | "receiver">("local");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [selected, setSelected] = useState<Session | null>(null);
@@ -86,6 +90,18 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     [filters, nextCursor],
   );
 
+  const loadCollectors = useCallback(async () => {
+    try {
+      const response = await api.listCollectors();
+      setIngressMode(response.mode);
+      setCollectors(response.collectors);
+      setOnline(true);
+    } catch (caught) {
+      setOnline(false);
+      setError(messageOf(caught));
+    }
+  }, []);
+
   useEffect(() => {
     void loadSources();
   }, [loadSources]);
@@ -97,9 +113,14 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (view === "sessions" && !selected && !filters.payload) void loadSessions(false);
+      if (view === "collectors") void loadCollectors();
     }, 5_000);
     return () => window.clearInterval(timer);
-  }, [filters.payload, loadSessions, selected, view]);
+  }, [filters.payload, loadCollectors, loadSessions, selected, view]);
+
+  useEffect(() => {
+    if (view === "collectors") void loadCollectors();
+  }, [loadCollectors, view]);
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -114,11 +135,14 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       <aside className="sidebar">
         <div className="brand"><img src="/logo.png" alt="Нюхач" /></div>
         <nav aria-label="Primary navigation">
-          <button className={view === "sessions" ? "nav-item active" : "nav-item"} onClick={() => setView("sessions")}>
+          <button title="Sessions" className={view === "sessions" ? "nav-item active" : "nav-item"} onClick={() => setView("sessions")}>
             <Radio size={17} /> Sessions
           </button>
-          <button className={view === "sources" ? "nav-item active" : "nav-item"} onClick={() => setView("sources")}>
+          <button title="Sources" className={view === "sources" ? "nav-item active" : "nav-item"} onClick={() => setView("sources")}>
             <Network size={17} /> Sources
+          </button>
+          <button title="Collectors" className={view === "collectors" ? "nav-item active" : "nav-item"} onClick={() => setView("collectors")}>
+            <Server size={17} /> Collectors
           </button>
         </nav>
         <div className={online ? "connection online" : "connection offline"}>
@@ -148,14 +172,60 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
             onLoadMore={() => void loadSessions(true)}
             onSelect={setSelected}
           />
-        ) : (
+        ) : view === "sources" ? (
           <SourcesView sources={sources} onChanged={loadSources} />
+        ) : (
+          <CollectorsView mode={ingressMode} collectors={collectors} onRefresh={() => void loadCollectors()} />
         )}
       </main>
 
       {selected && <SessionDetail session={selected} onClose={() => setSelected(null)} />}
     </div>
   );
+}
+
+function CollectorsView({ mode, collectors, onRefresh }: { mode: "local" | "receiver"; collectors: Collector[]; onRefresh: () => void }) {
+  return (
+    <>
+      <header className="page-header">
+        <div><h1>Collectors</h1><p>{mode === "local" ? "Local capture active" : `${collectors.filter((item) => item.connected).length} connected`}</p></div>
+        <button className="icon-button" title="Refresh collectors" onClick={onRefresh}><RefreshCw size={17} /></button>
+      </header>
+      {mode === "local" && (
+        <div className="local-collector-notice">
+          <Server size={20} />
+          <div>
+            <strong>Запущен режим локальной сборки</strong>
+            <p>Подключение коллекторов невозможно. Смените режим на <code>PACKET_INGRESS_MODE=receiver</code> и добавьте источники.</p>
+          </div>
+        </div>
+      )}
+      {mode === "receiver" && (
+      <div className="collector-list">
+        {collectors.map((collector) => (
+          <article className="collector-row" key={collector.collector_id}>
+            <div className="collector-identity">
+              <span className={collector.connected ? "collector-state online" : "collector-state"} />
+              <div><strong>{collector.collector_id}</strong><span className="mono">{collector.peer}</span></div>
+            </div>
+            <CollectorMetric label="Captured" value={collector.captured_packets} />
+            <CollectorMetric label="Sent" value={collector.sent_packets} />
+            <CollectorMetric label="Dropped" value={collector.dropped_packets + collector.receiver_dropped_packets} warning={collector.dropped_packets + collector.receiver_dropped_packets > 0} />
+            <CollectorMetric label="Queue" value={collector.queue_depth} />
+            <CollectorMetric label="Reconnects" value={collector.reconnect_count} />
+            <div className="collector-activity"><small>Last activity</small><span>{formatDateTime(collector.last_activity)}</span></div>
+            {collector.last_error && <div className="collector-error" title={collector.last_error}><AlertTriangle size={14} /> {collector.last_error}</div>}
+          </article>
+        ))}
+        {collectors.length === 0 && <div className="empty-state"><Server size={20} /><strong>No collectors seen</strong></div>}
+      </div>
+      )}
+    </>
+  );
+}
+
+function CollectorMetric({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) {
+  return <div className={warning ? "collector-metric warning" : "collector-metric"}><small>{label}</small><strong className="mono">{value.toLocaleString()}</strong></div>;
 }
 
 type SessionsViewProps = {

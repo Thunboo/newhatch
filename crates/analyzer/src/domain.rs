@@ -2,13 +2,7 @@ use std::{fmt, net::IpAddr, str::FromStr};
 
 use serde::{Deserialize, Serialize};
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct Source {
-    pub id: i64,
-    pub name: String,
-    pub port: u16,
-    pub enabled: bool,
-}
+pub use newhatch_protocol::{Direction, Endpoint, FlowKey, Source};
 
 #[derive(Clone, Debug, Deserialize)]
 pub struct SourceInput {
@@ -158,22 +152,4 @@ pub struct StoredSession {
 pub struct SessionPayload {
     pub c2s: Vec<u8>,
     pub s2c: Vec<u8>,
-}
-
-#[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
-pub enum Direction {
-    C2s,
-    S2c,
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct Endpoint {
-    pub ip: IpAddr,
-    pub port: u16,
-}
-
-#[derive(Clone, Debug, Eq, Hash, PartialEq)]
-pub struct FlowKey {
-    pub client: Endpoint,
-    pub server: Endpoint,
 }

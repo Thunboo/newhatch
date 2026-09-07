@@ -12,6 +12,8 @@ axum.workspace = true
 crc32fast.workspace = true
 httparse.workspace = true
 libc.workspace = true
+newhatch-collector = { path = "../collector" }
+newhatch-protocol = { path = "../protocol" }
 regex.workspace = true
 rusqlite.workspace = true
 serde.workspace = true

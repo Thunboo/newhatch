@@ -21,8 +21,30 @@ services:
       AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
       AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-86400}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
+      PACKET_INGRESS_MODE: ${PACKET_INGRESS_MODE:-local}
+      COLLECTOR_LISTEN_ADDR: ${COLLECTOR_LISTEN_ADDR:-0.0.0.0:39090}
+      COLLECTOR_ALLOWED_IPS: ${COLLECTOR_ALLOWED_IPS:-}
     volumes:
       - ./data:/data
+    restart: unless-stopped
+
+  collector:
+    profiles:
+      - collector
+    build:
+      context: .
+      dockerfile: crates/collector/Dockerfile
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      CAPTURE_INTERFACE: ${CAPTURE_INTERFACE:-eth0}
+      COLLECTOR_ID: ${COLLECTOR_ID:-vulnbox-1}
+      RECEIVER_ADDR: ${RECEIVER_ADDR:-127.0.0.1}
+      RECEIVER_PORT: ${RECEIVER_PORT:-39090}
+      COLLECTOR_QUEUE_CAPACITY: ${COLLECTOR_QUEUE_CAPACITY:-8192}
+      RUST_LOG: ${RUST_LOG:-newhatch=info}
     restart: unless-stopped
 
   frontend:

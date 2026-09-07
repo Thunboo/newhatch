@@ -3,7 +3,8 @@ use newhatch_analyzer::{
     api::{self, ApiState},
     auth::AuthConfig,
     capture,
-    config::Config,
+    collector::{self, CollectorRegistry},
+    config::{Config, IngressMode},
     flow::{self, FlowOptions},
     storage::{self, Catalog},
 };
@@ -51,20 +52,47 @@ async fn main() -> anyhow::Result<()> {
     );
 
     let (source_revision, capture_revision) = watch::channel(0u64);
-    let capture_interface = config.capture_interface.clone();
-    let capture_catalog = catalog.clone();
-    tokio::spawn(async move {
-        if let Err(error) = capture::run(
-            capture_interface,
-            capture_catalog,
-            capture_revision,
-            flows.senders,
-        )
-        .await
-        {
-            tracing::error!(error = ?error, "capture task stopped");
+    let collectors = CollectorRegistry::default();
+    match config.ingress_mode {
+        IngressMode::Local => {
+            let capture_interface = config.capture_interface.clone();
+            let capture_catalog = catalog.clone();
+            let workers = flows.senders.clone();
+            tokio::spawn(async move {
+                if let Err(error) = capture::run(
+                    capture_interface,
+                    capture_catalog,
+                    capture_revision,
+                    workers,
+                )
+                .await
+                {
+                    tracing::error!(error = ?error, "capture task stopped");
+                }
+            });
         }
-    });
+        IngressMode::Receiver => {
+            let address = config.collector_listen_addr;
+            let allowed_ips = config.collector_allowed_ips.clone();
+            let receiver_catalog = catalog.clone();
+            let workers = flows.senders.clone();
+            let receiver_collectors = collectors.clone();
+            tokio::spawn(async move {
+                if let Err(error) = collector::run_receiver(
+                    address,
+                    allowed_ips,
+                    receiver_catalog,
+                    capture_revision,
+                    workers,
+                    receiver_collectors,
+                )
+                .await
+                {
+                    tracing::error!(error = ?error, "collector receiver stopped");
+                }
+            });
+        }
+    }
 
     api::serve(
         config.listen_addr,
@@ -73,6 +101,8 @@ async fn main() -> anyhow::Result<()> {
             data_dir: config.data_dir,
             source_revision,
             flag_regex,
+            collectors,
+            ingress_mode: config.ingress_mode,
         },
         auth,
     )

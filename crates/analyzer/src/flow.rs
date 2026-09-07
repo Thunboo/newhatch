@@ -15,7 +15,19 @@ use crate::{
 };
 
 pub struct FlowRuntime {
-    pub senders: Vec<mpsc::Sender<ClassifiedPacket>>,
+    pub senders: Vec<mpsc::Sender<IngressPacket>>,
+}
+
+#[derive(Clone, Debug)]
+pub struct IngressPacket {
+    pub collector_id: String,
+    pub packet: ClassifiedPacket,
+}
+
+#[derive(Clone, Debug, Eq, Hash, PartialEq)]
+struct CollectorFlowKey {
+    collector_id: String,
+    flow_key: FlowKey,
 }
 
 pub struct FlowOptions {
@@ -49,8 +61,9 @@ pub fn start_workers(options: FlowOptions, storage: StorageHandle) -> FlowRuntim
     FlowRuntime { senders }
 }
 
-pub fn worker_index(key: &FlowKey, workers: usize) -> usize {
+pub fn worker_index(collector_id: &str, key: &FlowKey, workers: usize) -> usize {
     let mut hash = 0xcbf29ce484222325u64;
+    mix_bytes(&mut hash, collector_id.as_bytes());
     mix_endpoint(&mut hash, key.client.ip, key.client.port);
     mix_endpoint(&mut hash, key.server.ip, key.server.port);
     (hash as usize) % workers
@@ -73,8 +86,8 @@ fn mix_bytes(hash: &mut u64, bytes: &[u8]) {
 
 struct FlowWorker {
     worker_id: usize,
-    flows: HashMap<FlowKey, FlowState>,
-    receiver: mpsc::Receiver<ClassifiedPacket>,
+    flows: HashMap<CollectorFlowKey, FlowState>,
+    receiver: mpsc::Receiver<IngressPacket>,
     storage: StorageHandle,
     flag_regex: Regex,
     idle_timeout_micros: i64,
@@ -103,8 +116,12 @@ impl FlowWorker {
         }
     }
 
-    fn handle_packet(&mut self, classified: ClassifiedPacket) {
-        let key = classified.flow_key.clone();
+    fn handle_packet(&mut self, ingress: IngressPacket) {
+        let classified = ingress.packet;
+        let key = CollectorFlowKey {
+            collector_id: ingress.collector_id,
+            flow_key: classified.flow_key.clone(),
+        };
         if !self.flows.contains_key(&key) && self.flows.len() >= self.max_active_flows {
             self.dropped_flows = self.dropped_flows.saturating_add(1);
             if self.dropped_flows.is_power_of_two() {
@@ -121,7 +138,7 @@ impl FlowWorker {
             let flow = self.flows.entry(key.clone()).or_insert_with(|| {
                 FlowState::new(
                     classified.source_id,
-                    key.clone(),
+                    key.flow_key.clone(),
                     classified.packet.timestamp_micros,
                     self.max_stream_bytes,
                 )
@@ -400,9 +417,37 @@ fn unix_micros() -> i64 {
 
 #[cfg(test)]
 mod tests {
+    use crate::domain::{Endpoint, FlowKey};
+    use crate::packet::{ClassifiedPacket, TcpPacket};
+    use newhatch_protocol::{Direction, PacketMessage};
     use regex::bytes::Regex;
 
-    use super::{scan_new_matches, StreamAssembler};
+    use super::{scan_new_matches, worker_index, CollectorFlowKey, FlowState, StreamAssembler};
+
+    #[test]
+    fn worker_routing_includes_collector_identity() {
+        let key = FlowKey {
+            client: Endpoint {
+                ip: "10.0.0.2".parse().unwrap(),
+                port: 50000,
+            },
+            server: Endpoint {
+                ip: "10.0.0.1".parse().unwrap(),
+                port: 8080,
+            },
+        };
+        assert_eq!(worker_index("one", &key, 32), worker_index("one", &key, 32));
+        assert_ne!(
+            CollectorFlowKey {
+                collector_id: "one".into(),
+                flow_key: key.clone()
+            },
+            CollectorFlowKey {
+                collector_id: "two".into(),
+                flow_key: key
+            },
+        );
+    }
 
     #[test]
     fn reassembles_out_of_order_and_ignores_retransmit() {
@@ -412,6 +457,46 @@ mod tests {
         assert!(stream.push(106, b"brave "));
         assert!(!stream.push(100, b"hello "));
         assert_eq!(stream.bytes(), b"hello brave world");
+    }
+
+    #[test]
+    fn reassembles_out_of_order_after_wire_round_trip() {
+        let key = FlowKey {
+            client: Endpoint {
+                ip: "10.0.0.2".parse().unwrap(),
+                port: 50000,
+            },
+            server: Endpoint {
+                ip: "10.0.0.1".parse().unwrap(),
+                port: 8080,
+            },
+        };
+        let regex = Regex::new("FLAG").unwrap();
+        let mut flow = FlowState::new(1, key.clone(), 1, 1024);
+        for (sequence, payload) in [
+            (100, b"hello ".as_slice()),
+            (112, b"world"),
+            (106, b"brave "),
+        ] {
+            let packet = ClassifiedPacket {
+                source_id: 1,
+                direction: Direction::C2s,
+                flow_key: key.clone(),
+                packet: TcpPacket {
+                    timestamp_micros: 1,
+                    src: key.client.clone(),
+                    dst: key.server.clone(),
+                    sequence,
+                    syn: false,
+                    fin: false,
+                    rst: false,
+                    payload: payload.to_vec(),
+                },
+            };
+            let decoded = ClassifiedPacket::try_from(PacketMessage::from(&packet)).unwrap();
+            flow.ingest(&decoded, &regex);
+        }
+        assert_eq!(flow.finish(true, &regex).c2s, b"hello brave world");
     }
 
     #[test]

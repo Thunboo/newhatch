@@ -1,0 +1,21 @@
+[package]
+name = "newhatch-collector"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+libc.workspace = true
+newhatch-protocol = { path = "../protocol" }
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber.workspace = true
+
+[lib]
+name = "newhatch_collector"
+path = "src/lib.rs"
+
+[[bin]]
+name = "newhatch-collector"
+path = "src/main.rs"

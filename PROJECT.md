@@ -226,5 +226,7 @@ The first executable vertical slice includes:
 - Docker Compose services for analyzer, frontend and parallel passive Suricata capture
 - an opt-in nginx flag-capture fixture on TCP port 18080
 - single-user Argon2id authentication, bounded server-side sessions, loopback-only API and nginx team-CIDR access control; see `docs/authentication.md`
+- optional split capture: a diskless `newhatch-collector` forwards versioned protobuf `ClassifiedPacket` messages to analyzer over a persistent bounded connection
+- receiver-side exact peer-IP admission, analyzer-pushed Source snapshots, collector-aware flow isolation, reconnect/drop counters and a Collectors UI view
 
-The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and target-host VLAN validation remain incomplete.
+The split deployment still needs validation on the actual two-host Linux/VPN topology. The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and target-host VLAN validation remain incomplete.

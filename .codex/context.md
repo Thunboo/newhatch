@@ -29,9 +29,15 @@ session payload  -> versioned append-only segment files
 
 Suricata is an optional passive IDS running in parallel. It is not in the analyzer hot path, and its EVE output is not ingested or correlated yet.
 
+## Collector / Analyzer Split
+
+The collector/analyzer split is implemented and specified in `.agents/tasks/newhatch-collector-analyzer-split.md`. It splits after `ClassifiedPacket`, uses shared versioned protobuf types, a bounded persistent bidirectional connection, analyzer-pushed Sources and `CollectorId + FlowKey` isolation. Collector remains diskless/lightweight; analyzer retains reassembly, detection, storage, API/auth/frontend. Initial admission pins receiver IP/port on collector and permits only configured collector source IPs on receiver; PSK authentication is deferred. Automated tests pass; actual two-host Linux/VPN rollout remains pending.
+
 ## Current Repository State
 
-- `crates/analyzer`: Rust/Tokio capture, flow, reassembly, protocol classification, storage and Axum API.
+- `crates/analyzer`: local/remote ingress, flow/reassembly, protocol classification, storage and Axum API.
+- `crates/collector`: lightweight Linux capture, classification and remote forwarding.
+- `crates/protocol`: shared domain types and versioned protobuf transport.
 - `frontend`: React/TypeScript/Vite UI branded `Нюхач`.
 - `compose.yaml`: analyzer, frontend, passive Suricata and opt-in `test-flag` services.
 - `test/flag_test/`: nginx test endpoint at `GET /flag` on TCP port `18080`.

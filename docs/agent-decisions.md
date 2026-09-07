@@ -239,3 +239,9 @@ These are implementation decisions, not changes to the fixed architecture. Curre
 ## Single-User Authentication (2026-09-07)
 
 The user explicitly extended the MVP to include environment-configured Argon2id credentials, `tower-sessions` cookies and a bounded ephemeral server-side store. No roles, registration or identity provider are introduced. nginx enforces loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs against actual TCP peers; the analyzer separately enforces loopback transport and authenticated sessions. Never grant trust based on forwarded headers or blanket Docker/private ranges. Health is public and minimal. Full configuration, TTL, cookie, origin and deployment policy is in `docs/authentication.md`.
+
+## Collector / Analyzer Split (2026-09-07)
+
+The remote split is after `ClassifiedPacket`. `crates/protocol` owns shared packet/source/domain types and a versioned length-prefixed protobuf protocol. The lightweight collector owns cooked AF_PACKET capture, BPF, classification, bounded memory, reconnect and counters; analyzer owns worker selection and every heavy processing/persistence concern. Analyzer pushes global active Source snapshots to all connected collectors. Flow identity is `CollectorId + FlowKey`.
+
+Initial connection admission has no PSK or encryption: collector pins receiver IP/port and analyzer accepts exact configured collector source IPs. PSK authentication is backlog hardening. Keep local ingress available for the existing single-host deployment.

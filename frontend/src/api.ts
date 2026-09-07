@@ -5,6 +5,7 @@ import type {
   SessionPage,
   Source,
   SourceInput,
+  CollectorsResponse,
 } from "./types";
 
 export class ApiError extends Error {
@@ -57,6 +58,8 @@ export const api = {
   health: () => request<{ status: string }>("/api/health"),
 
   listSources: () => request<Source[]>("/api/sources"),
+
+  listCollectors: () => request<CollectorsResponse>("/api/collectors"),
 
   createSource: (input: SourceInput) =>
     request<Source>("/api/sources", {

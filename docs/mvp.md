@@ -234,6 +234,7 @@ Expected services:
 analyzer
 frontend
 suricata
+collector (optional split-deployment profile)
 ```
 
 An opt-in `test-flag` service is available under the `test` Compose profile. It exposes `GET /flag` on TCP port `18080` for local end-to-end capture checks and is not part of normal runtime.
@@ -279,8 +280,8 @@ Benchmarking Packmate/Tulip against this tool is explicitly outside MVP, but sho
 - generic plugin system
 - arbitrary UDP protocol reconstruction
 - historical PCAP export
-- distributed capture
-- multi-vulnbox aggregation
+- per-collector Source assignment and management
+- fleet-scale collector orchestration
 - Kubernetes
 - Prometheus/Grafana integration
 - database replication

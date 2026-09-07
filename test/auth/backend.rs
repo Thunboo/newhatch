@@ -36,6 +36,8 @@ fn app(ttl: &str, secure: &str) -> (Router, tempfile::TempDir) {
         data_dir: dir.path().to_owned(),
         source_revision: tokio::sync::watch::channel(0).0,
         flag_regex: regex::bytes::Regex::new("FLAG").unwrap(),
+        collectors: Default::default(),
+        ingress_mode: newhatch_analyzer::config::IngressMode::Local,
     };
     (
         router(

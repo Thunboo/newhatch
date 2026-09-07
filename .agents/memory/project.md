@@ -47,9 +47,11 @@ Normal operation is live capture; users should not create PCAP files manually.
 
 ## Current Implementation
 
-- `crates/analyzer`: live capture, packet parsing, flow sharding, TCP reassembly, flag scanning, HTTP metadata classification, storage and Axum API.
-- `frontend`: operational Sessions and Sources views. The UI is branded `Нюхач`; Sources supports local name/port search and sorting.
-- `compose.yaml`: analyzer and frontend runtime, a passive Suricata service, and the opt-in `test-flag` profile.
+- `crates/analyzer`: local/remote packet ingress, collector-aware flow sharding, TCP reassembly, flag scanning, protocol classification, storage and Axum API.
+- `crates/collector`: lightweight Linux cooked capture, BPF/classification and bounded remote forwarding without persistence.
+- `crates/protocol`: shared packet/source/domain types and versioned length-prefixed protobuf messages.
+- `frontend`: operational Sessions, Sources and Collectors views. The UI is branded `Нюхач`; Sources supports local name/port search and sorting.
+- `compose.yaml`: analyzer and frontend runtime, optional collector profile, passive Suricata, and the opt-in `test-flag` profile.
 - `test/flag_test/`: nginx fixture on TCP port `18080`; `GET /flag` returns a test flag.
 - `test/auth/`: backend, CIDR, multi-subnet Docker and browser authentication tests.
 - Root `logo.png` is canonical. Compose mounts it read-only at `/opt/newhatch/logo.png`; startup copies it into the web root with readable permissions. Browser caching is disabled.
@@ -71,6 +73,8 @@ Normal operation is live capture; users should not create PCAP files manually.
 The user-visible entity is a reconstructed bidirectional TCP session with metadata plus C2S and S2C byte streams. Raw packets are not persisted. SQLite stores metadata and direct segment locations; segment files store payload bytes.
 
 ## Current Open Decisions
+
+The collector/analyzer split is implemented and automatically tested. The fixed boundary is after `ClassifiedPacket`: vulnbox collector retains cooked capture, BPF, minimal parsing/classification, bounded forwarding and stats; remote analyzer retains all heavy processing and persistence. Initial admission pins receiver IP/port on collector and permits only configured collector source IPs on receiver; PSK authentication is deferred to backlog. Actual two-host Linux/VPN rollout remains pending.
 
 Single-user authentication is implemented: required Argon2id PHC credentials, tower-sessions with a bounded ephemeral store (1024 sessions), absolute TTL (default 24h), cookie rotation and logout. nginx checks actual client peers against loopback plus `AUTH_ALLOWED_SUBNETS`; analyzer binds loopback and checks actual peer plus session. Both production services use host networking. Empty CIDRs mean loopback only. No forwarded-header trust or permissive CORS. See `docs/authentication.md` and `.agents/tasks/active.md`; final vulnbox ingress validation remains pending. Roles, registration and external identity providers remain excluded.
 

@@ -14,6 +14,8 @@ use tokio::sync::watch;
 
 use crate::{
     auth::{self, AuthConfig},
+    collector::{CollectorRegistry, CollectorStatus},
+    config::IngressMode,
     domain::{SessionProtocol, SessionSummary, Source, SourceInput},
     storage::{parse_optional_ip, read_payload, Catalog, SessionFilter},
 };
@@ -24,11 +26,14 @@ pub struct ApiState {
     pub data_dir: PathBuf,
     pub source_revision: watch::Sender<u64>,
     pub flag_regex: regex::bytes::Regex,
+    pub collectors: CollectorRegistry,
+    pub ingress_mode: IngressMode,
 }
 
 pub fn router(state: ApiState, config: AuthConfig) -> Router {
     let app = Router::new()
         .route("/api/sources", get(list_sources).post(create_source))
+        .route("/api/collectors", get(list_collectors))
         .route(
             "/api/sources/{id}",
             put(update_source).delete(delete_source),
@@ -39,6 +44,19 @@ pub fn router(state: ApiState, config: AuthConfig) -> Router {
         .route("/api/sessions/{id}/flag-matches", get(get_flag_matches))
         .with_state(Arc::new(state));
     auth::protect(app, config)
+}
+
+#[derive(Serialize)]
+struct CollectorsResponse {
+    mode: IngressMode,
+    collectors: Vec<CollectorStatus>,
+}
+
+async fn list_collectors(State(state): State<Arc<ApiState>>) -> Json<CollectorsResponse> {
+    Json(CollectorsResponse {
+        mode: state.ingress_mode,
+        collectors: state.collectors.list(),
+    })
 }
 
 pub async fn serve(address: SocketAddr, state: ApiState, config: AuthConfig) -> anyhow::Result<()> {

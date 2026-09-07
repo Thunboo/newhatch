@@ -2,6 +2,38 @@
 
 Work currently identified as the next implementation tranche.
 
+## Collector / Analyzer Split
+
+Status: implemented and automatically verified on 2026-09-07. Actual two-host Linux/VPN deployment verification remains developer-owned Phase 5. The complete user specification remains in `newhatch-collector-analyzer-split.md`.
+
+### Fixed Scope
+
+- [x] Split immediately after `ClassifiedPacket`: collector captures, parses, classifies and forwards; analyzer owns worker routing, reassembly, flag/protocol analysis, storage, API and UI.
+- [x] Add `crates/protocol` for versioned protobuf wire messages and shared domain types. Do not duplicate packet/flow/source DTOs.
+- [x] Add lightweight `crates/collector` with cooked `AF_PACKET`, kernel BPF, in-memory Sources, bounded queues, persistent bidirectional transport, reconnect/backoff and counters.
+- [x] Add analyzer collector ingress. Route by `CollectorId + FlowKey` so different collectors cannot merge, while retaining existing `FlowWorker` and session processing.
+- [x] Keep analyzer SQLite as the Sources source of truth and push complete active source snapshots after handshake and after CRUD changes.
+- [x] Support one expected collector operationally while keeping message identity and analyzer flow isolation multi-collector capable.
+- [x] Add a sidebar Collectors view showing identity, connection state, peer, last activity, counters, queue depth and reconnect information available from the protocol.
+- [x] Preserve local/monolithic ingress for migration and tests.
+- [x] Keep collector memory bounded and diskless; drop with observable counters when disconnected/slow instead of blocking capture or growing without bound.
+- [x] Add short split-deployment instructions to root README. Actual cross-host rollout remains developer-owned Phase 5.
+
+### Planned Delivery
+
+1. Packet sink abstraction and shared protocol crate.
+2. Collector binary plus persistent framed protobuf transport.
+3. Analyzer ingress, source synchronization and collector-aware worker/flow identity.
+4. Collector status API and frontend view.
+5. Unit/integration tests for serialization, routing, reassembly parity, source updates, disconnect/reconnect, overflow, approval and collector isolation.
+6. Compose/Dockerfiles, environment examples and brief deployment documentation.
+
+### Collector Admission Contract
+
+- [x] Collector is configured with the receiver IP and port it connects to.
+- [x] Receiver is configured with the expected collector source IP and rejects other peer IPs.
+- [x] Do not add application-layer authentication in this tranche. Pre-shared-key authentication is deferred to backlog hardening.
+
 ## Authentication and API Access Control
 
 Status: implemented with automated backend, CIDR, Docker-network and browser coverage (2026-09-07). Final reruns after the last small changes are blocked by the tool approval usage limit. Final ingress verification from an actual team machine on the target Linux host also remains pending. Configuration and implementation choices are in `docs/authentication.md`; test commands are in `test/auth/README.md`.

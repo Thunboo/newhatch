@@ -296,6 +296,19 @@ The Axum API exposes source CRUD, cursor-based session listing, individual sessi
 
 The React UI currently exposes source, protocol, flag-only and payload filters for sessions. Sources can be searched and sorted locally by name or TCP port. The UI is branded `Нюхач`; `newhatch` remains the internal repository/service name.
 
+## Remote Collector Boundary
+
+Capture can run locally in analyzer (`PACKET_INGRESS_MODE=local`) or in the standalone diskless collector. The remote boundary is immediately after packet classification:
+
+```text
+collector AF_PACKET/BPF -> ClassifiedPacket -> framed protobuf stream
+-> analyzer ingress -> CollectorId + FlowKey sharding -> FlowWorker
+```
+
+The collector owns cooked AF_PACKET capture, TCP parsing/classification, an in-memory Source snapshot, a bounded packet queue, reconnect/backoff and transport counters. Analyzer retains reassembly, flag/protocol detection, SQLite, segment files, API/auth and frontend. Analyzer pushes the complete active Source snapshot after handshake and every Source revision; collector then rebuilds its kernel BPF filter.
+
+The initial trusted-network admission contract is endpoint based. Collector connects only to configured `RECEIVER_ADDR:RECEIVER_PORT`; analyzer accepts only exact source IPs listed in `COLLECTOR_ALLOWED_IPS`. The stream is neither encrypted nor application-authenticated. Per-collector PSK authentication is deferred. Flow tables include `CollectorId` so identical endpoint tuples from different collectors cannot merge.
+
 ## Timestamp Model
 
 Do not use "time when application logic happened" as the primary packet time.

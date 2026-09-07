@@ -3,13 +3,17 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use tokio::sync::{mpsc, watch};
 
-use crate::{domain::Source, flow::worker_index, packet::ClassifiedPacket, storage::Catalog};
+use crate::{
+    domain::Source,
+    flow::{worker_index, IngressPacket},
+    storage::Catalog,
+};
 
 pub async fn run(
     interface: String,
     catalog: Catalog,
     mut source_revision: watch::Receiver<u64>,
-    workers: Vec<mpsc::Sender<ClassifiedPacket>>,
+    workers: Vec<mpsc::Sender<IngressPacket>>,
 ) -> Result<()> {
     if workers.is_empty() {
         anyhow::bail!("capture requires at least one flow worker");
@@ -53,7 +57,8 @@ mod linux {
     use tokio::{io::unix::AsyncFd, sync::mpsc};
 
     use crate::{
-        packet::{classify, parse_ip_tcp, ClassifiedPacket},
+        flow::IngressPacket,
+        packet::{classify, parse_ip_tcp},
         storage::Catalog,
     };
 
@@ -81,7 +86,7 @@ mod linux {
         interface: String,
         catalog: Catalog,
         source_revision: &mut tokio::sync::watch::Receiver<u64>,
-        workers: Vec<mpsc::Sender<ClassifiedPacket>>,
+        workers: Vec<mpsc::Sender<IngressPacket>>,
     ) -> Result<()> {
         let mut dropped_packets = 0u64;
         loop {
@@ -114,8 +119,9 @@ mod linux {
                             Ok(Some((length, timestamp))) => {
                                 if let Some(packet) = parse_ip_tcp(&frame[..length], timestamp) {
                                     if let Some(packet) = classify(packet, &sources) {
-                                        let worker = worker_index(&packet.flow_key, workers.len());
-                                        if workers[worker].try_send(packet).is_err() {
+                                        let worker = worker_index("local", &packet.flow_key, workers.len());
+                                        let ingress = IngressPacket { collector_id: "local".into(), packet };
+                                        if workers[worker].try_send(ingress).is_err() {
                                             dropped_packets = dropped_packets.saturating_add(1);
                                             if dropped_packets.is_power_of_two() {
                                                 tracing::warn!(dropped = dropped_packets, "flow worker queue is saturated");
