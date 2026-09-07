@@ -4,17 +4,30 @@
 
 See [PROJECT.md](PROJECT.md) for the product brief, current implementation and architectural constraints. Detailed design documents live in [`docs/`](docs/).
 
+## Password Setup
+
+Create `.env`, generate an Argon2id password hash, and add the displayed value without removing its single quotes to `.env`:
+
+```bash
+cp .env.example .env
+docker compose build analyzer
+docker compose run --rm --no-deps --entrypoint hash-password analyzer
+```
+
+```env
+AUTH_USERNAME=team
+AUTH_PASSWORD_HASH='$argon2id$v=19$...'
+AUTH_ALLOWED_SUBNETS=100.97.0.0/16
+```
+
+Use your actual team CIDR. An empty `AUTH_ALLOWED_SUBNETS` allows only clients that nginx sees as loopback. See [authentication details](docs/authentication.md).
+
 ## Quick Start
 
 The capture path is Linux-only. On the target vulnbox:
 
 ```bash
-cp .env.example .env
-# Edit CAPTURE_INTERFACE and FLAG_REGEX.
-docker compose build analyzer
-docker compose run --rm --no-deps --entrypoint hash-password analyzer
-# Set AUTH_USERNAME and the printed single-quoted AUTH_PASSWORD_HASH in .env.
-# Set AUTH_ALLOWED_SUBNETS to your team's CIDRs (empty = loopback only).
+# Configure CAPTURE_INTERFACE, FLAG_REGEX and authentication in .env first.
 docker compose up -d --build analyzer frontend
 ```
 
