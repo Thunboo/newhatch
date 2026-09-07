@@ -33,5 +33,7 @@ data/
 .vscode/
 
 # Temporary files
+__pycache__/
+*.pyc
 tmp/
 temp/

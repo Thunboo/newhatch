@@ -25,9 +25,12 @@ impl Config {
             bail!("CAPTURE_INTERFACE must not be empty");
         }
 
-        let listen_addr = env_string("LISTEN_ADDR", "0.0.0.0:3000")
+        let listen_addr: SocketAddr = env_string("LISTEN_ADDR", "127.0.0.1:3000")
             .parse()
             .context("invalid LISTEN_ADDR")?;
+        if !listen_addr.ip().is_loopback() {
+            bail!("LISTEN_ADDR must be a loopback address");
+        }
         let data_dir = PathBuf::from(env_string("DATA_DIR", "./data"));
         let flag_regex = env_string("FLAG_REGEX", r"FLAG\{[^}\r\n]+\}");
         let compiled_flag_regex =

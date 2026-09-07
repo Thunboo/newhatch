@@ -290,6 +290,8 @@ The Compose service runs Suricata passively on the configured interface and writ
 
 ## API and UI Boundary
 
+Authentication is enforced before data handlers. nginx and analyzer share Linux host networking: nginx checks real clients against loopback plus `AUTH_ALLOWED_SUBNETS` and proxies to `127.0.0.1:3000`. Analyzer middleware checks the actual loopback peer and a server-side session. Public minimal health and local-only login are explicit exceptions. The frontend mounts its operational views only after authentication. See `docs/authentication.md` for the complete boundary and deployment caveats.
+
 The Axum API exposes source CRUD, cursor-based session listing, individual session metadata, directional payload retrieval and flag-match ranges. Session listing supports metadata filters for source, flag presence, protocol, client/server IP and port, and start time. Pages are capped at 200 rows. Payload search is a byte-substring scan over at most 2,000 metadata-prefiltered candidates per request.
 
 The React UI currently exposes source, protocol, flag-only and payload filters for sessions. Sources can be searched and sorted locally by name or TCP port. The UI is branded `Нюхач`; `newhatch` remains the internal repository/service name.

@@ -7,6 +7,7 @@ import {
   Check,
   Flag,
   ListFilter,
+  LogOut,
   Network,
   Plus,
   Radio,
@@ -19,6 +20,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { api } from "./api";
+import { AuthGate } from "./AuthGate";
 import type {
   ByteRange,
   FlagMatches,
@@ -36,6 +38,11 @@ type SourceSort = "name-asc" | "name-desc" | "port-asc" | "port-desc";
 const emptySource: SourceInput = { name: "", port: 8080, enabled: true };
 
 export function App() {
+  return <AuthGate>{(logout) => <AuthenticatedApp onLogout={logout} />}</AuthGate>;
+}
+
+function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
+  const [loggingOut, setLoggingOut] = useState(false);
   const [view, setView] = useState<View>("sessions");
   const [online, setOnline] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
@@ -117,6 +124,10 @@ export function App() {
         <div className={online ? "connection online" : "connection offline"}>
           <span /> {online ? "Analyzer online" : "Analyzer offline"}
         </div>
+        <button className="nav-item logout-button" title="Sign out" aria-label="Sign out" disabled={loggingOut} onClick={() => {
+          setLoggingOut(true);
+          void onLogout().catch(() => setError("Sign-out failed. Please try again.")).finally(() => setLoggingOut(false));
+        }}><LogOut size={17} /><span>Sign out</span></button>
       </aside>
 
       <main className="workspace">

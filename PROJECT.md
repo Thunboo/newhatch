@@ -176,7 +176,8 @@ The user should primarily need to:
 1. choose the network interface
 2. configure monitored sources/services and ports
 3. provide `FLAG_REGEX`
-4. start the stack
+4. configure a login hash and allowed team subnets
+5. start the stack and sign in
 
 The user should not need to manually capture PCAP files.
 
@@ -224,5 +225,6 @@ The first executable vertical slice includes:
 - `Нюхач` UI branding plus local source search and sorting by name or port
 - Docker Compose services for analyzer, frontend and parallel passive Suricata capture
 - an opt-in nginx flag-capture fixture on TCP port 18080
+- single-user Argon2id authentication, bounded server-side sessions, loopback-only API and nginx team-CIDR access control; see `docs/authentication.md`
 
 The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and VLAN-aware kernel filtering remain incomplete.

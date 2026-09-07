@@ -1,6 +1,7 @@
 use anyhow::Context;
 use newhatch_analyzer::{
     api::{self, ApiState},
+    auth::AuthConfig,
     capture,
     config::Config,
     flow::{self, FlowOptions},
@@ -8,16 +9,25 @@ use newhatch_analyzer::{
 };
 use regex::bytes::Regex;
 use tokio::sync::watch;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt, EnvFilter, Layer};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("newhatch=info")),
+    tracing_subscriber::registry()
+        .with(
+            tracing_subscriber::fmt::layer()
+                .with_filter(tracing_subscriber::filter::filter_fn(|metadata| {
+                    !metadata.target().starts_with("tower_sessions")
+                        && !metadata.target().starts_with("tower_cookies")
+                }))
+                .with_filter(
+                    EnvFilter::try_from_default_env()
+                        .unwrap_or_else(|_| EnvFilter::new("newhatch=info")),
+                ),
         )
         .init();
 
+    let auth = AuthConfig::from_env()?;
     let config = Config::from_env()?;
     let catalog = Catalog::open(config.sqlite_path())?;
     let storage = storage::start_writer(
@@ -64,6 +74,7 @@ async fn main() -> anyhow::Result<()> {
             source_revision,
             flag_regex,
         },
+        auth,
     )
     .await
 }

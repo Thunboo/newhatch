@@ -1,0 +1,81 @@
+name: newhatch-auth-test
+services:
+  gateway:
+    build:
+      context: ../..
+      dockerfile: frontend/Dockerfile
+    environment:
+      FRONTEND_PORT: 8080
+      AUTH_ALLOWED_SUBNETS: 192.168.1.0/24,fd42:1234::/64
+    ports:
+      - "127.0.0.1:18081:8080"
+    networks:
+      team:
+        ipv4_address: 192.168.1.10
+        ipv6_address: fd42:1234::10
+      outside:
+        ipv4_address: 192.168.2.10
+      bridge_peer:
+        ipv4_address: 172.18.0.10
+
+  analyzer:
+    build:
+      context: ../..
+      dockerfile: crates/analyzer/Dockerfile
+    network_mode: service:gateway
+    environment:
+      LISTEN_ADDR: 127.0.0.1:3000
+      DATA_DIR: /data
+      AUTH_USERNAME: team
+      # Public test-only credential, never use in a real installation.
+      AUTH_PASSWORD_HASH: $$argon2id$$v=19$$m=19456,t=2,p=1$$43l8/3NYdMKW6cuaXTLS3A$$KsJdvmNqztQe8dhoEVNtm4k69yc8DoOTUKkFxnBsjWI
+      AUTH_SESSION_TTL_SECONDS: 86400
+      AUTH_COOKIE_SECURE: "false"
+    tmpfs:
+      - /data
+    depends_on:
+      - gateway
+
+  allowed:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./:/tests:ro
+    networks:
+      team:
+        ipv4_address: 192.168.1.100
+        ipv6_address: fd42:1234::100
+
+  denied:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./:/tests:ro
+    networks:
+      outside:
+        ipv4_address: 192.168.2.100
+
+  bridge-client:
+    image: python:3.13-alpine
+    command: ["sleep", "infinity"]
+    volumes:
+      - ./:/tests:ro
+    networks:
+      bridge_peer:
+        ipv4_address: 172.18.0.5
+
+networks:
+  team:
+    enable_ipv6: true
+    ipam:
+      config:
+        - subnet: 192.168.1.0/24
+        - subnet: fd42:1234::/64
+  outside:
+    ipam:
+      config:
+        - subnet: 192.168.2.0/24
+  bridge_peer:
+    ipam:
+      config:
+        - subnet: 172.18.0.0/24

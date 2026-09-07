@@ -223,7 +223,7 @@ The first executable slice currently uses:
 - `rusqlite` with bundled SQLite and WAL mode
 - `httparse` for HTTP/1.x request/response metadata
 - React, TypeScript, Vite and npm for the frontend
-- host networking plus `NET_RAW`/`NET_ADMIN` for analyzer capture; frontend remains on a published bridge port
+- host networking for analyzer and frontend nginx, plus `NET_RAW`/`NET_ADMIN` for analyzer capture; analyzer HTTP binds loopback
 - a 30-second configurable flow idle timeout and a configurable per-direction stream byte limit
 - unique source ports with soft deletion/restoration
 - cursor-based session pages capped at 200 rows
@@ -235,3 +235,7 @@ The first executable slice currently uses:
 - UI display name `Нюхач`, local Sources search/sorting, and root `logo.png` as the canonical logo asset
 
 These are implementation decisions, not changes to the fixed architecture. Current limitations are summarized in `PROJECT.md`, `docs/architecture.md` and `.agents/tasks/active.md`.
+
+## Single-User Authentication (2026-09-07)
+
+The user explicitly extended the MVP to include environment-configured Argon2id credentials, `tower-sessions` cookies and a bounded ephemeral server-side store. No roles, registration or identity provider are introduced. nginx enforces loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs against actual TCP peers; the analyzer separately enforces loopback transport and authenticated sessions. Never grant trust based on forwarded headers or blanket Docker/private ranges. Health is public and minimal. Full configuration, TTL, cookie, origin and deployment policy is in `docs/authentication.md`.

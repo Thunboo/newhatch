@@ -104,7 +104,7 @@ Docs updated:
 - HTTP metadata parsing uses `httparse`.
 - Frontend uses React, TypeScript, Vite and npm.
 - Segment format v1 is a 52-byte versioned header, CRC32, C2S bytes, then S2C bytes.
-- Analyzer and Suricata use host networking with packet capabilities; frontend publishes port 8080 from a bridge network.
+- Original topology: analyzer and Suricata used host networking; frontend used a bridge port. Superseded by host-network nginx for authentication on 2026-09-07.
 
 ## Implemented Choices (2026-09-06)
 
@@ -117,7 +117,13 @@ Docs updated:
 - The opt-in `test-flag` Compose profile exposes an nginx fixture on TCP port 18080.
 - Current Suricata Compose operation is passive IDS only. Its BPF filter is configured separately and is not synchronized with Sources.
 
-## Unresolved Details
+## Implemented Authentication (2026-09-07)
+
+The user-approved task in `.agents/tasks/active.md` is implemented with Argon2id and tower-sessions. A custom store bounds ephemeral sessions to 1024; restart revokes all logins. TTL is absolute (default 24h), login explicitly cycles IDs and logout revokes server state. Password verification runs off Tokio workers with one concurrent verifier. Cookies are HttpOnly/Strict; Secure is explicit for HTTPS. Backend checks actual loopback TCP peers; nginx and analyzer share host networking. Frontend uses same-origin requests, login gating and centralized 401 handling; permissive CORS is removed. See `docs/authentication.md`.
+
+nginx startup validates and renders `AUTH_ALLOWED_SUBNETS`. Empty/missing means loopback-only; malformed/non-canonical CIDRs fail startup. No forwarded headers grant trust. Docker E2E verifies real team and denied peers in a shared namespace, including IPv6. Production host-network ingress still requires an actual team-machine check on the target Linux deployment.
+
+## Remaining Implementation Details
 
 - WebSocket parser.
 - Suricata EVE ingestion, correlation mechanism and live filter synchronization.

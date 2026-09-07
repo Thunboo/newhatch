@@ -13,6 +13,17 @@ button, input, select { font: inherit; letter-spacing: 0; }
 button { cursor: pointer; }
 button:disabled { cursor: default; opacity: .5; }
 
+.auth-screen { min-height: 100vh; display: flex; flex-direction: column; align-items: center; }
+.auth-brand { width: 100%; height: 160px; display: grid; place-items: center; background: #16191d; }
+.auth-brand img { width: min(260px, 80%); height: 90px; object-fit: contain; }
+.auth-content { width: min(360px, calc(100% - 40px)); margin: 44px 0; }
+.auth-form { display: grid; gap: 10px; }
+.auth-form h1 { font-size: 24px; margin: 0 0 16px; }
+.auth-form label { font-size: 13px; font-weight: 600; margin-top: 8px; }
+.auth-form input { width: 100%; min-width: 0; height: 40px; padding: 0 10px; border: 1px solid #c5cbd1; border-radius: 5px; background: #fff; }
+.auth-form .primary-button { margin-top: 14px; justify-content: center; height: 40px; }
+.auth-error { color: #a13131; font-size: 13px; overflow-wrap: anywhere; }
+
 .app-shell { min-height: 100vh; display: grid; grid-template-columns: 216px minmax(0, 1fr); }
 .sidebar { position: sticky; top: 0; height: 100vh; padding: 20px 14px 16px; display: flex; flex-direction: column; color: #e9ecef; background: #16191d; border-right: 1px solid #08090a; }
 .brand { width: 100%; height: 62px; padding: 5px 7px; display: flex; align-items: center; overflow: hidden; }
@@ -123,6 +134,8 @@ button:disabled { cursor: default; opacity: .5; }
 @keyframes spin { to { transform: rotate(360deg); } }
 
 @media (max-width: 820px) {
+  .sidebar .logout-button { width: 38px; flex-shrink: 0; padding: 0; margin-left: 8px; }
+  .logout-button span { display: none; }
   .app-shell { grid-template-columns: 1fr; padding-bottom: 58px; }
   .sidebar { z-index: 20; position: fixed; inset: auto 0 0; width: 100%; height: 58px; padding: 7px 12px; flex-direction: row; align-items: center; border: 0; border-top: 1px solid #08090a; }
   .brand { display: none; }

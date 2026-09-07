@@ -200,7 +200,12 @@ Expected environment/configuration values include:
 
 ```text
 CAPTURE_INTERFACE=<interface>
-LISTEN_ADDR=0.0.0.0:3000
+LISTEN_ADDR=127.0.0.1:3000
+AUTH_USERNAME=<installation user>
+AUTH_PASSWORD_HASH=<Argon2id PHC hash>
+AUTH_SESSION_TTL_SECONDS=86400
+AUTH_ALLOWED_SUBNETS=<comma-separated team CIDRs; empty means loopback-only>
+AUTH_COOKIE_SECURE=false
 FLAG_REGEX=<regex>
 SEGMENT_DURATION=30m
 SEGMENT_RETENTION_COUNT=3
@@ -279,5 +284,5 @@ Benchmarking Packmate/Tulip against this tool is explicitly outside MVP, but sho
 - Kubernetes
 - Prometheus/Grafana integration
 - database replication
-- authentication/RBAC
+- RBAC, registration and external identity providers (single-user login was explicitly added; see `authentication.md`)
 - SQLite compaction/vacuum automation

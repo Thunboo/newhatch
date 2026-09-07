@@ -11,9 +11,9 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
-use tower_http::{cors::CorsLayer, trace::TraceLayer};
 
 use crate::{
+    auth::{self, AuthConfig},
     domain::{SessionProtocol, SessionSummary, Source, SourceInput},
     storage::{parse_optional_ip, read_payload, Catalog, SessionFilter},
 };
@@ -26,9 +26,8 @@ pub struct ApiState {
     pub flag_regex: regex::bytes::Regex,
 }
 
-pub async fn serve(address: SocketAddr, state: ApiState) -> anyhow::Result<()> {
+pub fn router(state: ApiState, config: AuthConfig) -> Router {
     let app = Router::new()
-        .route("/api/health", get(health))
         .route("/api/sources", get(list_sources).post(create_source))
         .route(
             "/api/sources/{id}",
@@ -38,27 +37,24 @@ pub async fn serve(address: SocketAddr, state: ApiState) -> anyhow::Result<()> {
         .route("/api/sessions/{id}", get(get_session))
         .route("/api/sessions/{id}/payload/{direction}", get(get_payload))
         .route("/api/sessions/{id}/flag-matches", get(get_flag_matches))
-        .layer(CorsLayer::permissive())
-        .layer(TraceLayer::new_for_http())
         .with_state(Arc::new(state));
+    auth::protect(app, config)
+}
 
+pub async fn serve(address: SocketAddr, state: ApiState, config: AuthConfig) -> anyhow::Result<()> {
+    anyhow::ensure!(address.ip().is_loopback(), "API listener must be loopback");
+    let app = router(state, config);
     let listener = tokio::net::TcpListener::bind(address)
         .await
         .with_context(|| format!("bind API to {address}"))?;
     tracing::info!(%address, "API listening");
-    axum::serve(listener, app)
-        .with_graceful_shutdown(shutdown_signal())
-        .await
-        .context("serve API")
-}
-
-#[derive(Serialize)]
-struct HealthResponse {
-    status: &'static str,
-}
-
-async fn health() -> Json<HealthResponse> {
-    Json(HealthResponse { status: "ok" })
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>(),
+    )
+    .with_graceful_shutdown(shutdown_signal())
+    .await
+    .context("serve API")
 }
 
 async fn list_sources(State(state): State<Arc<ApiState>>) -> Result<Json<Vec<Source>>, ApiError> {

@@ -26,8 +26,8 @@ The product is a lightweight, high-performance traffic analyzer for Attack/Defen
 
 ## Normal Workflow
 
-1. Configure `CAPTURE_INTERFACE` and `FLAG_REGEX` in `.env`.
-2. Start analyzer and frontend.
+1. Configure capture, an Argon2id login hash and allowed team CIDRs in `.env`.
+2. Start analyzer and frontend, then sign in.
 3. Add monitored sources/services by TCP port in the UI.
 4. Browse reconstructed sessions and inspect C2S/S2C payloads.
 5. Search payloads or filter flag-containing sessions.
@@ -50,8 +50,9 @@ Normal operation is live capture; users should not create PCAP files manually.
 - `crates/analyzer`: live capture, packet parsing, flow sharding, TCP reassembly, flag scanning, HTTP metadata classification, storage and Axum API.
 - `frontend`: operational Sessions and Sources views. The UI is branded `Нюхач`; Sources supports local name/port search and sorting.
 - `compose.yaml`: analyzer and frontend runtime, a passive Suricata service, and the opt-in `test-flag` profile.
-- `test/`: nginx fixture on TCP port `18080`; `GET /flag` returns a test flag.
-- Root `logo.png` is the canonical UI logo. Compose mounts it directly into frontend nginx and disables browser caching for that path.
+- `test/flag_test/`: nginx fixture on TCP port `18080`; `GET /flag` returns a test flag.
+- `test/auth/`: backend, CIDR, multi-subnet Docker and browser authentication tests.
+- Root `logo.png` is canonical. Compose mounts it read-only at `/opt/newhatch/logo.png`; startup copies it into the web root with readable permissions. Browser caching is disabled.
 - Default UI URL: `http://localhost:8080`.
 
 ## Implemented Boundaries
@@ -70,6 +71,8 @@ Normal operation is live capture; users should not create PCAP files manually.
 The user-visible entity is a reconstructed bidirectional TCP session with metadata plus C2S and S2C byte streams. Raw packets are not persisted. SQLite stores metadata and direct segment locations; segment files store payload bytes.
 
 ## Current Open Decisions
+
+Single-user authentication is implemented: required Argon2id PHC credentials, tower-sessions with a bounded ephemeral store (1024 sessions), absolute TTL (default 24h), cookie rotation and logout. nginx checks actual client peers against loopback plus `AUTH_ALLOWED_SUBNETS`; analyzer binds loopback and checks actual peer plus session. Both production services use host networking. Empty CIDRs mean loopback only. No forwarded-header trust or permissive CORS. See `docs/authentication.md` and `.agents/tasks/active.md`; final vulnbox ingress validation remains pending. Roles, registration and external identity providers remain excluded.
 
 - WebSocket frame parser and representation.
 - Suricata event correlation and filter synchronization.

@@ -34,9 +34,14 @@ Suricata is an optional passive IDS running in parallel. It is not in the analyz
 - `crates/analyzer`: Rust/Tokio capture, flow, reassembly, protocol classification, storage and Axum API.
 - `frontend`: React/TypeScript/Vite UI branded `Нюхач`.
 - `compose.yaml`: analyzer, frontend, passive Suricata and opt-in `test-flag` services.
-- `test/`: nginx test endpoint at `GET /flag` on TCP port `18080`.
-- Root `logo.png`: canonical UI logo mounted directly into frontend nginx.
+- `test/flag_test/`: nginx test endpoint at `GET /flag` on TCP port `18080`.
+- `test/auth/`: Rust integration, CIDR generation, Docker multi-subnet and Playwright tests.
+- Root `logo.png`: canonical logo mounted read-only and copied into nginx web root at startup.
 - Default UI URL: `http://localhost:8080`.
+
+## Authentication
+
+Required `AUTH_USERNAME` and Argon2id `AUTH_PASSWORD_HASH`; see `docs/authentication.md` for hash generation. Production nginx and analyzer use host networking; API listens on loopback. nginx allows loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs; no header-based trust. tower-sessions uses bounded ephemeral server state, absolute 24h default TTL and strict cookies. Restart requires login again. Frontend loads no traffic before `/api/auth/me`; 401 clears the UI and stops polling. Final target-host ingress validation remains pending.
 
 ## Implemented Behavior
 
