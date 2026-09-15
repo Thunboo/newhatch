@@ -1,6 +1,7 @@
 """Executed inside clients with real, different socket source addresses."""
 import http.client
 import json
+import re
 import socket
 import sys
 
@@ -30,8 +31,10 @@ except (ConnectionRefusedError, TimeoutError):
     pass
 
 if mode == "allowed":
-    assert request("GET", "/")[0] == 200
-    assert request("GET", "/logo.png")[0] == 200
+    status, _, index = request("GET", "/")
+    assert status == 200
+    asset = re.search(rb'src="([^"]+\.js)"', index).group(1).decode()
+    assert request("GET", asset)[0] == 200
     assert request("GET", "/api/sessions")[0] == 401
     assert request("POST", "/api/auth/login", {**credentials, "password": "wrong"})[0] == 401
     status, headers, _ = request("POST", "/api/auth/login", credentials)
@@ -43,7 +46,7 @@ if mode == "allowed":
     print(session)
 elif mode == "denied":
     for forged in [False, True]:
-        for method, path, body in [("GET", "/", None), ("GET", "/logo.png", None),
+        for method, path, body in [("GET", "/", None), ("GET", "/assets/app.js", None),
                                    ("POST", "/api/auth/login", credentials), ("GET", "/api/auth/me", None),
                                    ("GET", "/api/sessions", None), ("POST", "/api/auth/logout", None)]:
             assert request(method, path, body, session, forged)[0] == 403, (method, path)

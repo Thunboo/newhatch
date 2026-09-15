@@ -17,13 +17,13 @@ services:
       MAX_STREAM_BYTES: ${MAX_STREAM_BYTES:-4MiB}
       RUST_LOG: ${RUST_LOG:-newhatch=info}
       LISTEN_ADDR: 127.0.0.1:3000
-      AUTH_USERNAME: ${AUTH_USERNAME:-}
-      AUTH_PASSWORD_HASH: ${AUTH_PASSWORD_HASH:-}
-      AUTH_SESSION_TTL_SECONDS: ${AUTH_SESSION_TTL_SECONDS:-86400}
+      USERNAME: ${USERNAME:-}
+      PASSWORD: ${PASSWORD:-}
+      SESSION_EXPIRACY: ${SESSION_EXPIRACY:-86400s}
       AUTH_COOKIE_SECURE: ${AUTH_COOKIE_SECURE:-false}
-      PACKET_INGRESS_MODE: ${PACKET_INGRESS_MODE:-local}
-      COLLECTOR_LISTEN_ADDR: ${COLLECTOR_LISTEN_ADDR:-0.0.0.0:39090}
-      COLLECTOR_ALLOWED_IPS: ${COLLECTOR_ALLOWED_IPS:-}
+      ANALYZER: ${ANALYZER:-local}
+      LISTEN_CONNSTR: ${LISTEN_CONNSTR:-0.0.0.0:39090}
+      ALLOWED_COLLECTORS: ${ALLOWED_COLLECTORS:-}
     volumes:
       - ./data:/data
     restart: unless-stopped
@@ -41,9 +41,8 @@ services:
     environment:
       CAPTURE_INTERFACE: ${CAPTURE_INTERFACE:-eth0}
       COLLECTOR_ID: ${COLLECTOR_ID:-vulnbox-1}
-      RECEIVER_ADDR: ${RECEIVER_ADDR:-127.0.0.1}
-      RECEIVER_PORT: ${RECEIVER_PORT:-39090}
-      COLLECTOR_QUEUE_CAPACITY: ${COLLECTOR_QUEUE_CAPACITY:-8192}
+      ANALYZER_CONNSTR: ${ANALYZER_CONNSTR:-127.0.0.1:39090}
+      QUEUE_CAPACITY: ${QUEUE_CAPACITY:-8192}
       RUST_LOG: ${RUST_LOG:-newhatch=info}
     restart: unless-stopped
 
@@ -55,8 +54,6 @@ services:
     environment:
       FRONTEND_PORT: ${FRONTEND_PORT:-8080}
       AUTH_ALLOWED_SUBNETS: ${AUTH_ALLOWED_SUBNETS:-}
-    volumes:
-      - ./logo.png:/usr/share/nginx/html/logo.png:ro
     depends_on:
       - analyzer
     restart: unless-stopped

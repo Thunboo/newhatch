@@ -599,14 +599,13 @@ Analyzer returns → collector reconnects and resumes sending.
 
 Simulate slow analyzer and verify packet drop counters increase instead of unbounded memory growth.
 
-## Authentication
+## Connection admission
 
-Unauthenticated collector connection must be rejected.
-Actual connection flow should work like this:
-- collector on vulnbox is set up to send data to receiver by some variable like: `RECEIVER_ADDR=IP` and `RECEIVER_PORT=PORT`
-- receiver MUST have manifested such source in its config - othervise - traffic if droped, no receiver_hello message for establishing connection
+Actual connection flow works like this:
+- collector on vulnbox sends data to `ANALYZER_CONNSTR=IP:PORT`
+- analyzer may restrict source IPs with `ALLOWED_COLLECTORS`; an empty value accepts any host
 
-This should lead to other teams to be unable to spam receiver anyhow
+The initial transport has no application-layer authentication. PSK authentication is deferred to backlog hardening.
 
 ## Multiple collectors
 
@@ -626,7 +625,7 @@ Use these defaults unless implementation constraints prove otherwise:
 6. Use persistent bidirectional transport.
 7. Use bounded collector queues.
 8. Prefer dropping packets over exhausting vulnbox resources.
-9. Secure collector ↔ analyzer connection approval (both sides have manifested each other so they both send hello packets to begin trafic flow)
+9. Allow optional exact source-IP admission on analyzer; accept any host when `ALLOWED_COLLECTORS` is empty.
 10. Include collector identity in analyzer-side flow identity for multi-vulnbox support.
 11. Preserve current flow/storage/API implementation where possible.
 12. Keep a local/monolithic transport mode during migration if practical.

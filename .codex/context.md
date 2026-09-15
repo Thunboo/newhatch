@@ -31,7 +31,7 @@ Suricata is an optional passive IDS running in parallel. It is not in the analyz
 
 ## Collector / Analyzer Split
 
-The collector/analyzer split is implemented and specified in `.agents/tasks/newhatch-collector-analyzer-split.md`. It splits after `ClassifiedPacket`, uses shared versioned protobuf types, a bounded persistent bidirectional connection, analyzer-pushed Sources and `CollectorId + FlowKey` isolation. Collector remains diskless/lightweight; analyzer retains reassembly, detection, storage, API/auth/frontend. Initial admission pins receiver IP/port on collector and permits only configured collector source IPs on receiver; PSK authentication is deferred. Automated tests pass; actual two-host Linux/VPN rollout remains pending.
+The collector/analyzer split is implemented and specified in `.agents/tasks/newhatch-collector-analyzer-split.md`. It splits after `ClassifiedPacket`, uses shared versioned protobuf types, a bounded persistent bidirectional connection, analyzer-pushed Sources and `CollectorId + FlowKey` isolation. Collector remains diskless/lightweight; analyzer retains reassembly, detection, storage, API/auth/frontend. Analyzer uses `ANALYZER=local|remote` (default `local`); collector connects through `ANALYZER_CONNSTR`; remote analyzer listens on `LISTEN_CONNSTR`. `ALLOWED_COLLECTORS` optionally restricts exact source IPs and accepts any host when empty. Collector `QUEUE_CAPACITY` defaults to 8192 packets. PSK authentication is deferred. Automated tests pass; actual two-host Linux/VPN rollout remains pending.
 
 ## Current Repository State
 
@@ -42,12 +42,12 @@ The collector/analyzer split is implemented and specified in `.agents/tasks/newh
 - `compose.yaml`: analyzer, frontend, passive Suricata and opt-in `test-flag` services.
 - `test/flag_test/`: nginx test endpoint at `GET /flag` on TCP port `18080`.
 - `test/auth/`: Rust integration, CIDR generation, Docker multi-subnet and Playwright tests.
-- Root `logo.png`: canonical logo mounted read-only and copied into nginx web root at startup.
+- `frontend/src/assets/logo.png`: logo imported by the React code and bundled by Vite.
 - Default UI URL: `http://localhost:8080`.
 
 ## Authentication
 
-Required `AUTH_USERNAME` and Argon2id `AUTH_PASSWORD_HASH`; see `docs/authentication.md` for hash generation. Production nginx and analyzer use host networking; API listens on loopback. nginx allows loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs; no header-based trust. tower-sessions uses bounded ephemeral server state, absolute 24h default TTL and strict cookies. Restart requires login again. Frontend loads no traffic before `/api/auth/me`; 401 clears the UI and stops polling. Final target-host ingress validation remains pending.
+Required `USERNAME` and plaintext `PASSWORD` are read from the environment; analyzer immediately creates an in-memory Argon2id hash. `SESSION_EXPIRACY` defaults to `86400s`. Production nginx and analyzer use host networking; API listens on loopback. nginx allows loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs; no header-based trust. tower-sessions uses bounded ephemeral server state, absolute expiration and strict cookies. Restart requires login again. Frontend loads no traffic before `/api/auth/me`; 401 clears the UI and stops polling. Final target-host ingress validation remains pending.
 
 ## Implemented Behavior
 

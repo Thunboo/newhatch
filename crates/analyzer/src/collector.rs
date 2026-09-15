@@ -170,7 +170,7 @@ pub async fn run_receiver(
 }
 
 fn peer_is_allowed(allowed: &HashSet<IpAddr>, peer: IpAddr) -> bool {
-    allowed.contains(&peer)
+    allowed.is_empty() || allowed.contains(&peer)
 }
 
 async fn handle_connection(
@@ -294,6 +294,13 @@ mod tests {
         let allowed = HashSet::from(["100.97.69.83".parse().unwrap()]);
         assert!(peer_is_allowed(&allowed, "100.97.69.83".parse().unwrap()));
         assert!(!peer_is_allowed(&allowed, "100.97.69.84".parse().unwrap()));
+    }
+
+    #[test]
+    fn empty_manifest_admits_any_peer_ip() {
+        let allowed = HashSet::new();
+        assert!(peer_is_allowed(&allowed, "100.97.69.83".parse().unwrap()));
+        assert!(peer_is_allowed(&allowed, "127.0.0.1".parse().unwrap()));
     }
 
     #[tokio::test]

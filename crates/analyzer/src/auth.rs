@@ -1,7 +1,7 @@
 use std::{collections::HashMap, env, net::SocketAddr, sync::Arc};
 
 use anyhow::{bail, Context};
-use argon2::{Argon2, Params, PasswordHash, PasswordVerifier};
+use argon2::{password_hash::SaltString, Argon2, PasswordHash, PasswordHasher, PasswordVerifier};
 use axum::{
     extract::{ConnectInfo, DefaultBodyLimit, Request, State},
     http::{header, Method, StatusCode, Uri},
@@ -10,6 +10,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use rand_core::OsRng;
 use serde::{Deserialize, Serialize};
 use time::{Duration, OffsetDateTime};
 use tokio::sync::{Mutex, Semaphore};
@@ -30,59 +31,34 @@ pub struct AuthConfig {
 impl AuthConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         Self::parse(
-            env::var("AUTH_USERNAME")
-                .map_err(|_| anyhow::anyhow!("AUTH_USERNAME is required and must be valid text"))?,
-            env::var("AUTH_PASSWORD_HASH").map_err(|_| {
-                anyhow::anyhow!("AUTH_PASSWORD_HASH is required and must be valid text")
-            })?,
-            &optional_env("AUTH_SESSION_TTL_SECONDS", "86400")?,
+            env::var("USERNAME")
+                .map_err(|_| anyhow::anyhow!("USERNAME is required and must be valid text"))?,
+            env::var("PASSWORD")
+                .map_err(|_| anyhow::anyhow!("PASSWORD is required and must be valid text"))?,
+            &optional_env("SESSION_EXPIRACY", "86400s")?,
             &optional_env("AUTH_COOKIE_SECURE", "false")?,
         )
     }
 
     pub fn parse(
         username: String,
-        password_hash: String,
-        ttl: &str,
+        password: String,
+        expiration: &str,
         secure: &str,
     ) -> anyhow::Result<Self> {
         if username.trim().is_empty() || username.len() > 128 {
-            bail!("AUTH_USERNAME must contain 1..128 bytes");
+            bail!("USERNAME must contain 1..128 bytes");
         }
-        let parsed = PasswordHash::new(&password_hash)
-            .map_err(|_| anyhow::anyhow!("AUTH_PASSWORD_HASH must be an Argon2id PHC hash"))?;
-        if parsed.algorithm.as_str() != "argon2id"
-            || parsed.version != Some(19)
-            || parsed.salt.is_none()
-            || parsed.hash.is_none()
-        {
-            bail!("AUTH_PASSWORD_HASH must be a complete Argon2id v19 PHC hash");
+        if password.is_empty() || password.len() > 1024 {
+            bail!("PASSWORD must contain 1..1024 bytes");
         }
-        let params = Params::try_from(&parsed)
-            .map_err(|_| anyhow::anyhow!("invalid AUTH_PASSWORD_HASH parameters"))?;
-        let mut salt = [0u8; 64];
-        if parsed
-            .salt
-            .unwrap()
-            .decode_b64(&mut salt)
-            .map_or(true, |salt| salt.len() < 8)
-            || ["m", "t", "p"]
-                .iter()
-                .any(|name| parsed.params.get(*name).is_none())
-        {
-            bail!("AUTH_PASSWORD_HASH requires >=8 salt bytes and explicit m,t,p parameters");
-        }
-        // Bound verification work to protect the capture process from costly configuration.
-        if !(19_456..=262_144).contains(&params.m_cost())
-            || !(2..=10).contains(&params.t_cost())
-            || !(1..=8).contains(&params.p_cost())
-            || parsed.hash.as_ref().is_some_and(|hash| hash.len() < 16)
-        {
-            bail!("AUTH_PASSWORD_HASH requires m=19456..262144, t=2..10, p=1..8 and >=16 output bytes");
-        }
-        let ttl: i64 = ttl.parse().context("invalid AUTH_SESSION_TTL_SECONDS")?;
+        let password_hash = Argon2::default()
+            .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))
+            .map_err(|error| anyhow::anyhow!("failed to initialize password verifier: {error}"))?
+            .to_string();
+        let ttl = parse_expiration(expiration)?;
         if !(1..=604_800).contains(&ttl) {
-            bail!("AUTH_SESSION_TTL_SECONDS must be 1..604800");
+            bail!("SESSION_EXPIRACY must be between 1s and 168h");
         }
         let secure = secure
             .parse()
@@ -94,6 +70,24 @@ impl AuthConfig {
             secure,
         })
     }
+}
+
+fn parse_expiration(raw: &str) -> anyhow::Result<i64> {
+    let split = raw
+        .find(|character: char| !character.is_ascii_digit())
+        .unwrap_or(raw.len());
+    let (value, unit) = raw.split_at(split);
+    let value: i64 = value.parse().context("invalid SESSION_EXPIRACY")?;
+    let multiplier = match unit {
+        "s" => 1,
+        "m" => 60,
+        "h" => 3_600,
+        "d" => 86_400,
+        _ => bail!("SESSION_EXPIRACY supports s, m, h and d units"),
+    };
+    value
+        .checked_mul(multiplier)
+        .context("SESSION_EXPIRACY is too large")
 }
 
 fn optional_env(name: &str, default: &str) -> anyhow::Result<String> {

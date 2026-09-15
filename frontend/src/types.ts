@@ -23,7 +23,7 @@ export type Collector = {
 };
 
 export type CollectorsResponse = {
-  mode: "local" | "receiver";
+  mode: "local" | "remote";
   collectors: Collector[];
 };
 

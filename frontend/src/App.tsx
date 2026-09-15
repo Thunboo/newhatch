@@ -22,6 +22,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { api } from "./api";
 import { AuthGate } from "./AuthGate";
+import logoUrl from "./assets/logo.png";
 import type {
   ByteRange,
   FlagMatches,
@@ -49,7 +50,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   const [online, setOnline] = useState(false);
   const [sources, setSources] = useState<Source[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
-  const [ingressMode, setIngressMode] = useState<"local" | "receiver">("local");
+  const [analyzerMode, setAnalyzerMode] = useState<"local" | "remote">("local");
   const [sessions, setSessions] = useState<Session[]>([]);
   const [nextCursor, setNextCursor] = useState<number | null>(null);
   const [selected, setSelected] = useState<Session | null>(null);
@@ -93,7 +94,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   const loadCollectors = useCallback(async () => {
     try {
       const response = await api.listCollectors();
-      setIngressMode(response.mode);
+      setAnalyzerMode(response.mode);
       setCollectors(response.collectors);
       setOnline(true);
     } catch (caught) {
@@ -133,7 +134,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   return (
     <div className="app-shell">
       <aside className="sidebar">
-        <div className="brand"><img src="/logo.png" alt="Нюхач" /></div>
+        <div className="brand"><img src={logoUrl} alt="Нюхач" /></div>
         <nav aria-label="Primary navigation">
           <button title="Sessions" className={view === "sessions" ? "nav-item active" : "nav-item"} onClick={() => setView("sessions")}>
             <Radio size={17} /> Sessions
@@ -175,7 +176,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         ) : view === "sources" ? (
           <SourcesView sources={sources} onChanged={loadSources} />
         ) : (
-          <CollectorsView mode={ingressMode} collectors={collectors} onRefresh={() => void loadCollectors()} />
+          <CollectorsView mode={analyzerMode} collectors={collectors} onRefresh={() => void loadCollectors()} />
         )}
       </main>
 
@@ -184,7 +185,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   );
 }
 
-function CollectorsView({ mode, collectors, onRefresh }: { mode: "local" | "receiver"; collectors: Collector[]; onRefresh: () => void }) {
+function CollectorsView({ mode, collectors, onRefresh }: { mode: "local" | "remote"; collectors: Collector[]; onRefresh: () => void }) {
   return (
     <>
       <header className="page-header">
@@ -196,11 +197,11 @@ function CollectorsView({ mode, collectors, onRefresh }: { mode: "local" | "rece
           <Server size={20} />
           <div>
             <strong>Запущен режим локальной сборки</strong>
-            <p>Подключение коллекторов невозможно. Смените режим на <code>PACKET_INGRESS_MODE=receiver</code> и добавьте источники.</p>
+            <p>Подключение коллекторов невозможно. Установите <code>ANALYZER=remote</code> и добавьте источники.</p>
           </div>
         </div>
       )}
-      {mode === "receiver" && (
+      {mode === "remote" && (
       <div className="collector-list">
         {collectors.map((collector) => (
           <article className="collector-row" key={collector.collector_id}>

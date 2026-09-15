@@ -1,8 +1,4 @@
-use std::{
-    env,
-    net::{IpAddr, SocketAddr},
-    sync::Arc,
-};
+use std::{env, net::SocketAddr, sync::Arc};
 
 use anyhow::{bail, Context};
 use newhatch_collector::{
@@ -24,21 +20,16 @@ async fn main() -> anyhow::Result<()> {
         bail!("COLLECTOR_ID must contain 1-128 bytes");
     }
     let interface = env::var("CAPTURE_INTERFACE").unwrap_or_else(|_| "eth0".into());
-    let receiver_ip: IpAddr = env::var("RECEIVER_ADDR")
-        .context("RECEIVER_ADDR is required")?
+    let receiver_addr: SocketAddr = env::var("ANALYZER_CONNSTR")
+        .context("ANALYZER_CONNSTR is required")?
         .parse()
-        .context("RECEIVER_ADDR must be an IP address")?;
-    let receiver_port: u16 = env::var("RECEIVER_PORT")
-        .unwrap_or_else(|_| "39090".into())
-        .parse()
-        .context("invalid RECEIVER_PORT")?;
-    let receiver_addr = SocketAddr::new(receiver_ip, receiver_port);
-    let capacity: usize = env::var("COLLECTOR_QUEUE_CAPACITY")
+        .context("ANALYZER_CONNSTR must be an IP:port socket address")?;
+    let capacity: usize = env::var("QUEUE_CAPACITY")
         .unwrap_or_else(|_| "8192".into())
         .parse()
-        .context("invalid COLLECTOR_QUEUE_CAPACITY")?;
+        .context("invalid QUEUE_CAPACITY")?;
     if capacity == 0 {
-        bail!("COLLECTOR_QUEUE_CAPACITY must be greater than zero");
+        bail!("QUEUE_CAPACITY must be greater than zero");
     }
 
     let (packet_tx, packet_rx) = mpsc::channel(capacity);

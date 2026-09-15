@@ -15,7 +15,7 @@ use tokio::sync::watch;
 use crate::{
     auth::{self, AuthConfig},
     collector::{CollectorRegistry, CollectorStatus},
-    config::IngressMode,
+    config::AnalyzerMode,
     domain::{SessionProtocol, SessionSummary, Source, SourceInput},
     storage::{parse_optional_ip, read_payload, Catalog, SessionFilter},
 };
@@ -27,7 +27,7 @@ pub struct ApiState {
     pub source_revision: watch::Sender<u64>,
     pub flag_regex: regex::bytes::Regex,
     pub collectors: CollectorRegistry,
-    pub ingress_mode: IngressMode,
+    pub analyzer_mode: AnalyzerMode,
 }
 
 pub fn router(state: ApiState, config: AuthConfig) -> Router {
@@ -48,13 +48,13 @@ pub fn router(state: ApiState, config: AuthConfig) -> Router {
 
 #[derive(Serialize)]
 struct CollectorsResponse {
-    mode: IngressMode,
+    mode: AnalyzerMode,
     collectors: Vec<CollectorStatus>,
 }
 
 async fn list_collectors(State(state): State<Arc<ApiState>>) -> Json<CollectorsResponse> {
     Json(CollectorsResponse {
-        mode: state.ingress_mode,
+        mode: state.analyzer_mode,
         collectors: state.collectors.list(),
     })
 }

@@ -30,8 +30,8 @@ Status: implemented and automatically verified on 2026-09-07. Actual two-host Li
 
 ### Collector Admission Contract
 
-- [x] Collector is configured with the receiver IP and port it connects to.
-- [x] Receiver is configured with the expected collector source IP and rejects other peer IPs.
+- [x] Collector connects to the analyzer through `ANALYZER_CONNSTR=IP:PORT`.
+- [x] Remote analyzer listens on `LISTEN_CONNSTR`; optional `ALLOWED_COLLECTORS` exact-IP filtering accepts any host when empty.
 - [x] Do not add application-layer authentication in this tranche. Pre-shared-key authentication is deferred to backlog hardening.
 
 ## Authentication and API Access Control
@@ -48,7 +48,7 @@ No external identity provider, registration, password reset, email flow, account
 
 ### Backend and Configuration
 
-- [x] Load `AUTH_USERNAME`, `AUTH_PASSWORD_HASH` (Argon2id PHC hash) and configurable `AUTH_SESSION_TTL_SECONDS` (suggested default 86400; 12-24 hours is acceptable).
+- [x] Load `USERNAME`, `PASSWORD` and configurable `SESSION_EXPIRACY` (default `86400s`); hash the configured password with Argon2id at startup.
 - [x] Add `AUTH_ALLOWED_SUBNETS` as a comma-separated IPv4/IPv6 CIDR allowlist, for example `AUTH_ALLOWED_SUBNETS=192.168.1.0/24,fd42:1234::/64`. Missing/empty means loopback clients only, never unrestricted access. Reject malformed CIDRs at startup; do not infer trust from private address ranges.
 - [x] Fail fast when required auth configuration is missing or malformed. Never silently disable auth or provide default credentials.
 - [x] Verify passwords using a cryptographically secure Argon2id implementation such as the `argon2` crate. Never persist plaintext passwords in source, frontend assets, images or SQLite.

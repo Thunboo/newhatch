@@ -6,24 +6,25 @@ One installation-level user is configured through the environment. This is a lim
 
 | Variable | Policy |
 | --- | --- |
-| `AUTH_USERNAME` | Required, nonblank, at most 128 bytes |
-| `AUTH_PASSWORD_HASH` | Required Argon2id v19 PHC hash; no plaintext password |
-| `AUTH_SESSION_TTL_SECONDS` | Absolute lifetime from login; default 86400, accepted range 1..604800 |
+| `USERNAME` | Required, nonblank, at most 128 bytes |
+| `PASSWORD` | Required plaintext configuration value, 1..1024 bytes; hashed with Argon2id at analyzer startup |
+| `SESSION_EXPIRACY` | Absolute lifetime from login; default `86400s`, accepted range 1 second..7 days; supports `s`, `m`, `h`, `d` |
 | `AUTH_ALLOWED_SUBNETS` | nginx ingress IPv4/IPv6 CIDRs separated by commas; empty/missing allows loopback only |
 | `AUTH_COOKIE_SECURE` | Default `false` for the existing HTTP deployment; set `true` for HTTPS |
 | `LISTEN_ADDR` | Analyzer defaults to `127.0.0.1:3000`; non-loopback addresses fail startup |
 | `FRONTEND_PORT` | nginx listener, default 8080 |
 
-Generate a hash without putting the password in shell arguments/history:
+Set credentials directly in `.env`:
 
-```bash
-docker compose build analyzer
-docker compose run --rm --no-deps --entrypoint hash-password analyzer
+```env
+USERNAME=admin
+PASSWORD=admin123
+SESSION_EXPIRACY=86400s
 ```
 
-The command prompts twice with echo disabled and prints `AUTH_PASSWORD_HASH='...'`. Use that single-quoted assignment in `.env`: the quotes prevent Compose from interpreting the `$` characters. Set your own `AUTH_USERNAME` and team CIDRs. Example allowlist: `192.168.1.0/24,fd42:1234::/64`.
+Set your own password and team CIDRs. Example allowlist: `192.168.1.0/24,fd42:1234::/64`. The analyzer hashes `PASSWORD` with Argon2id and a random salt during startup; only that generated hash remains in its authentication state. The configured password is still an environment secret, so restrict access to `.env` and Docker inspection.
 
-The analyzer rejects missing credentials, malformed PHC values and unsupported parameters. Allowed Argon2 costs are memory 19456..262144 KiB, iterations 2..10, parallelism 1..8, with at least 16 hash bytes. The supplied generator uses Argon2id defaults. nginx rejects invalid CIDRs, including non-canonical network addresses such as `192.168.1.100/24`; use `192.168.1.0/24` instead. Changing `.env` requires container recreation, not just `docker compose restart`.
+The analyzer rejects missing or empty credentials and invalid expiration values. nginx rejects invalid CIDRs, including non-canonical network addresses such as `192.168.1.100/24`; use `192.168.1.0/24` instead. Changing `.env` requires container recreation, not just `docker compose restart`.
 
 ## Two Independent Checks
 

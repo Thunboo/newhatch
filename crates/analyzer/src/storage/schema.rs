@@ -59,6 +59,48 @@ pub fn migrate(connection: &Connection) -> Result<()> {
             ON sessions(contains_flag, started_at DESC);
         CREATE INDEX IF NOT EXISTS idx_sessions_segment
             ON sessions(segment_id);
+
+        DELETE FROM sessions
+        WHERE protocol = 0 AND bytes_c2s = 0 AND bytes_s2c = 0;
         "#,
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::migrate;
+
+    #[test]
+    fn migration_removes_legacy_empty_raw_tcp_sessions() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        connection
+            .execute(
+                "INSERT INTO sources(id, name, port) VALUES (1, 'web', 8080)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO segments(id, filename, created_at) VALUES (1, 'test.seg', 1)",
+                [],
+            )
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO sessions(
+                id, segment_id, segment_offset, record_length, started_at, ended_at,
+                source_id, client_ip, client_port, server_ip, server_port, protocol,
+                bytes_c2s, bytes_s2c
+             ) VALUES (1, 1, 0, 0, 1, 2, 1, X'0A000002', 50000, X'0A000001', 8080, 0, 0, 0)",
+                [],
+            )
+            .unwrap();
+
+        migrate(&connection).unwrap();
+        let count: i64 = connection
+            .query_row("SELECT COUNT(*) FROM sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+    }
 }

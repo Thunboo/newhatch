@@ -114,13 +114,13 @@ Docs updated:
 - Source TCP ports are unique. Deletion is soft so a later create on the same port restores the row.
 - Session API pages are capped at 200 rows; payload substring search scans at most 2,000 metadata-prefiltered candidates per request.
 - The Sources UI performs local search by name or port and local sorting by name or port.
-- Root `logo.png` is the canonical logo. Compose mounts it into frontend nginx, and `/logo.png` is served with `Cache-Control: no-store`.
+- `frontend/src/assets/logo.png` is the canonical logo. React imports it directly and Vite emits it as a bundled hashed asset.
 - The opt-in `test-flag` Compose profile exposes an nginx fixture on TCP port 18080.
 - Current Suricata Compose operation is passive IDS only. Its BPF filter is configured separately and is not synchronized with Sources.
 
 ## Implemented Authentication (2026-09-07)
 
-The user-approved task in `.agents/tasks/active.md` is implemented with Argon2id and tower-sessions. A custom store bounds ephemeral sessions to 1024; restart revokes all logins. TTL is absolute (default 24h), login explicitly cycles IDs and logout revokes server state. Password verification runs off Tokio workers with one concurrent verifier. Cookies are HttpOnly/Strict; Secure is explicit for HTTPS. Backend checks actual loopback TCP peers; nginx and analyzer share host networking. Frontend uses same-origin requests, login gating and centralized 401 handling; permissive CORS is removed. See `docs/authentication.md`.
+The user-approved task in `.agents/tasks/active.md` is implemented with plaintext `USERNAME`/`PASSWORD` environment configuration, startup Argon2id hashing and tower-sessions. A custom store bounds ephemeral sessions to 1024; restart revokes all logins. Expiration is absolute (default `86400s`), login explicitly cycles IDs and logout revokes server state. Password verification runs off Tokio workers with one concurrent verifier. Cookies are HttpOnly/Strict; Secure is explicit for HTTPS. Backend checks actual loopback TCP peers; nginx and analyzer share host networking. Frontend uses same-origin requests, login gating and centralized 401 handling; permissive CORS is removed. See `docs/authentication.md`.
 
 nginx startup validates and renders `AUTH_ALLOWED_SUBNETS`. Empty/missing means loopback-only; malformed/non-canonical CIDRs fail startup. No forwarded headers grant trust. Docker E2E verifies real team and denied peers in a shared namespace, including IPv6. Production host-network ingress still requires an actual team-machine check on the target Linux deployment.
 

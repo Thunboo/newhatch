@@ -4,7 +4,7 @@ use newhatch_analyzer::{
     auth::AuthConfig,
     capture,
     collector::{self, CollectorRegistry},
-    config::{Config, IngressMode},
+    config::{AnalyzerMode, Config},
     flow::{self, FlowOptions},
     storage::{self, Catalog},
 };
@@ -53,8 +53,8 @@ async fn main() -> anyhow::Result<()> {
 
     let (source_revision, capture_revision) = watch::channel(0u64);
     let collectors = CollectorRegistry::default();
-    match config.ingress_mode {
-        IngressMode::Local => {
+    match config.analyzer_mode {
+        AnalyzerMode::Local => {
             let capture_interface = config.capture_interface.clone();
             let capture_catalog = catalog.clone();
             let workers = flows.senders.clone();
@@ -71,7 +71,7 @@ async fn main() -> anyhow::Result<()> {
                 }
             });
         }
-        IngressMode::Receiver => {
+        AnalyzerMode::Remote => {
             let address = config.collector_listen_addr;
             let allowed_ips = config.collector_allowed_ips.clone();
             let receiver_catalog = catalog.clone();
@@ -102,7 +102,7 @@ async fn main() -> anyhow::Result<()> {
             source_revision,
             flag_regex,
             collectors,
-            ingress_mode: config.ingress_mode,
+            analyzer_mode: config.analyzer_mode,
         },
         auth,
     )

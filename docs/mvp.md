@@ -17,7 +17,7 @@ The player should be able to:
 
 The player should not need to manually create PCAP files.
 
-The internal project/service name is `newhatch`. The current browser title and sidebar branding use the display name `Нюхач` and the root `logo.png` asset.
+The internal project/service name is `newhatch`. The current browser title and sidebar branding use the display name `Нюхач` and the bundled `frontend/src/assets/logo.png` asset.
 
 ## Primary Screens
 
@@ -201,9 +201,9 @@ Expected environment/configuration values include:
 ```text
 CAPTURE_INTERFACE=<interface>
 LISTEN_ADDR=127.0.0.1:3000
-AUTH_USERNAME=<installation user>
-AUTH_PASSWORD_HASH=<Argon2id PHC hash>
-AUTH_SESSION_TTL_SECONDS=86400
+USERNAME=<installation user>
+PASSWORD=<installation password>
+SESSION_EXPIRACY=86400s
 AUTH_ALLOWED_SUBNETS=<comma-separated team CIDRs; empty means loopback-only>
 AUTH_COOKIE_SECURE=false
 FLAG_REGEX=<regex>

@@ -8,7 +8,7 @@ Run commands from the repository root unless a section says otherwise.
 cp .env.example .env
 ```
 
-At minimum, configure `AUTH_USERNAME`, `AUTH_PASSWORD_HASH`, `AUTH_ALLOWED_SUBNETS`, `CAPTURE_INTERFACE`, `FLAG_REGEX` and `SURICATA_BPF_FILTER`. See `docs/authentication.md`. The analyzer capture path requires Linux.
+At minimum, configure `USERNAME`, `PASSWORD`, `AUTH_ALLOWED_SUBNETS`, `CAPTURE_INTERFACE`, `FLAG_REGEX` and `SURICATA_BPF_FILTER`. See `docs/authentication.md`. The analyzer capture path requires Linux.
 
 ## Rust Analyzer
 
@@ -91,10 +91,10 @@ The network suite builds an isolated stack and removes its own resources. See `t
 ```text
 CAPTURE_INTERFACE=eth0
 LISTEN_ADDR=127.0.0.1:3000
-AUTH_USERNAME=<required>
-AUTH_PASSWORD_HASH=<required Argon2id PHC hash>
+USERNAME=<required>
+PASSWORD=<required>
 AUTH_ALLOWED_SUBNETS=<team CIDRs; empty = loopback only>
-AUTH_SESSION_TTL_SECONDS=86400
+SESSION_EXPIRACY=86400s
 AUTH_COOKIE_SECURE=false
 DATA_DIR=/data
 FLAG_REGEX=FLAG\{[^}\r\n]+\}

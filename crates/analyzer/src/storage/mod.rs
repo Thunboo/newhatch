@@ -9,7 +9,7 @@ use anyhow::{Context, Result};
 use rusqlite::params;
 use tokio::sync::mpsc;
 
-use crate::domain::{CompletedSession, SessionPayload};
+use crate::domain::{CompletedSession, SessionPayload, SessionProtocol};
 
 use catalog::ip_to_blob;
 pub use catalog::{parse_optional_ip, Catalog, SessionFilter};
@@ -22,8 +22,17 @@ pub struct StorageHandle {
 
 impl StorageHandle {
     pub fn try_store(&self, session: CompletedSession) -> bool {
+        if !should_persist(&session) {
+            return true;
+        }
         self.sender.try_send(session).is_ok()
     }
+}
+
+fn should_persist(session: &CompletedSession) -> bool {
+    session.protocol != SessionProtocol::RawTcp
+        || !session.c2s.is_empty()
+        || !session.s2c.is_empty()
 }
 
 pub fn start_writer(
@@ -77,6 +86,9 @@ fn run_writer(
 
         let mut pending_rows = Vec::with_capacity(batch.len());
         for session in batch {
+            if !should_persist(&session) {
+                continue;
+            }
             let id = next_session_id;
             next_session_id = next_session_id.saturating_add(1);
             let location = segments.append(
@@ -161,7 +173,7 @@ mod tests {
         CompletedSession, FlagDirection, HttpMetadata, SessionProtocol, SourceInput,
     };
 
-    use super::{read_payload, run_writer, Catalog, SessionFilter};
+    use super::{read_payload, run_writer, should_persist, Catalog, SessionFilter};
 
     #[test]
     fn writer_persists_metadata_and_payload_in_separate_stores() {
@@ -189,6 +201,24 @@ mod tests {
             .unwrap();
         });
 
+        sender
+            .blocking_send(CompletedSession {
+                source_id: source.id,
+                started_at: 1,
+                ended_at: 1,
+                client_ip: IpAddr::from_str("10.0.0.2").unwrap(),
+                client_port: 50_000,
+                server_ip: IpAddr::from_str("10.0.0.1").unwrap(),
+                server_port: 8080,
+                protocol: SessionProtocol::RawTcp,
+                c2s: Vec::new(),
+                s2c: Vec::new(),
+                flag_direction: FlagDirection::None,
+                flag_count: 0,
+                incomplete: true,
+                http: HttpMetadata::default(),
+            })
+            .unwrap();
         sender
             .blocking_send(CompletedSession {
                 source_id: source.id,
@@ -222,5 +252,34 @@ mod tests {
         let payload = read_payload(data_dir, &stored).unwrap();
         assert_eq!(payload.c2s, b"GET / HTTP/1.1\r\n\r\n");
         assert!(payload.s2c.ends_with(b"FLAG_TEST"));
+    }
+
+    #[test]
+    fn persistence_policy_discards_only_empty_raw_tcp_sessions() {
+        let session = CompletedSession {
+            source_id: 1,
+            started_at: 1,
+            ended_at: 2,
+            client_ip: IpAddr::from_str("10.0.0.2").unwrap(),
+            client_port: 50_000,
+            server_ip: IpAddr::from_str("10.0.0.1").unwrap(),
+            server_port: 8080,
+            protocol: SessionProtocol::RawTcp,
+            c2s: Vec::new(),
+            s2c: Vec::new(),
+            flag_direction: FlagDirection::None,
+            flag_count: 0,
+            incomplete: true,
+            http: HttpMetadata::default(),
+        };
+        assert!(!should_persist(&session));
+
+        let mut with_payload = session.clone();
+        with_payload.c2s.push(1);
+        assert!(should_persist(&with_payload));
+
+        let mut typed_protocol = session;
+        typed_protocol.protocol = SessionProtocol::Http;
+        assert!(should_persist(&typed_protocol));
     }
 }

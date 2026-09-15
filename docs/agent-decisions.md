@@ -232,16 +232,16 @@ The first executable slice currently uses:
 - WebSocket upgrade classification without frame decoding
 - a passive Suricata container with a separately configured static BPF filter; EVE ingestion and session correlation are not implemented
 - an opt-in nginx flag-capture fixture on TCP port 18080
-- UI display name `Нюхач`, local Sources search/sorting, and root `logo.png` as the canonical logo asset
+- UI display name `Нюхач`, local Sources search/sorting, and `frontend/src/assets/logo.png` as the bundled logo asset
 
 These are implementation decisions, not changes to the fixed architecture. Current limitations are summarized in `PROJECT.md`, `docs/architecture.md` and `.agents/tasks/active.md`.
 
 ## Single-User Authentication (2026-09-07)
 
-The user explicitly extended the MVP to include environment-configured Argon2id credentials, `tower-sessions` cookies and a bounded ephemeral server-side store. No roles, registration or identity provider are introduced. nginx enforces loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs against actual TCP peers; the analyzer separately enforces loopback transport and authenticated sessions. Never grant trust based on forwarded headers or blanket Docker/private ranges. Health is public and minimal. Full configuration, TTL, cookie, origin and deployment policy is in `docs/authentication.md`.
+The user explicitly extended the MVP to include environment-configured `USERNAME`/`PASSWORD`, startup Argon2id hashing, `tower-sessions` cookies and a bounded ephemeral server-side store. `SESSION_EXPIRACY` uses duration values such as `86400s`. No roles, registration or identity provider are introduced. nginx enforces loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs against actual TCP peers; the analyzer separately enforces loopback transport and authenticated sessions. Never grant trust based on forwarded headers or blanket Docker/private ranges. Health is public and minimal. Full configuration, expiration, cookie, origin and deployment policy is in `docs/authentication.md`.
 
 ## Collector / Analyzer Split (2026-09-07)
 
 The remote split is after `ClassifiedPacket`. `crates/protocol` owns shared packet/source/domain types and a versioned length-prefixed protobuf protocol. The lightweight collector owns cooked AF_PACKET capture, BPF, classification, bounded memory, reconnect and counters; analyzer owns worker selection and every heavy processing/persistence concern. Analyzer pushes global active Source snapshots to all connected collectors. Flow identity is `CollectorId + FlowKey`.
 
-Initial connection admission has no PSK or encryption: collector pins receiver IP/port and analyzer accepts exact configured collector source IPs. PSK authentication is backlog hardening. Keep local ingress available for the existing single-host deployment.
+Runtime roles are selected by the service being launched. Analyzer uses `ANALYZER=local|remote` (default `local`); collector uses `ANALYZER_CONNSTR`. A remote analyzer listens on `LISTEN_CONNSTR`. A non-empty `ALLOWED_COLLECTORS` value restricts exact source IPs, while an empty value accepts any host. The transport has no PSK or encryption; PSK authentication is backlog hardening. Collector `QUEUE_CAPACITY` defaults to 8192 packets and bounds memory by dropping and counting new packets when full.

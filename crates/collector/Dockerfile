@@ -17,8 +17,8 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 COPY --from=builder /build/newhatch-collector /usr/local/bin/newhatch-collector
 ENV CAPTURE_INTERFACE=eth0 \
-    RECEIVER_PORT=39090 \
+    ANALYZER_CONNSTR=127.0.0.1:39090 \
     COLLECTOR_ID=vulnbox-1 \
-    COLLECTOR_QUEUE_CAPACITY=8192 \
+    QUEUE_CAPACITY=8192 \
     RUST_LOG=newhatch=info
 ENTRYPOINT ["newhatch-collector"]

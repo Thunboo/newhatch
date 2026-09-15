@@ -2,6 +2,7 @@ import { LogIn, RefreshCw } from "lucide-react";
 import { useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { api, ApiError, onUnauthorized } from "./api";
+import logoUrl from "./assets/logo.png";
 
 type AuthState = "loading" | "authenticated" | "unauthenticated" | "unavailable";
 
@@ -57,7 +58,7 @@ export function AuthGate({ children }: { children: (logout: () => Promise<void>)
 
   return (
     <main className="auth-screen">
-      <div className="auth-brand"><img src="/logo.png" alt="Нюхач" /></div>
+      <div className="auth-brand"><img src={logoUrl} alt="Нюхач" /></div>
       <section className="auth-content" aria-busy={state === "loading" || busy}>
         {state === "loading" ? <p role="status">Checking session...</p> : state === "unavailable" ? <>
           <p role="alert">Unable to connect.</p>

@@ -2,7 +2,6 @@
 """Validate ingress CIDRs before writing nginx configuration. Never trust IP headers."""
 import ipaddress
 import os
-import shutil
 from pathlib import Path
 
 
@@ -29,10 +28,5 @@ if __name__ == "__main__":
                         os.environ.get("AUTH_ALLOWED_SUBNETS", ""),
                         os.environ.get("FRONTEND_PORT", "8080"))
         Path("/etc/nginx/conf.d/default.conf").write_text(config)
-        logo = Path("/opt/newhatch/logo.png")
-        if logo.is_file():
-            target = Path("/usr/share/nginx/html/logo.png")
-            shutil.copyfile(logo, target)
-            target.chmod(0o644)
     except ValueError as error:
         raise SystemExit(str(error)) from None

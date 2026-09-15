@@ -25,7 +25,7 @@ Tasks that are not currently being implemented.
 
 ## Collector Transport Hardening
 
-- [ ] Add per-collector pre-shared-key authentication to the collector/analyzer handshake. The initial split trusts the configured receiver endpoint on the collector and the configured collector source IP on the receiver; it does not provide application-layer authentication or encryption.
+- [ ] Add per-collector pre-shared-key authentication to the collector/analyzer handshake. The initial split trusts `ANALYZER_CONNSTR` on the collector and optional source-IP filtering through `ALLOWED_COLLECTORS` on the analyzer; it does not provide application-layer authentication or encryption.
 
 ## MVP Implementation Milestones
 
@@ -43,5 +43,6 @@ Tasks that are not currently being implemented.
 - [x] Payload search through SQLite prefilter plus Rust range scan.
 - [x] Packmate-like UI: sources, session list, session detail, search and flag filter.
 - [ ] Suricata alert ingestion/correlation as optional enrichment.
-- [ ] Do not persist or display empty `raw_tcp` sessions with `0 B` reconstructed payload. Confirm that control-only TCP packets (SYN/FIN/RST without payload) still update/close flow state correctly, then discard the finalized session when both C2S and S2C payloads are empty.
+- [x] Do not persist or display empty `raw_tcp` sessions with `0 B` reconstructed payload. Control-only TCP packets still update/close flow state, but finalized sessions with empty C2S and S2C payloads are rejected both before and inside the storage writer; legacy zero-byte SQLite rows are deleted during startup migration and excluded from session lists defensively.
 - [ ] Add a Russian/English language switch for the frontend. Move visible UI strings into a small localization layer, persist the selected language in the browser, and default to the browser language when no preference has been saved.
+- [ ] Optional: investigate chronological ordering in the web traffic view under high RPS. Parallel flow workers may finalize and persist sessions out of capture-time order; define the intended ordering by packet/session capture timestamps and make API pagination plus UI updates stable without adding expensive global serialization to the ingest hot path.

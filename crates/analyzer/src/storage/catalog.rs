@@ -145,7 +145,7 @@ impl Catalog {
                    s.http_content_type
             FROM sessions s
             JOIN sources src ON src.id = s.source_id
-            WHERE 1 = 1
+            WHERE (s.protocol != 0 OR s.bytes_c2s != 0 OR s.bytes_s2c != 0)
             "#,
         );
         let mut values = Vec::<Value>::new();

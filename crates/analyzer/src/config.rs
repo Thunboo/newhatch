@@ -23,16 +23,16 @@ pub struct Config {
     pub flow_idle_timeout: Duration,
     pub max_active_flows_per_worker: usize,
     pub max_stream_bytes: usize,
-    pub ingress_mode: IngressMode,
+    pub analyzer_mode: AnalyzerMode,
     pub collector_listen_addr: SocketAddr,
     pub collector_allowed_ips: Vec<IpAddr>,
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
-pub enum IngressMode {
+pub enum AnalyzerMode {
     Local,
-    Receiver,
+    Remote,
 }
 
 impl Config {
@@ -72,18 +72,15 @@ impl Config {
             bail!("FLOW_WORKERS must be greater than zero");
         }
 
-        let ingress_mode = match env_string("PACKET_INGRESS_MODE", "local").as_str() {
-            "local" => IngressMode::Local,
-            "receiver" => IngressMode::Receiver,
-            _ => bail!("PACKET_INGRESS_MODE must be local or receiver"),
+        let analyzer_mode = match env_string("ANALYZER", "local").as_str() {
+            "local" => AnalyzerMode::Local,
+            "remote" => AnalyzerMode::Remote,
+            _ => bail!("ANALYZER must be local or remote"),
         };
-        let collector_listen_addr = env_string("COLLECTOR_LISTEN_ADDR", "0.0.0.0:39090")
+        let collector_listen_addr = env_string("LISTEN_CONNSTR", "0.0.0.0:39090")
             .parse()
-            .context("invalid COLLECTOR_LISTEN_ADDR")?;
-        let collector_allowed_ips = parse_ip_list("COLLECTOR_ALLOWED_IPS")?;
-        if ingress_mode == IngressMode::Receiver && collector_allowed_ips.is_empty() {
-            bail!("COLLECTOR_ALLOWED_IPS must contain at least one IP in receiver mode");
-        }
+            .context("invalid LISTEN_CONNSTR")?;
+        let collector_allowed_ips = parse_ip_list("ALLOWED_COLLECTORS")?;
 
         Ok(Self {
             capture_interface,
@@ -98,7 +95,7 @@ impl Config {
             flow_idle_timeout: parse_duration_env("FLOW_IDLE_TIMEOUT", "30s")?,
             max_active_flows_per_worker: parse_env("MAX_ACTIVE_FLOWS_PER_WORKER", 16_384usize)?,
             max_stream_bytes: parse_size_env("MAX_STREAM_BYTES", "4MiB")?,
-            ingress_mode,
+            analyzer_mode,
             collector_listen_addr,
             collector_allowed_ips,
         })

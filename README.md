@@ -4,23 +4,22 @@
 
 See [PROJECT.md](PROJECT.md) for the product brief, current implementation and architectural constraints. Detailed design documents live in [`docs/`](docs/).
 
-## Password Setup
+## Login Setup
 
-Create `.env`, generate an Argon2id password hash, and add the displayed value without removing its single quotes to `.env`:
+Create `.env` and set the login credentials near the top:
 
 ```bash
 cp .env.example .env
-docker compose build analyzer
-docker compose run --rm --no-deps --entrypoint hash-password analyzer
 ```
 
 ```env
-AUTH_USERNAME=team
-AUTH_PASSWORD_HASH='$argon2id$v=19$...'
+USERNAME=admin
+PASSWORD=admin123
+SESSION_EXPIRACY=86400s
 AUTH_ALLOWED_SUBNETS=100.0.0.0/8
 ```
 
-Use your actual team CIDR. An empty `AUTH_ALLOWED_SUBNETS` allows only clients that nginx sees as loopback. See [authentication details](docs/authentication.md).
+Use your own password and actual team CIDR. An empty `AUTH_ALLOWED_SUBNETS` allows only clients that nginx sees as loopback. The analyzer hashes the password with Argon2id during startup. See [authentication details](docs/authentication.md).
 
 ## Quick Start
 
@@ -47,15 +46,16 @@ Its current filter is configured separately through `SURICATA_BPF_FILTER`; EVE i
 
 ## Split Collector Deployment
 
-The default `PACKET_INGRESS_MODE=local` keeps capture and analysis on one host in a single `analyzer` container. For a split deployment, follow this configuration steps:
+The default `ANALYZER=local` keeps capture and analysis on one host in a single `analyzer` container. For a split deployment, use the following configuration.
 
 ### Receiver (not the Vulnbox)
 
 Prepare `.env`:
 ```env
-PACKET_INGRESS_MODE=receiver
-COLLECTOR_LISTEN_ADDR=0.0.0.0:39090
-COLLECTOR_ALLOWED_IPS=VULNBOX_IP
+ANALYZER=remote
+LISTEN_CONNSTR=0.0.0.0:39090
+# Optional. Empty accepts collector traffic from any host.
+ALLOWED_COLLECTORS=VULNBOX_IP
 ```
 
 Start the receiver-side analyzer and frontend:
@@ -69,8 +69,9 @@ On the vulnbox, configure and start only the lightweight collector:
 ```env
 CAPTURE_INTERFACE=eth0
 COLLECTOR_ID=vulnbox-1
-RECEIVER_ADDR=RECEIVER_IP
-RECEIVER_PORT=39090
+ANALYZER_CONNSTR=ANALYZER_IP:39090
+# Bounded packet buffer; full queues drop new packets. Default: 8192.
+QUEUE_CAPACITY=8192
 ```
 
 ```bash
@@ -79,7 +80,7 @@ docker compose --profile collector up -d --build collector
 
 ### Security annotation
 
-Open TCP port `39090` only between those hosts. The collector pins the configured receiver endpoint, and the receiver accepts only exact IPs in `COLLECTOR_ALLOWED_IPS`. This initial transport is unencrypted and has no PSK (task is in Backlog), so use it only on the trusted players/VPN network. Sources remain managed in the analyzer UI and are pushed to connected collectors automatically.
+Open TCP port `39090` between the collector and analyzer. The collector connects only to `ANALYZER_CONNSTR`. A non-empty `ALLOWED_COLLECTORS` restricts the analyzer to the listed comma-separated source IPs; an empty value accepts any host. This initial transport is unencrypted and has no PSK (task is in Backlog), so use it only on the trusted players/VPN network. Sources remain managed in the analyzer UI and are pushed to connected collectors automatically.
 
 ## Useful Checks
 
