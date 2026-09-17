@@ -33,4 +33,8 @@ Project terms and their meanings.
 - retention - rotation/removal policy for old segments and their metadata.
 - Community ID - possible Suricata correlation identifier to evaluate.
 - backpressure - explicit behavior when bounded queues fill.
+- collector - lightweight diskless capture process that forwards classified packets to a remote analyzer.
+- local analyzer mode - `ANALYZER=local`; capture and analysis run together on one host.
+- remote analyzer mode - `ANALYZER=remote`; analyzer listens for collector transport on `LISTEN_CONNSTR`.
+- live edge - top of the Sessions feed where five-second newest-page polling is active.
 - test flag fixture - opt-in nginx service from the `test` Compose profile, exposed on TCP port `18080`.

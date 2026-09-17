@@ -1,92 +1,49 @@
-# Codex Context
+# Codex Quick Context
 
 ## Product
 
-`newhatch` is the internal name of a lightweight A/D CTF traffic analyzer. The UI/display name is `Нюхач`. It provides a Packmate-like sources, sessions, payload inspection, search and stolen-flag workflow while targeting constrained vulnbox resources.
+`newhatch` / `Нюхач` is a lightweight live A/D CTF traffic analyzer. Read `PROJECT.md`, `README.md`, `docs/agent-decisions.md`, then the relevant focused doc before architectural work.
 
-Read `PROJECT.md` for the product brief and implementation summary. Treat `README.md` as the short startup runbook.
-
-## Core Pipeline
+## Pipeline
 
 ```text
-NIC
- |
- | classic kernel BPF: enabled monitored TCP ports only
- v
-Linux cooked AF_PACKET/SOCK_DGRAM socket (nonblocking recvmsg; consistent L3 packets from Ethernet and WireGuard/TUN)
- |
- v
-consistent flow-worker sharding
- |
- +-> bounded TCP reassembly: C2S and S2C
- +-> streaming plus final flag scan
- +-> HTTP metadata / WebSocket-upgrade classification
- |
- v
-session metadata -> SQLite
-session payload  -> versioned append-only segment files
+enabled source ports -> kernel BPF -> cooked AF_PACKET capture
+-> bounded classified packets -> worker-local TCP reassembly
+-> flag/protocol analysis -> SQLite metadata + segment payload files
+-> authenticated API -> React UI
 ```
 
-Suricata is an optional passive IDS running in parallel. It is not in the analyzer hot path, and its EVE output is not ingested or correlated yet.
+Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is optional parallel enrichment and is not integrated yet.
 
-## Collector / Analyzer Split
+## Runtime
 
-The collector/analyzer split is implemented and specified in `.agents/tasks/newhatch-collector-analyzer-split.md`. It splits after `ClassifiedPacket`, uses shared versioned protobuf types, a bounded persistent bidirectional connection, analyzer-pushed Sources and `CollectorId + FlowKey` isolation. Collector remains diskless/lightweight; analyzer retains reassembly, detection, storage, API/auth/frontend. Analyzer uses `ANALYZER=local|remote` (default `local`); collector connects through `ANALYZER_CONNSTR`; remote analyzer listens on `LISTEN_CONNSTR`. Connection strings support IPs or FQDNs. `ALLOWED_COLLECTORS` optionally restricts IPs or startup-resolved FQDNs and accepts any host when empty. Collector `QUEUE_CAPACITY` defaults to 8192 packets. PSK authentication is deferred. Automated tests pass; actual two-host Linux/VPN rollout remains pending.
+- Local: `ANALYZER=local`.
+- Split analyzer: `ANALYZER=remote`, `LISTEN_CONNSTR=HOST:PORT`, optional `ALLOWED_COLLECTORS`.
+- Collector: `ANALYZER_CONNSTR=HOST:PORT`, `QUEUE_CAPACITY=8192` default.
+- IP/FQDN endpoints are supported; bracket literal IPv6. Empty collector allowlist accepts any host. No PSK yet.
+- Auth: `USERNAME`, `PASSWORD`, `SESSION_EXPIRACY`, `AUTH_ALLOWED_SUBNETS`, `AUTH_COOKIE_SECURE`.
 
-## Current Repository State
+## Current UI Invariants
 
-- `crates/analyzer`: local/remote ingress, flow/reassembly, protocol classification, storage and Axum API.
-- `crates/collector`: lightweight Linux capture, classification and remote forwarding.
-- `crates/protocol`: shared domain types and versioned protobuf transport.
-- `frontend`: React/TypeScript/Vite UI branded `Нюхач`.
-- `compose.yaml`: analyzer, frontend, passive Suricata and opt-in `test-flag` services.
-- `test/flag_test/`: nginx test endpoint at `GET /flag` on TCP port `18080`.
-- `test/auth/`: Rust integration, CIDR generation, Docker multi-subnet and Playwright tests.
-- `frontend/src/assets/logo.png`: logo imported by the React code and bundled by Vite.
-- Default UI URL: `http://localhost:8080`.
+- Sessions merge uniquely by ID; loaded count is frontend row count.
+- Poll newest every five seconds only near the top.
+- Pause newest polling in history; upward motion performs one anchored catch-up.
+- Infinite cursor pagination loads older sessions automatically.
+- Open detail highlights its row and closes with `Escape`.
+- Wheel over detail never scrolls the underlying list; wheel over exposed list does.
+- Desktop sidebar is fixed.
+- Remote mode shows analyzer and collector status lights; local mode has no collector light.
 
-## Authentication
+## Important Storage Behavior
 
-Required `USERNAME` and plaintext `PASSWORD` are read from the environment; analyzer immediately creates an in-memory Argon2id hash. `SESSION_EXPIRACY` defaults to `86400s`. Production nginx and analyzer use host networking; API listens on loopback. nginx allows loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs; no header-based trust. tower-sessions uses bounded ephemeral server state, absolute expiration and strict cookies. Restart requires login again. Frontend loads no traffic before `/api/auth/me`; 401 clears the UI and stops polling. Final target-host ingress validation remains pending.
+Retention is by rotated segment count. Rotation and expiration are checked only when appending a completed session, so downtime does not independently age-delete sessions.
 
-## Implemented Behavior
+## Current Verification
 
-- Source CRUD with unique TCP ports, soft deletion and live analyzer BPF rebuilds.
-- Local Sources search by name/port and sorting by name/port.
-- Cursor-based session browsing; API page size is capped at 200.
-- Metadata filters for source, flag presence, protocol, endpoint IP/port and start time.
-- Bounded payload substring search over at most 2,000 metadata-prefiltered candidates per request.
-- Text and hex payload views plus flag-match highlighting.
-- Version 1 segment records: 52-byte header, CRC32, C2S bytes, then S2C bytes.
-- Segment rotation/retention and batched SQLite inserts of up to 500 sessions.
+- Frontend production Docker build passes.
+- Playwright: three scenarios pass, including current session-feed and detail interactions.
+- Real split deployment over VPN/FQDN works after rebuilding the collector from current sources.
 
-## Known Limitations
+## Next Work
 
-- Capture is Linux-only and has not yet been exercised on the final vulnbox topology.
-- `PACKET_MMAP` is not implemented; capture currently uses `recvmsg`.
-- Target-host VLAN behavior remains unvalidated; no IPv6 extension-header walking.
-- WebSocket upgrades are classified, but frames are not decoded.
-- No Suricata EVE ingestion, session correlation or live source-filter synchronization.
-- No crash-tail repair/reconciliation for the latest segment.
-- No explicit request/reply payload-range linkage for flag-containing server responses.
-- The UI exposes only source, protocol, flag and payload filters although the API supports more endpoint/time filters.
-
-## Guardrails
-
-- Filter irrelevant traffic in the kernel before userspace.
-- Persist sessions, never raw packets or one database row per packet.
-- Keep payload bytes out of SQLite.
-- Keep queues and active flow state bounded; make drops observable.
-- Keep Suricata optional and outside the Rust hot path.
-- Keep MVP protocol scope to raw TCP, HTTP/1.x and WebSocket.
-- Do not introduce heavyweight infrastructure without explicit user approval.
-
-## Documentation Map
-
-- `PROJECT.md`: product brief and implementation status.
-- `README.md`: quick start.
-- `docs/agent-decisions.md`: fixed decisions and implementation choices.
-- `docs/architecture.md`: system design and component status.
-- `docs/storage.md`: SQLite/segment format and persistence behavior.
-- `docs/mvp.md`: target UX and current coverage.
-- `docs/todo.md`: unresolved user notes.
+Use `.agents/tasks/backlog.md`. Major deferred areas: collector PSK, WebSocket frames, Suricata correlation, segment crash recovery, `PACKET_MMAP`, VLAN/IPv6 extensions and S2C-to-C2S flag linkage.

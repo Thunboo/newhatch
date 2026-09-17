@@ -1,87 +1,82 @@
 # Project Memory
 
-## Summary
+## Product
 
-`newhatch` is the internal project name. The user-facing UI name is `Нюхач`.
+- Internal name: `newhatch`; UI name: `Нюхач`.
+- Lightweight live-traffic analyzer for Attack/Defence CTF competitions.
+- Main entity: reconstructed bidirectional TCP session, not an individual packet.
+- Goal: Packmate-like workflow with bounded memory and low vulnbox overhead.
 
-The product is a lightweight, high-performance traffic analyzer for Attack/Defence CTF competitions. It aims for a Packmate-like workflow with lower CPU and RAM use on a constrained vulnbox. It is not a general-purpose enterprise IDS or SIEM.
+## Canonical Files
 
-## Documentation Ownership
+- `PROJECT.md`: product and implementation overview.
+- `README.md`: operator quick start and deployment guide.
+- `docs/agent-decisions.md`: fixed architecture decisions.
+- `docs/architecture.md`: capture and processing pipeline.
+- `docs/storage.md`: SQLite plus append-only segments.
+- `docs/authentication.md`: ingress and login model.
+- `.agents/tasks/backlog.md`: deferred work.
 
-- `PROJECT.md`: product brief, fixed product direction and implementation summary.
-- `README.md`: short startup and operator runbook.
-- `docs/agent-decisions.md`: fixed technical decisions and current implementation choices.
-- `docs/architecture.md`: capture, flow, reassembly, protocol, storage and Suricata design.
-- `docs/storage.md`: implemented SQLite and append-only segment model.
-- `docs/mvp.md`: target UX plus current UI/API coverage.
-- `docs/todo.md`: unresolved user notes; do not silently resolve them.
+## Current Architecture
 
-## Product Goals
+- Rust/Tokio backend with Linux cooked `AF_PACKET/SOCK_DGRAM` capture.
+- Enabled source ports are compiled into a kernel BPF filter.
+- Bounded worker-local TCP reassembly produces C2S/S2C streams.
+- Flag detection runs on reconstructed streams.
+- SQLite stores metadata and segment pointers; payload bytes live in append-only segment files.
+- React/TypeScript/Vite frontend is served by nginx.
+- Suricata remains optional passive enrichment; EVE correlation is not implemented.
 
-- High packet/session throughput with bounded memory.
-- No userspace work for traffic outside explicitly monitored TCP ports.
-- Responsive session browsing during an A/D game.
-- Immediate visibility of stolen-flag traffic.
-- Simple local deployment through Docker Compose.
+## Deployment Modes
 
-## Normal Workflow
+- `ANALYZER=local` (default): analyzer captures and processes traffic in one container.
+- `ANALYZER=remote`: analyzer receives classified packets from remote collectors.
+- Collector target: `ANALYZER_CONNSTR=HOST:PORT`.
+- Analyzer receiver: `LISTEN_CONNSTR=HOST:PORT`.
+- Both connection strings support IPs and FQDNs. Literal IPv6 endpoints require brackets.
+- `ALLOWED_COLLECTORS` accepts comma-separated IPs/FQDNs; empty accepts any peer. FQDN allowlist entries resolve at analyzer startup.
+- Collector `QUEUE_CAPACITY` defaults to 8192 packets.
+- Transport is currently unencrypted and unauthenticated; PSK is backlog work.
 
-1. Configure capture, `USERNAME`/`PASSWORD`, session expiration and allowed team CIDRs in `.env`.
-2. Start analyzer and frontend, then sign in.
-3. Add monitored sources/services by TCP port in the UI.
-4. Browse reconstructed sessions and inspect C2S/S2C payloads.
-5. Search payloads or filter flag-containing sessions.
+## Authentication
 
-Normal operation is live capture; users should not create PCAP files manually.
+- Required env: `USERNAME`, plaintext `PASSWORD`, and optional `SESSION_EXPIRACY` (default `86400s`).
+- Password is Argon2id-hashed in memory during analyzer startup.
+- nginx admits loopback plus `AUTH_ALLOWED_SUBNETS`; empty means loopback only.
+- Analyzer API binds loopback and requires server-side sessions for protected routes.
+- Cookies are HttpOnly/SameSite Strict; `AUTH_COOKIE_SECURE` controls HTTPS-only cookies.
 
-## Core Stack
+## Implemented UI Behavior
 
-- Rust and Tokio.
-- Linux `AF_PACKET` with classic kernel BPF filters.
-- `PACKET_MMAP` / RX ring remains a future measured optimization.
-- Suricata as optional parallel IDS/enrichment.
-- SQLite for metadata and indexes only.
-- Versioned append-only segment files for reconstructed payload bytes.
-- React, TypeScript and Vite frontend.
-- Docker Compose runtime.
+- Sessions, Sources and Collectors views are operational.
+- Session feed merges by ID in `id DESC` order and counts unique loaded rows.
+- Newest-page polling runs every five seconds only near the live edge; it pauses while older traffic is inspected.
+- Scrolling upward triggers one anchored catch-up refresh. Older pages load automatically through an observer sentinel.
+- Opening session detail highlights its table row with a black inner outline.
+- Detail closes with its close button or `Escape`.
+- Wheel input over detail cannot scroll the underlying list; wheel input over the exposed list still can.
+- Desktop sidebar is fixed. In remote mode it shows analyzer and aggregate collector status lights; local mode omits the collector light.
+- `frontend/src/assets/logo.png` is bundled by Vite.
 
-## Current Implementation
+## Storage And Retention
 
-- `crates/analyzer`: local/remote packet ingress, collector-aware flow sharding, TCP reassembly, flag scanning, protocol classification, storage and Axum API.
-- `crates/collector`: lightweight Linux cooked capture, BPF/classification and bounded remote forwarding without persistence.
-- `crates/protocol`: shared packet/source/domain types and versioned length-prefixed protobuf messages.
-- `frontend`: operational Sessions, Sources and Collectors views. The UI is branded `Нюхач`; Sources supports local name/port search and sorting.
-- `compose.yaml`: analyzer and frontend runtime, optional collector profile, passive Suricata, and the opt-in `test-flag` profile.
-- `test/flag_test/`: nginx fixture on TCP port `18080`; `GET /flag` returns a test flag.
-- `test/auth/`: backend, CIDR, multi-subnet Docker and browser authentication tests.
-- `frontend/src/assets/logo.png` is imported by the React code and bundled into the frontend build by Vite.
-- Default UI URL: `http://localhost:8080`.
+- Empty `raw_tcp` sessions with zero reconstructed bytes are rejected and legacy rows are removed.
+- Retention is segment-count based, not a continuous wall-clock cleanup job.
+- Rotation is checked only when a completed session is appended. Starting the analyzer or leaving it powered off does not by itself delete old sessions.
+- Defaults: `SEGMENT_DURATION=30m`, `SEGMENT_RETENTION_COUNT=3`.
 
-## Implemented Boundaries
+## Verification
 
-- Sources are unique by TCP port and soft-deleted in SQLite.
-- Enabled source changes rebuild the analyzer capture socket and BPF program.
-- Cooked `AF_PACKET/SOCK_DGRAM` capture strips interface-specific L2 headers and supports basic IPv4/IPv6 TCP consistently on Ethernet, WireGuard/TUN, loopback and Docker bridge interfaces. IPv6 extension headers and target-host VLAN behavior are not handled/validated yet.
-- WebSocket upgrades are classified, but frames are not decoded.
-- Session list API pagination is cursor-based with a maximum page size of 200.
-- Payload substring search scans at most 2,000 metadata-prefiltered candidates per request.
-- Suricata is passive and independent. EVE ingestion, alert correlation and live filter synchronization are not implemented.
-- Segment tail recovery/reconciliation is not implemented.
+- Frontend production image builds successfully.
+- Current Playwright suite has three passing scenarios, including auth, live feed/pagination, collector status, selected-row state, independent scrolling, fixed sidebar, mobile layout and Escape close.
+- Split deployment has worked over the user's VPN after rebuilding the collector with current FQDN-capable code.
 
-## Core Data Model
+## Remaining High-Level Work
 
-The user-visible entity is a reconstructed bidirectional TCP session with metadata plus C2S and S2C byte streams. Raw packets are not persisted. SQLite stores metadata and direct segment locations; segment files store payload bytes.
-
-## Current Open Decisions
-
-The collector/analyzer split is implemented and automatically tested. The fixed boundary is after `ClassifiedPacket`: vulnbox collector retains cooked capture, BPF, minimal parsing/classification, bounded forwarding and stats; remote analyzer retains all heavy processing and persistence. Analyzer mode is `ANALYZER=local|remote` with `local` as the default. Collector connects through `ANALYZER_CONNSTR`; remote analyzer listens on `LISTEN_CONNSTR`; both support IP or FQDN endpoints. `ALLOWED_COLLECTORS` accepts IPs or startup-resolved FQDNs and accepts any host when empty. Collector `QUEUE_CAPACITY` defaults to 8192 packets. PSK authentication is deferred to backlog. Actual two-host Linux/VPN rollout remains pending.
-
-Single-user authentication is implemented: required plaintext `USERNAME`/`PASSWORD` configuration, immediate startup Argon2id hashing, tower-sessions with a bounded ephemeral store (1024 sessions), absolute expiration (`SESSION_EXPIRACY=86400s` by default), cookie rotation and logout. nginx checks actual client peers against loopback plus `AUTH_ALLOWED_SUBNETS`; analyzer binds loopback and checks actual peer plus session. Both production services use host networking. Empty CIDRs mean loopback only. No forwarded-header trust or permissive CORS. See `docs/authentication.md` and `.agents/tasks/active.md`; final vulnbox ingress validation remains pending. Roles, registration and external identity providers remain excluded.
-
-- WebSocket frame parser and representation.
-- Suricata event correlation and filter synchronization.
-- Request/reply linkage for flag-containing server responses.
-- Long-lived session policy and behavior under large reassembly gaps.
-- Crash-tail recovery/reconciliation.
-- Target-host VLAN behavior and IPv6 extension-header handling.
-- Meaning of the `rows >= 5000 OR query time >= 100 ms` auto-removal note.
+- Collector PSK authentication/encryption.
+- WebSocket frame decoding.
+- Suricata EVE ingestion/correlation and filter synchronization.
+- Segment tail recovery/reconciliation.
+- `PACKET_MMAP` benchmarking and possible adoption.
+- VLAN and IPv6 extension-header handling.
+- Exact linkage from flag-bearing S2C replies to triggering C2S data.

@@ -1,23 +1,26 @@
 # Open Questions
 
-Questions that should be clarified before the related implementation step.
+Clarify these only when implementing the related area.
 
-## Product / UX
+## Product And Data
 
-- When a server response contains a flag, what exactly should identify the player: source IP, source team, source service, authenticated user if parsed, or another mapping?
-- Should session detail jump to request/response boundaries for HTTP/WebSocket when showing how a flag was obtained?
+- What exact identity should link a flag-bearing S2C response to the triggering player/request?
+- Should HTTP/WebSocket detail expose explicit request/response boundaries and navigation?
+- What does the `docs/todo.md` auto-removal note (`rows >= 5000 OR query time >= 100 ms`) govern?
 
-## Storage / Retention
+## Capture And Reassembly
 
-- `docs/todo.md` mentions auto-removal with `rows >= 5000 OR query time >= 100 ms (maybe)`. Clarify whether this is retention cleanup, search candidate limiting, SQLite batch policy, or another mechanism.
-- For flag-containing S2C replies, decide the exact SQLite metadata fields for linking to the related C2S payload range.
+- Which WebSocket frame parser/representation should be used?
+- What is the production policy for extremely long-lived flows and large TCP gaps?
+- How should VLAN traffic and IPv6 extension headers be handled?
+- What RX-ring size and `PACKET_MMAP` strategy are justified by benchmarks?
 
-## Implementation Choices
+## Storage And Enrichment
 
-- Collector admission is resolved for the initial split: collector connects to an IP or FQDN through `ANALYZER_CONNSTR`; a remote analyzer may restrict IPs or startup-resolved FQDNs with `ALLOWED_COLLECTORS`, while an empty list accepts any host. There is no application-layer authentication; PSK hardening is tracked in backlog.
-- WebSocket parser crate.
-- Suricata EVE ingestion, correlation and live filter synchronization. Current Compose operation is passive and uses a separate static BPF expression.
-- `PACKET_MMAP` ring sizing after capture benchmarks.
-- VLAN-aware BPF and IPv6 extension-header behavior.
-- Crash-tail repair and SQLite reconciliation for append-only segments.
-- Production policy for very long-lived or highly gapped TCP sessions.
+- How should truncated segment tails and SQLite/file reconciliation recover after a crash?
+- What Suricata correlation key and live filter synchronization mechanism should be used?
+- Is immediate disk reclamation ever required beyond normal whole-segment retention?
+
+## Transport Hardening
+
+- Define collector PSK format, rotation, replay protection and whether encryption is required.
