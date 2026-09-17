@@ -636,6 +636,24 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
   const [matches, setMatches] = useState<FlagMatches>({ c2s: [], s2c: [] });
   const [mode, setMode] = useState<PayloadMode>("text");
   const [error, setError] = useState<string | null>(null);
+  const panelRef = useRef<HTMLElement>(null);
+
+  useEffect(() => {
+    const panel = panelRef.current;
+    if (!panel) return;
+    const containWheel = (event: WheelEvent) => {
+      const target = event.target instanceof Element ? event.target : null;
+      const scrollable = target?.closest<HTMLElement>(".stream pre");
+      const canScroll = scrollable && (
+        (event.deltaY < 0 && scrollable.scrollTop > 0)
+        || (event.deltaY > 0 && scrollable.scrollTop + scrollable.clientHeight < scrollable.scrollHeight)
+      );
+      if (!canScroll) event.preventDefault();
+      event.stopPropagation();
+    };
+    panel.addEventListener("wheel", containWheel, { passive: false });
+    return () => panel.removeEventListener("wheel", containWheel);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -646,7 +664,11 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
   }, [session.id]);
 
   return (
-    <aside className="detail-panel" aria-label="Session detail">
+    <aside
+      ref={panelRef}
+      className="detail-panel"
+      aria-label="Session detail"
+    >
       <header className="detail-header">
         <div><span className="eyebrow">Session #{session.id}</span><h2>{session.http.method ? `${session.http.method} ${session.http.path ?? ""}` : protocolLabel(session.protocol)}</h2></div>
         <button className="icon-button" title="Close session" onClick={onClose}><X size={18} /></button>

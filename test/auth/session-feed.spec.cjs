@@ -80,11 +80,23 @@ test("live feed merges refreshes, pauses away from the top and loads history aut
   await expect(page.getByText("Collector online")).toBeVisible();
   await expect(page.getByRole("button", { name: /load older/i })).toHaveCount(0);
 
-  const openedRow = page.locator('[data-session-id="300"]');
+  await page.evaluate(() => window.scrollTo(0, 500));
+  const openedRow = page.locator('[data-session-id="290"]');
   await openedRow.click();
   await expect(openedRow).toHaveClass(/selected-row/);
+  const lockedScrollPosition = await page.evaluate(() => window.scrollY);
+  await page.locator(".detail-panel").hover();
+  await page.mouse.wheel(0, 1_000);
+  expect(await page.evaluate(() => window.scrollY)).toBe(lockedScrollPosition);
+
+  await page.mouse.move(230, 400);
+  await page.mouse.wheel(0, 500);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(lockedScrollPosition);
+  expect(await page.locator(".sidebar").evaluate((sidebar) => sidebar.getBoundingClientRect().top)).toBe(0);
+  const listScrollPosition = await page.evaluate(() => window.scrollY);
   await page.getByRole("button", { name: "Close session" }).click();
   await expect(openedRow).not.toHaveClass(/selected-row/);
+  expect(await page.evaluate(() => window.scrollY)).toBe(listScrollPosition);
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect.poll(() => cursorRequests.length).toBe(1);
