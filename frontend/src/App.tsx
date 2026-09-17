@@ -656,6 +656,14 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
   }, []);
 
   useEffect(() => {
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [onClose]);
+
+  useEffect(() => {
     let active = true;
     Promise.all([api.getPayload(session.id, "c2s"), api.getPayload(session.id, "s2c"), api.getFlagMatches(session.id)])
       .then(([c2s, s2c, found]) => { if (active) { setPayloads({ c2s, s2c }); setMatches(found); } })

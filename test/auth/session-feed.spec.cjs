@@ -94,7 +94,8 @@ test("live feed merges refreshes, pauses away from the top and loads history aut
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBeGreaterThan(lockedScrollPosition);
   expect(await page.locator(".sidebar").evaluate((sidebar) => sidebar.getBoundingClientRect().top)).toBe(0);
   const listScrollPosition = await page.evaluate(() => window.scrollY);
-  await page.getByRole("button", { name: "Close session" }).click();
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".detail-panel")).toHaveCount(0);
   await expect(openedRow).not.toHaveClass(/selected-row/);
   expect(await page.evaluate(() => window.scrollY)).toBe(listScrollPosition);
 
