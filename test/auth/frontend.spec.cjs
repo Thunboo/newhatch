@@ -19,6 +19,7 @@ test("auth gate, login errors, logout, expiration and stopped polling", async ({
     dataRequests++;
     if (!authenticated || (unauthorizedPayload && path.includes("/payload/"))) return send(401, { error: "unauthorized" });
     if (path === "/api/sources") return send(200, []);
+    if (path === "/api/collectors") return send(200, { mode: "local", collectors: [] });
     if (path === "/api/sessions") return send(200, { items: [], next_cursor: null });
     return send(404, {});
   });
@@ -40,6 +41,7 @@ test("auth gate, login errors, logout, expiration and stopped polling", async ({
   await page.getByLabel("Password").fill("test-only-password");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
+  await expect(page.getByText(/Collector (online|offline)/)).toHaveCount(0);
   await page.getByRole("button", { name: "Sign out", exact: true }).click();
   await expect(page.getByRole("heading", { name: "Sign in" })).toBeVisible();
   await page.getByLabel("Password").fill("test-only-password");

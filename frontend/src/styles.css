@@ -32,7 +32,8 @@ button:disabled { cursor: default; opacity: .5; }
 .nav-item { width: 100%; height: 38px; padding: 0 10px; display: flex; align-items: center; gap: 10px; color: #9ea5ae; background: transparent; border: 0; border-radius: 5px; text-align: left; }
 .nav-item:hover { color: #fff; background: #22262b; }
 .nav-item.active { color: #fff; background: #292e34; }
-.connection { margin-top: auto; padding: 10px; display: flex; align-items: center; gap: 8px; color: #9299a2; font-size: 12px; }
+.connection-statuses { margin-top: auto; display: grid; }
+.connection { padding: 7px 10px; display: flex; align-items: center; gap: 8px; color: #9299a2; font-size: 12px; }
 .connection span { width: 7px; height: 7px; border-radius: 50%; background: #d95c5c; }
 .connection.online span { background: #58b67a; box-shadow: 0 0 0 3px rgba(88,182,122,.12); }
 
@@ -71,6 +72,7 @@ button:disabled { cursor: default; opacity: .5; }
 .session-table tbody tr { cursor: pointer; }
 .session-table tbody tr:hover { background: #f6f8fa; }
 .session-table tbody tr:last-child td { border-bottom: 0; }
+.session-table .selected-row { outline: 2px solid #17191d; outline-offset: -2px; }
 .session-table .flag-row { background: #fff9df; box-shadow: inset 3px 0 #e0ac22; }
 .session-table .flag-row:hover { background: #fff4c2; }
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 12px; }
@@ -163,7 +165,8 @@ button:disabled { cursor: default; opacity: .5; }
   .brand { display: none; }
   .sidebar nav { margin: 0; display: flex; flex: 1; }
   .nav-item { justify-content: center; }
-  .connection { margin: 0 0 0 8px; width: 22px; padding: 0; font-size: 0; }
+  .connection-statuses { margin: 0 0 0 8px; display: flex; gap: 5px; }
+  .connection { width: 12px; padding: 0; font-size: 0; }
   .workspace { padding: 20px 14px 36px; }
   .filter-bar { grid-template-columns: 1fr 1fr; }
   .search-box { grid-column: 1 / -1; }

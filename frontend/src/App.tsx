@@ -190,7 +190,8 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
 
   useEffect(() => {
     void loadSources();
-  }, [loadSources]);
+    void loadCollectors();
+  }, [loadCollectors, loadSources]);
 
   useEffect(() => {
     const generation = ++feedGenerationRef.current;
@@ -269,10 +270,10 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   useEffect(() => {
     const timer = window.setInterval(() => {
       if (view === "sessions" && !selected && !filters.payload && atLiveEdge) void refreshSessions();
-      if (view === "collectors") void loadCollectors();
+      if (view === "collectors" || analyzerMode === "remote") void loadCollectors();
     }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [atLiveEdge, filters.payload, loadCollectors, refreshSessions, selected, view]);
+  }, [analyzerMode, atLiveEdge, filters.payload, loadCollectors, refreshSessions, selected, view]);
 
   useEffect(() => {
     if (view === "collectors") void loadCollectors();
@@ -285,6 +286,8 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       payload: searchValue.trim() || undefined,
     }));
   }
+
+  const collectorOnline = collectors.some((collector) => collector.connected);
 
   return (
     <div className="app-shell">
@@ -301,8 +304,15 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
             <Server size={17} /> Collectors
           </button>
         </nav>
-        <div className={online ? "connection online" : "connection offline"}>
-          <span /> {online ? "Analyzer online" : "Analyzer offline"}
+        <div className="connection-statuses">
+          <div className={online ? "connection online" : "connection offline"} title={online ? "Analyzer online" : "Analyzer offline"}>
+            <span /> {online ? "Analyzer online" : "Analyzer offline"}
+          </div>
+          {analyzerMode === "remote" && (
+            <div className={collectorOnline ? "connection online" : "connection offline"} title={collectorOnline ? "Collector online" : "Collector offline"}>
+              <span /> {collectorOnline ? "Collector online" : "Collector offline"}
+            </div>
+          )}
         </div>
         <button className="nav-item logout-button" title="Sign out" aria-label="Sign out" disabled={loggingOut} onClick={() => {
           setLoggingOut(true);
@@ -476,7 +486,12 @@ function SessionsView(props: SessionsViewProps) {
           <thead><tr><th>Time</th><th>Source</th><th>Client</th><th></th><th>Server</th><th>Protocol</th><th>Size</th><th>Flag</th></tr></thead>
           <tbody>
             {props.sessions.map((session) => (
-              <tr key={session.id} data-session-id={session.id} className={session.contains_flag ? "flag-row" : ""} onClick={() => props.onSelect(session)}>
+              <tr
+                key={session.id}
+                data-session-id={session.id}
+                className={[session.contains_flag ? "flag-row" : "", props.selected?.id === session.id ? "selected-row" : ""].filter(Boolean).join(" ")}
+                onClick={() => props.onSelect(session)}
+              >
                 <td className="mono time-cell">{formatTime(session.started_at)}</td>
                 <td><span className="source-name">{session.source_name}</span></td>
                 <td className="mono endpoint">{formatEndpoint(session.client_ip, session.client_port)}</td>

@@ -42,6 +42,23 @@ test("live feed merges refreshes, pauses away from the top and loads history aut
 
     if (url.pathname === "/api/auth/me") return send({ authenticated: true, username: "team" });
     if (url.pathname === "/api/sources") return send([]);
+    if (url.pathname === "/api/collectors") return send({
+      mode: "remote",
+      collectors: [{
+        collector_id: "vulnbox-1",
+        connected: true,
+        peer: "10.0.0.2:39090",
+        connected_at: 1,
+        last_activity: 1,
+        captured_packets: 10,
+        sent_packets: 10,
+        dropped_packets: 0,
+        queue_depth: 0,
+        reconnect_count: 0,
+        receiver_dropped_packets: 0,
+        last_error: null,
+      }],
+    });
     if (url.pathname !== "/api/sessions") return route.fulfill({ status: 404, body: "{}" });
 
     const cursor = url.searchParams.get("cursor");
@@ -60,7 +77,14 @@ test("live feed merges refreshes, pauses away from the top and loads history aut
   await page.setViewportSize({ width: 1280, height: 720 });
   await page.goto("/");
   await expect(page.getByText("100 loaded connections")).toBeVisible();
+  await expect(page.getByText("Collector online")).toBeVisible();
   await expect(page.getByRole("button", { name: /load older/i })).toHaveCount(0);
+
+  const openedRow = page.locator('[data-session-id="300"]');
+  await openedRow.click();
+  await expect(openedRow).toHaveClass(/selected-row/);
+  await page.getByRole("button", { name: "Close session" }).click();
+  await expect(openedRow).not.toHaveClass(/selected-row/);
 
   await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect.poll(() => cursorRequests.length).toBe(1);
