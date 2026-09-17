@@ -14,7 +14,7 @@ Questions that should be clarified before the related implementation step.
 
 ## Implementation Choices
 
-- Collector admission is resolved for the initial split: collector connects to `ANALYZER_CONNSTR`; a remote analyzer may restrict exact source IPs with `ALLOWED_COLLECTORS`, while an empty list accepts any host. There is no application-layer authentication; PSK hardening is tracked in backlog.
+- Collector admission is resolved for the initial split: collector connects to an IP or FQDN through `ANALYZER_CONNSTR`; a remote analyzer may restrict IPs or startup-resolved FQDNs with `ALLOWED_COLLECTORS`, while an empty list accepts any host. There is no application-layer authentication; PSK hardening is tracked in backlog.
 - WebSocket parser crate.
 - Suricata EVE ingestion, correlation and live filter synchronization. Current Compose operation is passive and uses a separate static BPF expression.
 - `PACKET_MMAP` ring sizing after capture benchmarks.

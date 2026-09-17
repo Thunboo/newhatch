@@ -25,9 +25,11 @@ Tasks that are not currently being implemented.
 
 ## Collector Transport Hardening
 
-- [ ] Add per-collector pre-shared-key authentication to the collector/analyzer handshake. The initial split trusts `ANALYZER_CONNSTR` on the collector and optional source-IP filtering through `ALLOWED_COLLECTORS` on the analyzer; it does not provide application-layer authentication or encryption.
+- [ ] Add per-collector pre-shared-key authentication to the collector/analyzer handshake. The initial split trusts `ANALYZER_CONNSTR` on the collector and optional IP/FQDN filtering through `ALLOWED_COLLECTORS` on the analyzer; it does not provide application-layer authentication or encryption.
 
 ## MVP Implementation Milestones
+
+- [x] Implement the live session feed and automatic history pagination specified in `newhatch-session-feed-pagination.md`.
 
 - [x] Source/service CRUD with `name`, `port`, `enabled`.
 - [x] Generate kernel BPF filter from enabled sources.

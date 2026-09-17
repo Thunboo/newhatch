@@ -26,7 +26,7 @@ struct RuntimeStats {
 
 pub async fn run(
     collector_id: String,
-    receiver_addr: std::net::SocketAddr,
+    receiver_addr: String,
     mut packets: mpsc::Receiver<ClassifiedPacket>,
     sources: watch::Sender<Arc<Vec<Source>>>,
     counters: Arc<CaptureCounters>,
@@ -41,7 +41,7 @@ pub async fn run(
     loop {
         match connect_once(
             &collector_id,
-            receiver_addr,
+            &receiver_addr,
             &mut packets,
             &sources,
             &counters,
@@ -62,7 +62,7 @@ pub async fn run(
 
 async fn connect_once(
     collector_id: &str,
-    receiver_addr: std::net::SocketAddr,
+    receiver_addr: &str,
     packets: &mut mpsc::Receiver<ClassifiedPacket>,
     sources: &watch::Sender<Arc<Vec<Source>>>,
     counters: &CaptureCounters,

@@ -2,7 +2,7 @@
 
 This test verifies the remote capture path on one Linux host before deploying it across two machines.
 
-1. Configure `.env` with `ANALYZER=remote`, `LISTEN_CONNSTR=0.0.0.0:39090`, `ANALYZER_CONNSTR=127.0.0.1:39090`, and the desired `CAPTURE_INTERFACE`. Optionally set `ALLOWED_COLLECTORS=127.0.0.1`; an empty value accepts any source IP.
+1. Configure `.env` with `ANALYZER=remote`, `LISTEN_CONNSTR=0.0.0.0:39090`, `ANALYZER_CONNSTR=127.0.0.1:39090`, and the desired `CAPTURE_INTERFACE`. Connection strings accept `IP:port` or `FQDN:port`. Optionally set `ALLOWED_COLLECTORS` to comma-separated IPs or FQDNs; an empty value accepts any source IP.
 2. Start analyzer, frontend, collector, and the flag fixture:
 
 ```bash

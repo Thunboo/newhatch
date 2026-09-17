@@ -30,8 +30,8 @@ Status: implemented and automatically verified on 2026-09-07. Actual two-host Li
 
 ### Collector Admission Contract
 
-- [x] Collector connects to the analyzer through `ANALYZER_CONNSTR=IP:PORT`.
-- [x] Remote analyzer listens on `LISTEN_CONNSTR`; optional `ALLOWED_COLLECTORS` exact-IP filtering accepts any host when empty.
+- [x] Collector connects to the analyzer through `ANALYZER_CONNSTR=IP_OR_FQDN:PORT`.
+- [x] Remote analyzer listens on `LISTEN_CONNSTR`; optional `ALLOWED_COLLECTORS` IP/FQDN filtering accepts any host when empty.
 - [x] Do not add application-layer authentication in this tranche. Pre-shared-key authentication is deferred to backlog hardening.
 
 ## Authentication and API Access Control

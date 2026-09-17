@@ -32,4 +32,4 @@ docker build -f test/auth/frontend.Dockerfile -t newhatch-auth-ui-test .
 docker run --rm --shm-size=256m -v /tmp/newhatch-auth-ui:/results newhatch-auth-ui-test
 ```
 
-Playwright uses Chromium and mocked API replies. It checks startup gating, errors/retry, valid and invalid login, logout, expired sessions, raw-payload 401 handling, stopped polling, empty browser token storage and desktop/mobile screenshots. Images are written to `/tmp/newhatch-auth-ui/`. Real cookies and server authorization are covered by the backend and network suites, not by browser mocks.
+Playwright uses Chromium and mocked API replies. It checks startup gating, errors/retry, valid and invalid login, logout, expired sessions, raw-payload 401 handling, stopped polling, the merged live Sessions feed, automatic history pagination, polling pause away from the live edge, empty browser token storage and desktop/mobile screenshots. Images are written to `/tmp/newhatch-auth-ui/`. Real cookies and server authorization are covered by the backend and network suites, not by browser mocks.

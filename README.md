@@ -32,6 +32,8 @@ docker compose up -d --build analyzer frontend
 
 Open `http://localhost:8080`, sign in, then add monitored services on the Sources screen. The analyzer rebuilds its kernel BPF filter from enabled TCP ports.
 
+While the Sessions view is at the live edge, the frontend checks for new sessions every five seconds. Polling pauses while older traffic is being inspected and resumes near the top; see [`LIVE_REFRESH_INTERVAL_MS` and the feed polling effect](frontend/src/App.tsx).
+
 nginx and analyzer use Linux host networking; API port 3000 is loopback-only. Team access requires both an allowed client subnet and valid credentials. Sessions expire after 24 hours by default and are invalidated on analyzer restart. Missing credentials stop startup. See [authentication and deployment details](docs/authentication.md), including HTTPS, cookie settings and configuration changes.
 
 ## Adding Suricata (not ready)
@@ -54,8 +56,8 @@ Prepare `.env`:
 ```env
 ANALYZER=remote
 LISTEN_CONNSTR=0.0.0.0:39090
-# Optional. Empty accepts collector traffic from any host.
-ALLOWED_COLLECTORS=VULNBOX_IP
+# Optional IPs or FQDNs. Empty accepts collector traffic from any host.
+ALLOWED_COLLECTORS=VULNBOX_IP_OR_FQDN
 ```
 
 Start the receiver-side analyzer and frontend:
@@ -69,7 +71,7 @@ On the vulnbox, configure and start only the lightweight collector:
 ```env
 CAPTURE_INTERFACE=eth0
 COLLECTOR_ID=vulnbox-1
-ANALYZER_CONNSTR=ANALYZER_IP:39090
+ANALYZER_CONNSTR=ANALYZER_IP_OR_FQDN:39090
 # Bounded packet buffer; full queues drop new packets. Default: 8192.
 QUEUE_CAPACITY=8192
 ```
@@ -80,7 +82,7 @@ docker compose --profile collector up -d --build collector
 
 ### Security annotation
 
-Open TCP port `39090` between the collector and analyzer. The collector connects only to `ANALYZER_CONNSTR`. A non-empty `ALLOWED_COLLECTORS` restricts the analyzer to the listed comma-separated source IPs; an empty value accepts any host. This initial transport is unencrypted and has no PSK (task is in Backlog), so use it only on the trusted players/VPN network. Sources remain managed in the analyzer UI and are pushed to connected collectors automatically.
+Open TCP port `39090` between the collector and analyzer. `ANALYZER_CONNSTR` accepts either `IP:port` or `FQDN:port` and resolves DNS again on reconnect. `LISTEN_CONNSTR` also accepts either form. A non-empty `ALLOWED_COLLECTORS` accepts comma-separated IPs and FQDNs; names are resolved when analyzer starts, so restart it after their DNS records change. An empty value accepts any host. This initial transport is unencrypted and has no PSK (task is in Backlog), so use it only on the trusted players/VPN network. Sources remain managed in the analyzer UI and are pushed to connected collectors automatically.
 
 ## Useful Checks
 

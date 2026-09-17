@@ -1,6 +1,5 @@
 import {
   AlertTriangle,
-  ArrowDown,
   ArrowRight,
   ArrowUpDown,
   Braces,
@@ -18,7 +17,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import { api } from "./api";
 import { AuthGate } from "./AuthGate";
@@ -39,6 +38,28 @@ type PayloadMode = "text" | "hex";
 type SourceSort = "name-asc" | "name-desc" | "port-asc" | "port-desc";
 
 const emptySource: SourceInput = { name: "", port: 8080, enabled: true };
+const LIVE_REFRESH_INTERVAL_MS = 5_000;
+const LIVE_EDGE_THRESHOLD_PX = 80;
+
+type ScrollAnchor = { sessionId: number; top: number };
+
+function mergeSessions(current: Session[], incoming: Session[]) {
+  const byId = new Map(current.map((session) => [session.id, session]));
+  incoming.forEach((session) => byId.set(session.id, session));
+  return Array.from(byId.values()).sort((left, right) => right.id - left.id);
+}
+
+function captureSessionAnchor(): ScrollAnchor | null {
+  const rows = document.querySelectorAll<HTMLElement>("[data-session-id]");
+  for (const row of rows) {
+    const bounds = row.getBoundingClientRect();
+    if (bounds.bottom > 0 && bounds.top < window.innerHeight) {
+      const sessionId = Number(row.dataset.sessionId);
+      if (Number.isSafeInteger(sessionId)) return { sessionId, top: bounds.top };
+    }
+  }
+  return null;
+}
 
 export function App() {
   return <AuthGate>{(logout) => <AuthenticatedApp onLogout={logout} />}</AuthGate>;
@@ -52,12 +73,42 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [analyzerMode, setAnalyzerMode] = useState<"local" | "remote">("local");
   const [sessions, setSessions] = useState<Session[]>([]);
-  const [nextCursor, setNextCursor] = useState<number | null>(null);
+  const [olderCursor, setOlderCursorState] = useState<number | null>(null);
   const [selected, setSelected] = useState<Session | null>(null);
   const [filters, setFilters] = useState<SessionFilters>({});
   const [searchValue, setSearchValue] = useState("");
-  const [loading, setLoading] = useState(true);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [olderError, setOlderError] = useState<string | null>(null);
+  const [atLiveEdge, setAtLiveEdge] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const sessionsRef = useRef<Session[]>([]);
+  const olderCursorRef = useRef<number | null>(null);
+  const feedGenerationRef = useRef(0);
+  const initialGenerationRef = useRef<number | null>(null);
+  const refreshGenerationRef = useRef<number | null>(null);
+  const olderRequestRef = useRef<{ generation: number; cursor: number } | null>(null);
+  const liveEdgeRef = useRef(true);
+  const pendingAnchorRef = useRef<ScrollAnchor | null>(null);
+
+  const updateOlderCursor = useCallback((cursor: number | null) => {
+    olderCursorRef.current = cursor;
+    setOlderCursorState(cursor);
+  }, []);
+
+  useEffect(() => {
+    sessionsRef.current = sessions;
+  }, [sessions]);
+
+  useLayoutEffect(() => {
+    const anchor = pendingAnchorRef.current;
+    if (!anchor) return;
+    pendingAnchorRef.current = null;
+    const row = document.querySelector<HTMLElement>(`[data-session-id="${anchor.sessionId}"]`);
+    if (!row) return;
+    window.scrollBy({ top: row.getBoundingClientRect().top - anchor.top, left: 0 });
+  }, [sessions]);
 
   const loadSources = useCallback(async () => {
     try {
@@ -69,27 +120,61 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     }
   }, []);
 
-  const loadSessions = useCallback(
-    async (append = false) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const page = await api.listSessions({
-          ...filters,
-          cursor: append && nextCursor ? nextCursor : undefined,
-        });
-        setSessions((current) => (append ? [...current, ...page.items] : page.items));
-        setNextCursor(page.next_cursor);
-        setOnline(true);
-      } catch (caught) {
-        setOnline(false);
-        setError(messageOf(caught));
-      } finally {
-        setLoading(false);
+  const refreshSessions = useCallback(async () => {
+    const generation = feedGenerationRef.current;
+    if (initialGenerationRef.current === generation || refreshGenerationRef.current === generation) return;
+    refreshGenerationRef.current = generation;
+    setRefreshing(true);
+    setError(null);
+    try {
+      const page = await api.listSessions(filters);
+      if (generation !== feedGenerationRef.current) return;
+      if (!liveEdgeRef.current) pendingAnchorRef.current = captureSessionAnchor();
+      setSessions((current) => mergeSessions(current, page.items));
+      setOnline(true);
+    } catch (caught) {
+      if (generation !== feedGenerationRef.current) return;
+      setOnline(false);
+      setError(messageOf(caught));
+    } finally {
+      if (refreshGenerationRef.current === generation) {
+        refreshGenerationRef.current = null;
+        setRefreshing(false);
       }
-    },
-    [filters, nextCursor],
-  );
+    }
+  }, [filters]);
+
+  const loadOlderSessions = useCallback(async () => {
+    const generation = feedGenerationRef.current;
+    const cursor = olderCursorRef.current;
+    if (cursor === null || olderRequestRef.current) return;
+    olderRequestRef.current = { generation, cursor };
+    setLoadingOlder(true);
+    setOlderError(null);
+    try {
+      const page = await api.listSessions({ ...filters, cursor });
+      if (generation !== feedGenerationRef.current || olderCursorRef.current !== cursor) return;
+      const loadedIds = new Set(sessionsRef.current.map((session) => session.id));
+      const added = page.items.filter((session) => !loadedIds.has(session.id)).length;
+      if (page.next_cursor === cursor || (page.items.length > 0 && added === 0)) {
+        setOlderError("History pagination made no progress. Try again.");
+        return;
+      }
+      setSessions((current) => mergeSessions(current, page.items));
+      updateOlderCursor(page.next_cursor);
+      setOnline(true);
+    } catch (caught) {
+      if (generation !== feedGenerationRef.current) return;
+      setOnline(false);
+      setOlderError(messageOf(caught));
+    } finally {
+      const request = olderRequestRef.current;
+      if (request?.generation === generation && request.cursor === cursor) {
+        olderRequestRef.current = null;
+        setLoadingOlder(false);
+      }
+    }
+  }, [filters, updateOlderCursor]);
 
   const loadCollectors = useCallback(async () => {
     try {
@@ -108,16 +193,86 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   }, [loadSources]);
 
   useEffect(() => {
-    void loadSessions(false);
-  }, [filters]);
+    const generation = ++feedGenerationRef.current;
+    initialGenerationRef.current = generation;
+    refreshGenerationRef.current = null;
+    olderRequestRef.current = null;
+    pendingAnchorRef.current = null;
+    sessionsRef.current = [];
+    setSessions([]);
+    updateOlderCursor(null);
+    setInitialLoading(true);
+    setRefreshing(false);
+    setLoadingOlder(false);
+    setOlderError(null);
+    setError(null);
+    liveEdgeRef.current = true;
+    setAtLiveEdge(true);
+    window.scrollTo({ top: 0, left: 0 });
+
+    void api.listSessions(filters).then((page) => {
+      if (generation !== feedGenerationRef.current) return;
+      const unique = mergeSessions([], page.items);
+      sessionsRef.current = unique;
+      setSessions(unique);
+      updateOlderCursor(page.next_cursor);
+      setOnline(true);
+    }).catch((caught) => {
+      if (generation !== feedGenerationRef.current) return;
+      setOnline(false);
+      setError(messageOf(caught));
+    }).finally(() => {
+      if (initialGenerationRef.current === generation) {
+        initialGenerationRef.current = null;
+        setInitialLoading(false);
+      }
+    });
+  }, [filters, updateOlderCursor]);
+
+  useEffect(() => {
+    let frame = 0;
+    let lastPosition = window.scrollY;
+    let direction: "up" | "down" | null = null;
+    const update = () => {
+      frame = 0;
+      const position = window.scrollY;
+      const nextDirection = position < lastPosition ? "up" : position > lastPosition ? "down" : direction;
+      const nextLiveEdge = position <= LIVE_EDGE_THRESHOLD_PX;
+      if (nextLiveEdge !== liveEdgeRef.current) {
+        liveEdgeRef.current = nextLiveEdge;
+        setAtLiveEdge(nextLiveEdge);
+      }
+      if (
+        nextDirection === "up"
+        && direction !== "up"
+        && !nextLiveEdge
+        && view === "sessions"
+        && !selected
+        && !filters.payload
+      ) {
+        void refreshSessions();
+      }
+      direction = nextDirection;
+      lastPosition = position;
+    };
+    const onScroll = () => {
+      if (!frame) frame = window.requestAnimationFrame(update);
+    };
+    window.addEventListener("scroll", onScroll, { passive: true });
+    update();
+    return () => {
+      window.removeEventListener("scroll", onScroll);
+      if (frame) window.cancelAnimationFrame(frame);
+    };
+  }, [filters.payload, refreshSessions, selected, view]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (view === "sessions" && !selected && !filters.payload) void loadSessions(false);
+      if (view === "sessions" && !selected && !filters.payload && atLiveEdge) void refreshSessions();
       if (view === "collectors") void loadCollectors();
-    }, 5_000);
+    }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [filters.payload, loadCollectors, loadSessions, selected, view]);
+  }, [atLiveEdge, filters.payload, loadCollectors, refreshSessions, selected, view]);
 
   useEffect(() => {
     if (view === "collectors") void loadCollectors();
@@ -163,14 +318,17 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
             selected={selected}
             filters={filters}
             searchValue={searchValue}
-            loading={loading}
+            initialLoading={initialLoading}
+            refreshing={refreshing}
+            loadingOlder={loadingOlder}
+            olderError={olderError}
             error={error}
-            nextCursor={nextCursor}
+            hasOlder={olderCursor !== null}
             onFilters={setFilters}
             onSearchValue={setSearchValue}
             onSearch={submitSearch}
-            onRefresh={() => void loadSessions(false)}
-            onLoadMore={() => void loadSessions(true)}
+            onRefresh={() => void refreshSessions()}
+            onLoadOlder={() => void loadOlderSessions()}
             onSelect={setSelected}
           />
         ) : view === "sources" ? (
@@ -235,18 +393,22 @@ type SessionsViewProps = {
   selected: Session | null;
   filters: SessionFilters;
   searchValue: string;
-  loading: boolean;
+  initialLoading: boolean;
+  refreshing: boolean;
+  loadingOlder: boolean;
+  olderError: string | null;
   error: string | null;
-  nextCursor: number | null;
+  hasOlder: boolean;
   onFilters: (updater: (current: SessionFilters) => SessionFilters) => void;
   onSearchValue: (value: string) => void;
   onSearch: (event: FormEvent) => void;
   onRefresh: () => void;
-  onLoadMore: () => void;
+  onLoadOlder: () => void;
   onSelect: (session: Session) => void;
 };
 
 function SessionsView(props: SessionsViewProps) {
+  const historySentinel = useRef<HTMLDivElement>(null);
   const protocols: Array<{ label: string; value?: Protocol }> = [
     { label: "All" },
     { label: "HTTP", value: "http" },
@@ -254,12 +416,22 @@ function SessionsView(props: SessionsViewProps) {
     { label: "Raw TCP", value: "raw_tcp" },
   ];
 
+  useEffect(() => {
+    const sentinel = historySentinel.current;
+    if (!sentinel || !props.hasOlder || props.loadingOlder || props.olderError) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) props.onLoadOlder();
+    }, { rootMargin: "0px 0px 480px" });
+    observer.observe(sentinel);
+    return () => observer.disconnect();
+  }, [props.hasOlder, props.loadingOlder, props.olderError, props.onLoadOlder, props.sessions.length]);
+
   return (
     <>
       <header className="page-header">
-        <div><h1>Sessions</h1><p>{props.sessions.length} recent connections</p></div>
-        <button className="icon-button" title="Refresh sessions" onClick={props.onRefresh} disabled={props.loading}>
-          <RefreshCw size={17} className={props.loading ? "spin" : ""} />
+        <div><h1>Sessions</h1><p>{props.sessions.length} loaded connections</p></div>
+        <button className="icon-button" title="Refresh sessions" onClick={props.onRefresh} disabled={props.initialLoading || props.refreshing}>
+          <RefreshCw size={17} className={props.initialLoading || props.refreshing ? "spin" : ""} />
         </button>
       </header>
 
@@ -304,7 +476,7 @@ function SessionsView(props: SessionsViewProps) {
           <thead><tr><th>Time</th><th>Source</th><th>Client</th><th></th><th>Server</th><th>Protocol</th><th>Size</th><th>Flag</th></tr></thead>
           <tbody>
             {props.sessions.map((session) => (
-              <tr key={session.id} className={session.contains_flag ? "flag-row" : ""} onClick={() => props.onSelect(session)}>
+              <tr key={session.id} data-session-id={session.id} className={session.contains_flag ? "flag-row" : ""} onClick={() => props.onSelect(session)}>
                 <td className="mono time-cell">{formatTime(session.started_at)}</td>
                 <td><span className="source-name">{session.source_name}</span></td>
                 <td className="mono endpoint">{formatEndpoint(session.client_ip, session.client_port)}</td>
@@ -323,11 +495,15 @@ function SessionsView(props: SessionsViewProps) {
             ))}
           </tbody>
         </table>
-        {!props.loading && props.sessions.length === 0 && (
+        {!props.initialLoading && props.sessions.length === 0 && (
           <div className="empty-state"><ListFilter size={20} /><strong>No sessions match</strong></div>
         )}
       </div>
-      {props.nextCursor && <button className="load-more" onClick={props.onLoadMore} disabled={props.loading}><ArrowDown size={15} /> Load older</button>}
+      <div ref={historySentinel} className="history-sentinel" role="status" aria-live="polite">
+        {props.loadingOlder ? "Loading older sessions..." : props.olderError ? (
+          <><span>{props.olderError}</span><button onClick={props.onLoadOlder}>Retry</button></>
+        ) : !props.hasOlder && props.sessions.length > 0 ? "All loaded sessions are shown" : null}
+      </div>
     </>
   );
 }

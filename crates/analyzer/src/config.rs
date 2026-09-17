@@ -1,6 +1,6 @@
 use std::{
     env,
-    net::{IpAddr, SocketAddr},
+    net::{IpAddr, SocketAddr, ToSocketAddrs},
     path::PathBuf,
     str::FromStr,
     time::Duration,
@@ -77,9 +77,10 @@ impl Config {
             "remote" => AnalyzerMode::Remote,
             _ => bail!("ANALYZER must be local or remote"),
         };
-        let collector_listen_addr = env_string("LISTEN_CONNSTR", "0.0.0.0:39090")
-            .parse()
-            .context("invalid LISTEN_CONNSTR")?;
+        let collector_listen_addr = resolve_socket_addr(
+            "LISTEN_CONNSTR",
+            &env_string("LISTEN_CONNSTR", "0.0.0.0:39090"),
+        )?;
         let collector_allowed_ips = parse_ip_list("ALLOWED_COLLECTORS")?;
 
         Ok(Self {
@@ -108,15 +109,45 @@ impl Config {
 
 fn parse_ip_list(name: &str) -> Result<Vec<IpAddr>> {
     let value = env::var(name).unwrap_or_default();
+    resolve_ip_list(name, &value)
+}
+
+fn resolve_socket_addr(name: &str, value: &str) -> Result<SocketAddr> {
     value
+        .to_socket_addrs()
+        .with_context(|| format!("invalid or unresolvable {name}"))?
+        .next()
+        .with_context(|| format!("{name} resolved no addresses"))
+}
+
+fn resolve_ip_list(name: &str, value: &str) -> Result<Vec<IpAddr>> {
+    let mut addresses = Vec::new();
+    for item in value
         .split(',')
         .map(str::trim)
         .filter(|item| !item.is_empty())
-        .map(|item| {
-            item.parse()
-                .with_context(|| format!("invalid IP in {name}"))
-        })
-        .collect()
+    {
+        if let Ok(address) = item.parse::<IpAddr>() {
+            if !addresses.contains(&address) {
+                addresses.push(address);
+            }
+            continue;
+        }
+        let resolved = (item, 0)
+            .to_socket_addrs()
+            .with_context(|| format!("invalid or unresolvable host in {name}: {item}"))?;
+        let mut found = false;
+        for address in resolved {
+            found = true;
+            if !addresses.contains(&address.ip()) {
+                addresses.push(address.ip());
+            }
+        }
+        if !found {
+            bail!("host in {name} resolved no addresses: {item}");
+        }
+    }
+    Ok(addresses)
 }
 
 fn env_string(name: &str, default: &str) -> String {
@@ -178,7 +209,7 @@ fn parse_size_env(name: &str, default: &str) -> Result<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_duration, parse_size_env};
+    use super::{parse_duration, parse_size_env, resolve_ip_list, resolve_socket_addr};
     use std::time::Duration;
 
     #[test]
@@ -199,5 +230,18 @@ mod tests {
             parse_size_env("NEWHATCH_TEST_SIZE", "4MiB").unwrap(),
             4 * 1_024 * 1_024
         );
+    }
+
+    #[test]
+    fn resolves_fqdn_endpoints_and_allowlist_entries() {
+        assert_eq!(
+            resolve_socket_addr("TEST_ENDPOINT", "localhost:39090")
+                .unwrap()
+                .port(),
+            39090
+        );
+        let addresses = resolve_ip_list("TEST_HOSTS", "127.0.0.1,localhost").unwrap();
+        assert!(addresses.contains(&"127.0.0.1".parse().unwrap()));
+        assert!(addresses.iter().all(|address| address.is_loopback()));
     }
 }

@@ -1,4 +1,4 @@
-use std::{env, net::SocketAddr, sync::Arc};
+use std::{env, sync::Arc};
 
 use anyhow::{bail, Context};
 use newhatch_collector::{
@@ -20,10 +20,15 @@ async fn main() -> anyhow::Result<()> {
         bail!("COLLECTOR_ID must contain 1-128 bytes");
     }
     let interface = env::var("CAPTURE_INTERFACE").unwrap_or_else(|_| "eth0".into());
-    let receiver_addr: SocketAddr = env::var("ANALYZER_CONNSTR")
-        .context("ANALYZER_CONNSTR is required")?
-        .parse()
-        .context("ANALYZER_CONNSTR must be an IP:port socket address")?;
+    let receiver_addr = env::var("ANALYZER_CONNSTR").context("ANALYZER_CONNSTR is required")?;
+    if receiver_addr.trim().is_empty() {
+        bail!("ANALYZER_CONNSTR must be a host:port endpoint");
+    }
+    tokio::net::lookup_host(&receiver_addr)
+        .await
+        .with_context(|| format!("ANALYZER_CONNSTR cannot resolve {receiver_addr}"))?
+        .next()
+        .with_context(|| format!("ANALYZER_CONNSTR resolved no addresses for {receiver_addr}"))?;
     let capacity: usize = env::var("QUEUE_CAPACITY")
         .unwrap_or_else(|_| "8192".into())
         .parse()

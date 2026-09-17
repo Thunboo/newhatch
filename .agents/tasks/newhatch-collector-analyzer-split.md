@@ -602,8 +602,8 @@ Simulate slow analyzer and verify packet drop counters increase instead of unbou
 ## Connection admission
 
 Actual connection flow works like this:
-- collector on vulnbox sends data to `ANALYZER_CONNSTR=IP:PORT`
-- analyzer may restrict source IPs with `ALLOWED_COLLECTORS`; an empty value accepts any host
+- collector on vulnbox sends data to `ANALYZER_CONNSTR=IP_OR_FQDN:PORT`
+- analyzer may restrict source IPs or startup-resolved FQDNs with `ALLOWED_COLLECTORS`; an empty value accepts any host
 
 The initial transport has no application-layer authentication. PSK authentication is deferred to backlog hardening.
 
