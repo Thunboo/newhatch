@@ -54,6 +54,9 @@
 - Scrolling upward triggers one anchored catch-up refresh. Older pages load automatically through an observer sentinel.
 - Opening session detail highlights its table row with a black inner outline.
 - Detail closes with its close button or `Escape`.
+- Detail shows an `Esc to close` hint next to the close button.
+- Text payload view decodes JSON/Unicode escapes and percent-encoded URL components; session-header HTTP paths use the same visual decoding.
+- Each C2S/S2C panel has one-click copy. Optional frontend-only JSON formatting keeps JSON compact when disabled and pretty-prints bodies plus bounded nested JSON strings when enabled; Hex remains raw.
 - Wheel input over detail cannot scroll the underlying list; wheel input over the exposed list still can.
 - Desktop sidebar is fixed. In remote mode it shows analyzer and aggregate collector status lights; local mode omits the collector light.
 - `frontend/src/assets/logo.png` is bundled by Vite.

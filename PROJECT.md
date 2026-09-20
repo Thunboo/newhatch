@@ -229,4 +229,4 @@ The first executable vertical slice includes:
 - optional split capture: a diskless `newhatch-collector` forwards versioned protobuf `ClassifiedPacket` messages to analyzer over a persistent bounded connection
 - optional analyzer-side peer-IP admission, analyzer-pushed Source snapshots, collector-aware flow isolation, reconnect/drop counters and a Collectors UI view
 
-The split deployment still needs validation on the actual two-host Linux/VPN topology. The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and target-host VLAN validation remain incomplete.
+The split deployment has been validated across the user's two-host VPN/FQDN setup after rebuilding the collector from current sources; final validation on the actual competition network remains operational follow-up. The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and target-host VLAN validation remain incomplete.

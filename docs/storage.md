@@ -259,7 +259,7 @@ The current writer blocks for the first completed session, drains up to 499 addi
 batch size: 1..500 sessions
 ```
 
-There is no time-based batch flush yet. The `rows >= 5000 OR query time >= 100 ms` note in `docs/todo.md` remains unresolved and must not be conflated with this 500-session writer batch.
+There is no time-based batch flush yet. A tentative product note proposes `rows >= 5000 OR query time >= 100 ms`, but its target subsystem remains unresolved; it must not be conflated with this 500-session writer batch. The question is tracked in `.agents/memory/open-questions.md` and `.agents/tasks/backlog.md`.
 
 ## Retention
 

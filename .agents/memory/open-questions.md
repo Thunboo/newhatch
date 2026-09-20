@@ -6,7 +6,7 @@ Clarify these only when implementing the related area.
 
 - What exact identity should link a flag-bearing S2C response to the triggering player/request?
 - Should HTTP/WebSocket detail expose explicit request/response boundaries and navigation?
-- What does the `docs/todo.md` auto-removal note (`rows >= 5000 OR query time >= 100 ms`) govern?
+- What subsystem does the tentative auto-removal threshold (`rows >= 5000 OR query time >= 100 ms`) govern: retention cleanup, query/search budgeting, write batching or something else?
 
 ## Capture And Reassembly
 

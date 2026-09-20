@@ -14,15 +14,18 @@
 
 ## Canonical Context
 
-Перед архитектурой или production-кодом читать:
+Перед существенными изменениями всегда читать:
 
 1. `PROJECT.md` - product goal, stack, constraints and current implementation status.
-2. `README.md` - quick-start runbook.
-3. `docs/agent-decisions.md` - фиксированные решения и запреты.
-4. `docs/architecture.md` - pipeline, concurrency, reassembly, Suricata model.
-5. `docs/storage.md` - SQLite + append-only segment storage.
-6. `docs/mvp.md` - MVP UX, screens, filters, configuration.
-7. `docs/todo.md` - текущие заметки пользователя.
+2. `docs/agent-decisions.md` - фиксированные решения и запреты.
+
+Остальные документы открывать по области задачи:
+
+- `README.md` - запуск, настройка и local/split deployment.
+- `docs/architecture.md` - capture, pipeline, concurrency, reassembly, protocol and Suricata model.
+- `docs/storage.md` - SQLite, append-only segments, retention and recovery.
+- `docs/mvp.md` - frontend UX, screens, filters and user-visible behavior.
+- `docs/authentication.md` - login, sessions, nginx ingress and team access.
 
 Служебные файлы:
 
@@ -30,6 +33,7 @@
 - `.agents/memory/decisions.md` - сжатый журнал решений.
 - `.agents/memory/glossary.md` - терминология.
 - `.agents/memory/open-questions.md` - вопросы, которые требуют уточнения перед реализацией.
+- `.agents/memory/documentation-sync.md` - карта намеренных повторений и файлов, которые нужно синхронизировать.
 - `.agents/tasks/backlog.md` - следующие задачи.
 - `.codex/context.md` - быстрый контекст для новых сессий.
 - `.codex/commands.md` - команды разработки и проверок.
@@ -80,11 +84,13 @@
 - Keep changes scoped to the current task.
 - Do not revert user changes unless explicitly requested.
 - Update docs or agent memory when behavior, architecture, or project decisions change.
+- Treat files outside `.agents/` and `.codex/` as player/developer-facing documentation; treat `.agents/` and `.codex/` as agent memory and compressed context.
+- When updating or saving context, use `.agents/memory/documentation-sync.md` and synchronize every affected mirror. Resolve discrepancies immediately or record an explicit open question.
 - Run relevant checks when the codebase has commands for them.
 
 ## Current Unknowns
 
-The first implementation choices are recorded in `docs/agent-decisions.md`. Remaining unknowns include:
+The first implementation choices are recorded in `docs/agent-decisions.md`. The synchronized full list lives in `.agents/memory/open-questions.md`; high-level unknowns include:
 
 - exact WebSocket frame parser/representation.
 - exact Suricata correlation mechanism.
@@ -92,3 +98,5 @@ The first implementation choices are recorded in `docs/agent-decisions.md`. Rema
 - recovery and reconciliation behavior for truncated segment tails.
 - handling policy for VLAN traffic, IPv6 extension headers and large reassembly gaps.
 - exact representation for linking flag-containing replies to triggering client/player requests.
+- collector PSK format, replay protection and whether transport encryption is required.
+- target subsystem for the tentative `rows >= 5000 OR query time >= 100 ms` threshold.

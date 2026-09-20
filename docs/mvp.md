@@ -206,6 +206,7 @@ Current status: `suricata_alerts` exists in session metadata and the UI can disp
 Expected environment/configuration values include:
 
 ```text
+ANALYZER=local|remote
 CAPTURE_INTERFACE=<interface>
 LISTEN_ADDR=127.0.0.1:3000
 USERNAME=<installation user>
@@ -226,6 +227,25 @@ MAX_STREAM_BYTES=4MiB
 FRONTEND_PORT=8080
 SURICATA_BPF_FILTER=<separate passive IDS filter>
 ```
+
+Remote analyzer additionally uses:
+
+```text
+LISTEN_CONNSTR=0.0.0.0:39090
+ALLOWED_COLLECTORS=<comma-separated IPs/FQDNs; empty accepts any host>
+```
+
+Standalone collector uses:
+
+```text
+CAPTURE_INTERFACE=<interface>
+COLLECTOR_ID=vulnbox-1
+ANALYZER_CONNSTR=<analyzer IP/FQDN:port>
+QUEUE_CAPACITY=8192
+RUST_LOG=newhatch=info
+```
+
+See the root `README.md` for local and split deployment workflows and `.env.example` for the maintained defaults.
 
 Source/service port configuration may live in SQLite and be edited from the UI/API.
 

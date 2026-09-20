@@ -187,7 +187,7 @@ Prefer simple local mechanisms when they satisfy the workload.
 
 Before generating production code, the agent should:
 
-1. inspect all project docs
+1. inspect `PROJECT.md`, this decision file and only the task-relevant focused docs routed by `AGENTS.md`
 2. keep terminology consistent with these files
 3. avoid silently changing fixed decisions
 4. identify unresolved details as TODO/TBD instead of inventing incompatible architecture
@@ -206,6 +206,9 @@ The following may still require implementation-time decisions:
 - exact request/reply payload-range linkage for flag-containing server responses
 - crash-tail repair and SQLite reconciliation
 - VLAN and IPv6 extension-header handling
+- measured `PACKET_MMAP`/RX-ring sizing and adoption
+- collector PSK format, replay protection and whether transport encryption is required
+- target subsystem for the tentative `rows >= 5000 OR query time >= 100 ms` threshold
 
 These are not permission to replace the agreed architecture.
 

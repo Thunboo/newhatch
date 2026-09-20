@@ -20,8 +20,5 @@
 
 ## Перед Решением
 
-- Проверить `PROJECT.md`.
-- Проверить `README.md`.
-- Проверить `docs/agent-decisions.md`.
-- Проверить `docs/architecture.md`.
-- Проверить `docs/storage.md`.
+- Следовать canonical-context routing из `AGENTS.md` и открывать только релевантные focused docs.
+- Перед сохранением нового решения проверить карту `.agents/memory/documentation-sync.md`.

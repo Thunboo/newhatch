@@ -23,4 +23,6 @@ This folder does not replace `PROJECT.md`, `README.md` or `docs/`. It keeps a co
 - `docs/architecture.md`.
 - `docs/storage.md`.
 - `docs/mvp.md`.
-- `docs/todo.md`.
+- `docs/authentication.md`.
+
+Intentional repetition and synchronization routes are recorded in `memory/documentation-sync.md`.

@@ -16,8 +16,6 @@ This folder restores working context between sessions. Product direction remains
 
 ## Read First
 
-- `AGENTS.md`.
-- `PROJECT.md` for product context and current implementation status.
-- `README.md` for startup instructions.
-- `docs/agent-decisions.md`.
-- `.codex/context.md`.
+- Start with `AGENTS.md`; it owns canonical-context routing.
+- Use `.codex/context.md` for a fast state summary, then open only the focused canonical documents required by `AGENTS.md` and the current task.
+- Use `.agents/memory/documentation-sync.md` before saving refreshed context.

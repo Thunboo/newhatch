@@ -30,6 +30,7 @@ Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is opt
 - Pause newest polling in history; upward motion performs one anchored catch-up.
 - Infinite cursor pagination loads older sessions automatically.
 - Open detail highlights its row and closes with `Escape`.
+- Detail exposes C2S/S2C copy, decoded text/path display and optional body JSON formatting; Hex remains raw.
 - Wheel over detail never scrolls the underlying list; wheel over exposed list does.
 - Desktop sidebar is fixed.
 - Remote mode shows analyzer and collector status lights; local mode has no collector light.

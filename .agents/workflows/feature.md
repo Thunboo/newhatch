@@ -4,13 +4,13 @@
 
 ## Шаги
 
-1. Прочитать `PROJECT.md`, `README.md`, `docs/agent-decisions.md` и релевантный документ из `docs/`.
+1. Прочитать `AGENTS.md` и следовать его canonical-context routing для текущей функции.
 2. Сопоставить feature с MVP scope: sources, sessions, detail, search, flag UX, Suricata enrichment или storage/capture foundation.
 3. Найти затронутые boundaries: capture, flow/reassembly, protocol parsing, flag scanning, storage, API, UI.
 4. Проверить, что feature не вводит запрещенную инфраструктуру или raw packet persistence.
 5. Внести минимальные связанные изменения.
 6. Добавить проверки на поведение и regressions.
-7. Обновить `docs/` или `.agents/memory/decisions.md`, если появилось новое проектное решение.
+7. Обновить authoritative docs и все затронутые mirrors по `.agents/memory/documentation-sync.md`.
 
 ## Acceptance Bias
 

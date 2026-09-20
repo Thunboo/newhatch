@@ -90,6 +90,7 @@ The network suite builds an isolated stack and removes its own resources. See `t
 
 ```text
 CAPTURE_INTERFACE=eth0
+ANALYZER=local
 LISTEN_ADDR=127.0.0.1:3000
 USERNAME=<required>
 PASSWORD=<required>
@@ -110,5 +111,25 @@ FRONTEND_PORT=8080
 SURICATA_BPF_FILTER=tcp and (port 8080)
 RUST_LOG=newhatch=info
 ```
+
+Remote analyzer:
+
+```text
+ANALYZER=remote
+LISTEN_CONNSTR=0.0.0.0:39090
+ALLOWED_COLLECTORS=<comma-separated IPs/FQDNs; empty accepts any host>
+```
+
+Standalone collector:
+
+```text
+CAPTURE_INTERFACE=eth0
+COLLECTOR_ID=vulnbox-1
+ANALYZER_CONNSTR=<analyzer IP/FQDN:port>
+QUEUE_CAPACITY=8192
+RUST_LOG=newhatch=info
+```
+
+The root `README.md` is the operator runbook for choosing local or split deployment. `.env.example` contains the maintained defaults.
 
 Suricata's filter is currently independent from Sources and must be kept aligned manually.
