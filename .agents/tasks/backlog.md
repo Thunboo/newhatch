@@ -38,6 +38,7 @@ Tasks that are not currently being implemented.
 - [x] TCP reassembly with split-flag-safe stream scanning.
 - [x] HTTP/1.x metadata parsing.
 - [ ] WebSocket frame extraction after the implemented HTTP Upgrade classification.
+- [ ] Explore HTTP action-chain reconstruction for Attack/Defence analysis. First parse every request/response transaction inside persistent TCP connections; then evaluate heuristic correlation across connections using collector/source, client IP, cookies or tokens, usernames, object IDs and a bounded time window. A practical first UI may show related actions preceding a flag-bearing response rather than claim a definitive attack graph. Account for NAT, parallel attacks, connection reuse and the inability to inspect encrypted HTTPS without decryption.
 - [x] Append-only segment writer.
 - [x] SQLite metadata schema and initial indexes.
 - [x] Session list API with bounded pagination/cursors.
