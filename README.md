@@ -34,7 +34,7 @@ Open `http://localhost:8080`, sign in, then add monitored services on the Source
 
 While the Sessions view is at the live edge, the frontend checks for new sessions every five seconds. Polling pauses while older traffic is being inspected and resumes near the top; see [`LIVE_REFRESH_INTERVAL_MS` and the feed polling effect](frontend/src/App.tsx).
 
-nginx and analyzer use Linux host networking; API port 3000 is loopback-only. Team access requires both an allowed client subnet and valid credentials. Sessions expire after 24 hours by default and are invalidated on analyzer restart. Missing credentials stop startup. See [authentication and deployment details](docs/authentication.md), including HTTPS, cookie settings and configuration changes.
+nginx and analyzer use Linux host networking; API port 3000 is loopback-only. Team access requires both an allowed client subnet and valid credentials. The frontend has no data volume, and nginx explicitly rejects paths resembling dotfiles, SQLite databases or stored payload segments. Sessions expire after 24 hours by default and are invalidated on analyzer restart. Missing credentials stop startup. See [authentication and deployment details](docs/authentication.md), including HTTPS, cookie settings and configuration changes.
 
 ## Adding Suricata (not ready)
 

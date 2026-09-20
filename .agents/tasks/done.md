@@ -4,6 +4,7 @@ Completed project work.
 
 ## Completed
 
+- [x] 2026-09-20: Completed GitHub issue #7 defense in depth: protected-route and no-side-effect auth tests now cover collectors and mutations; nginx explicitly denies dotfile/database/segment paths; frontend data-volume isolation and real IPv4/IPv6 network behavior are regression-tested.
 - [x] 2026-09-20 (consolidated record): Implemented the Rust analyzer/backend workspace, TypeScript frontend and Docker Compose scaffolds plus validated runtime configuration for capture, storage, queues and flow limits.
 - [x] 2026-09-20 (consolidated record): Fixed the initial implementation choices for direct Linux capture, SQLite, HTTP parsing, React/Vite, capture capabilities/networking, flow idle timeout and the binary segment record format.
 - [x] 2026-09-20 (consolidated record): Completed the core session pipeline: Source CRUD and kernel BPF rebuilds, live capture, flow identity, TCP reassembly, split-safe flag scanning and HTTP metadata parsing.

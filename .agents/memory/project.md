@@ -45,6 +45,7 @@
 - nginx admits loopback plus `AUTH_ALLOWED_SUBNETS`; empty means loopback only.
 - Analyzer API binds loopback and requires server-side sessions for protected routes.
 - Cookies are HttpOnly/SameSite Strict; `AUTH_COOKIE_SECURE` controls HTTPS-only cookies.
+- Frontend has no analyzer data volume; nginx returns 404 for dotfiles and storage/database/segment artifact paths.
 
 ## Implemented UI Behavior
 
@@ -71,6 +72,7 @@
 ## Verification
 
 - Frontend production image builds successfully.
+- Auth verification passes across Rust workspace/integration tests, nginx/Compose unit tests and the isolated IPv4/IPv6 Docker network suite, including sensitive artifact denial and unauthorized mutation side effects.
 - Current Playwright suite has three passing scenarios, including auth, live feed/pagination, collector status, selected-row state, independent scrolling, fixed sidebar, mobile layout and Escape close.
 - Split deployment has worked over the user's VPN after rebuilding the collector with current FQDN-capable code.
 

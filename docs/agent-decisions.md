@@ -241,7 +241,7 @@ These are implementation decisions, not changes to the fixed architecture. Curre
 
 ## Single-User Authentication (2026-09-07)
 
-The user explicitly extended the MVP to include environment-configured `USERNAME`/`PASSWORD`, startup Argon2id hashing, `tower-sessions` cookies and a bounded ephemeral server-side store. `SESSION_EXPIRACY` uses duration values such as `86400s`. No roles, registration or identity provider are introduced. nginx enforces loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs against actual TCP peers; the analyzer separately enforces loopback transport and authenticated sessions. Never grant trust based on forwarded headers or blanket Docker/private ranges. Health is public and minimal. Full configuration, expiration, cookie, origin and deployment policy is in `docs/authentication.md`.
+The user explicitly extended the MVP to include environment-configured `USERNAME`/`PASSWORD`, startup Argon2id hashing, `tower-sessions` cookies and a bounded ephemeral server-side store. `SESSION_EXPIRACY` uses duration values such as `86400s`. No roles, registration or identity provider are introduced. nginx enforces loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs against actual TCP peers; the analyzer separately enforces loopback transport and authenticated sessions. Never grant trust based on forwarded headers or blanket Docker/private ranges. Health is public and minimal. The frontend must not mount analyzer data, and nginx denies storage/config artifact paths instead of serving the SPA fallback. Full configuration, expiration, cookie, origin and deployment policy is in `docs/authentication.md`.
 
 ## Collector / Analyzer Split (2026-09-07)
 

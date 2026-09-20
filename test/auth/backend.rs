@@ -171,6 +171,7 @@ async fn every_data_route_and_future_route_is_protected() {
         ("POST", "/api/sources"),
         ("PUT", "/api/sources/1"),
         ("DELETE", "/api/sources/1"),
+        ("GET", "/api/collectors"),
         ("GET", "/api/sessions"),
         ("GET", "/api/sessions/1"),
         ("GET", "/api/sessions/1/payload/c2s"),
@@ -198,6 +199,25 @@ async fn every_data_route_and_future_route_is_protected() {
             "{method} {path}"
         );
     }
+}
+
+#[tokio::test]
+async fn rejected_mutation_does_not_change_the_catalog() {
+    let (app, dir) = app("86400s", "false");
+    let response = call(
+        &app,
+        "127.0.0.1:1",
+        "POST",
+        "/api/sources",
+        "",
+        r#"{"name":"unauthorized","port":31337,"enabled":true}"#,
+        &[],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+
+    let catalog = Catalog::open(dir.path().join("index.sqlite")).unwrap();
+    assert!(catalog.list_sources(false).unwrap().is_empty());
 }
 
 #[tokio::test]

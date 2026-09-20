@@ -36,6 +36,16 @@ if mode == "allowed":
     asset = re.search(rb'src="([^"]+\.js)"', index).group(1).decode()
     assert request("GET", asset)[0] == 200
     assert request("GET", "/api/sessions")[0] == 401
+    assert request("GET", "/api/collectors")[0] == 401
+    assert request("POST", "/api/sources", {"name": "unauthorized", "port": 31337,
+                                                "enabled": True})[0] == 401
+    for path in ["/.env", "/.git/config", "/data/index.sqlite", "/segments/1.seg",
+                 "/index.sqlite", "/backup.db"]:
+        status, _, _ = request("GET", path)
+        assert status == 404, (path, status)
+    for path in ["/%2eenv", "/data/%2e%2e/index.sqlite", "/segments/%2e%2e/.env"]:
+        status, _, _ = request("GET", path)
+        assert status in (400, 404), (path, status)
     assert request("POST", "/api/auth/login", {**credentials, "password": "wrong"})[0] == 401
     status, headers, _ = request("POST", "/api/auth/login", credentials)
     assert status == 200, status

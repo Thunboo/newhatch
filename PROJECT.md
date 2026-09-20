@@ -225,7 +225,7 @@ The first executable vertical slice includes:
 - `Нюхач` UI branding plus local source search and sorting by name or port
 - Docker Compose services for analyzer, frontend and parallel passive Suricata capture
 - an opt-in nginx flag-capture fixture on TCP port 18080
-- single-user authentication with startup Argon2id hashing, bounded server-side sessions, loopback-only API and nginx team-CIDR access control; see `docs/authentication.md`
+- single-user authentication with startup Argon2id hashing, bounded server-side sessions, loopback-only API, nginx team-CIDR access control and explicit denial of storage/config artifact paths; see `docs/authentication.md`
 - optional split capture: a diskless `newhatch-collector` forwards versioned protobuf `ClassifiedPacket` messages to analyzer over a persistent bounded connection
 - optional analyzer-side peer-IP admission, analyzer-pushed Source snapshots, collector-aware flow isolation, reconnect/drop counters and a Collectors UI view
 

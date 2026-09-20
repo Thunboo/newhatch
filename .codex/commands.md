@@ -35,6 +35,8 @@ Vite development mode proxies `/api` to `http://127.0.0.1:3000`.
 
 ## Docker Compose
 
+> Agent safety rule: do not execute Docker/Docker Compose commands or control OrbStack. Present the required commands to the user for manual execution because daemon operations can disrupt the VPN tunnel.
+
 Validate configuration:
 
 ```bash

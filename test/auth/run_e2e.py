@@ -35,6 +35,6 @@ try:
     client("allowed", "192.168.1.10", "logout", session)
     ipv6_session = client("allowed", "fd42:1234::10", "allowed")
     client("allowed", "fd42:1234::10", "logout", ipv6_session)
-    print("PASS: team IPv4/IPv6 login, me, sessions, logout; remote denial with valid cookies and forged headers; public health; loopback-only backend")
+    print("PASS: team IPv4/IPv6 auth; protected data routes and mutations; sensitive artifact denial; remote denial with forged headers; public health; loopback-only backend")
 finally:
     subprocess.run(COMPOSE + ["down", "--volumes", "--remove-orphans"], check=True)

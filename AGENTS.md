@@ -87,6 +87,7 @@
 - Treat files outside `.agents/` and `.codex/` as player/developer-facing documentation; treat `.agents/` and `.codex/` as agent memory and compressed context.
 - When updating or saving context, use `.agents/memory/documentation-sync.md` and synchronize every affected mirror. Resolve discrepancies immediately or record an explicit open question.
 - Run relevant checks when the codebase has commands for them.
+- Never run `docker`, `docker compose`, access the Docker daemon, or start/stop/reconfigure OrbStack. These actions can break the user's VPN tunnel and disconnect the session. When Docker-backed verification is needed, give the exact commands to the user and wait for the user to run them and provide the result.
 
 ## Current Unknowns
 

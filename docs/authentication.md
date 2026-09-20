@@ -36,6 +36,8 @@ team browser -> nginx (actual client IP: loopback or explicit CIDR)
 
 Production Compose uses Linux host networking for both nginx and analyzer. nginx is the only exposed application HTTP listener; analyzer binds loopback and has no published port. `AUTH_ALLOWED_SUBNETS` is enforced by nginx on every UI, asset and API request except `GET /api/health`. A valid password or session does not bypass the allowlist. Backend middleware independently checks Axum `ConnectInfo<SocketAddr>` before authentication. Only IPv4 loopback `127.0.0.0/8` and IPv6 `::1` qualify; Docker/private IPs do not.
 
+The frontend container has no `/data` volume. nginx explicitly returns 404 for dotfiles, `data`/`segments` paths and SQLite/database/segment filename extensions. These rules are defense in depth against a future image or mount mistake; SQLite and reconstructed payload segments remain analyzer-only files and are never web resources.
+
 No forwarded/client-IP header grants access, and nginx Real-IP rewriting is not enabled. Do not add Docker gateway CIDRs to make a NAT-collapsed deployment work. Docker Desktop/VM forwarding and additional reverse proxies can hide browser IPs: verify the actual ingress addresses on the target Linux host. If another TLS proxy is added, it must preserve the source address or become a separately reviewed ingress boundary; do not simply trust its forwarded headers.
 
 `GET /api/health` returns only `{"status":"ok"}` publicly through nginx. Local `POST /api/auth/login` accepts JSON username/password and returns 200 plus a cookie on success, generic 401 on incorrect credentials. `GET /api/auth/me` returns authenticated identity; `POST /api/auth/logout` invalidates it. All data routes and unknown/future API paths require a session. Non-local analyzer peers receive 403 before credentials are considered. Overlapping password checks return 429 instead of queuing expensive Argon2 work.
@@ -54,4 +56,4 @@ HTTP does not encrypt passwords, session cookies or captured payloads. Use the c
 
 ## Verification
 
-See [`test/auth/README.md`](../test/auth/README.md) for backend, CIDR, real-network and browser tests. The isolated Docker suite validates genuine peer preservation in a shared network namespace. Final host-network ingress still needs a check from an actual team machine on the competition network.
+See [`test/auth/README.md`](../test/auth/README.md) for backend, CIDR, real-network and browser tests. The suites enumerate protected routes, reject unauthorized mutations without catalog side effects, verify that frontend has no data volume, and probe sensitive artifact paths through nginx. The isolated Docker suite validates genuine peer preservation in a shared network namespace. Final host-network ingress still needs a check from an actual team machine on the competition network.

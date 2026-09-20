@@ -13,6 +13,10 @@ Only unfinished tasks that are not currently being implemented belong here.
 
 - [ ] Add per-collector pre-shared-key authentication to the collector/analyzer handshake. The initial split trusts `ANALYZER_CONNSTR` on the collector and optional IP/FQDN filtering through `ALLOWED_COLLECTORS` on the analyzer; it does not provide application-layer authentication or encryption.
 
+## Low-Priority Security Hardening
+
+- [ ] Harden local storage against unprivileged host users: run analyzer as a dedicated non-root UID/GID, restrict the data directory to `0700` and SQLite/WAL/SHM/segment files to `0600`, review `.env` permissions, retain only capture capabilities required by `AF_PACKET`, and add Unix-permission/container-runtime regression tests. This is separate from the HTTP authorization boundary covered by GitHub issue #7.
+
 ## MVP Implementation Milestones
 
 - [ ] WebSocket frame extraction after the implemented HTTP Upgrade classification.

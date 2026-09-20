@@ -17,11 +17,13 @@ Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is opt
 
 ## Runtime
 
+- Agent restriction: never run Docker/Docker Compose or control OrbStack; give Docker commands to the user for manual execution because daemon operations can interrupt the VPN tunnel.
 - Local: `ANALYZER=local`.
 - Split analyzer: `ANALYZER=remote`, `LISTEN_CONNSTR=HOST:PORT`, optional `ALLOWED_COLLECTORS`.
 - Collector: `ANALYZER_CONNSTR=HOST:PORT`, `QUEUE_CAPACITY=8192` default.
 - IP/FQDN endpoints are supported; bracket literal IPv6. Empty collector allowlist accepts any host. No PSK yet.
 - Auth: `USERNAME`, `PASSWORD`, `SESSION_EXPIRACY`, `AUTH_ALLOWED_SUBNETS`, `AUTH_COOKIE_SECURE`.
+- Frontend has no `/data` mount; nginx explicitly rejects dotfile, database and segment artifact paths.
 
 ## Current UI Invariants
 
@@ -42,6 +44,7 @@ Retention is by rotated segment count. Rotation and expiration are checked only 
 ## Current Verification
 
 - Frontend production Docker build passes.
+- Rust auth integration, nginx/Compose unit checks and isolated IPv4/IPv6 Docker auth e2e pass, including sensitive artifact denial and rejected mutation side effects.
 - Playwright: three scenarios pass, including current session-feed and detail interactions.
 - Real split deployment over VPN/FQDN works after rebuilding the collector from current sources.
 

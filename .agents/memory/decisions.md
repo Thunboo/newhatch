@@ -31,7 +31,12 @@ Canonical details live in `docs/agent-decisions.md`. This file is the compact wo
 - User configuration favors plaintext `USERNAME`/`PASSWORD`; analyzer hashes the password at startup.
 - Use bounded ephemeral server-side sessions and absolute expiration.
 - nginx enforces real client CIDRs; analyzer trusts only local proxy transport.
+- Frontend must not mount analyzer data; nginx denies dotfile/database/segment artifact paths before the SPA fallback.
 - Do not trust forwarded headers, use permissive CORS, store browser tokens, or expose analyzer port 3000.
+
+## Agent Runtime Safety
+
+- Agents must not invoke Docker/Docker Compose, contact the Docker daemon, or control OrbStack because doing so can break the user's VPN tunnel. Provide exact Docker commands for the user to run instead.
 
 ## UI Choices
 

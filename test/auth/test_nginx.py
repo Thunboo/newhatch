@@ -8,6 +8,7 @@ spec = importlib.util.spec_from_file_location("configure_nginx", ROOT / "docker/
 config = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(config)
 TEMPLATE = (ROOT / "docker/nginx.conf").read_text()
+COMPOSE = (ROOT / "compose.yaml").read_text()
 
 
 class IngressConfigTests(unittest.TestCase):
@@ -46,6 +47,20 @@ class IngressConfigTests(unittest.TestCase):
         self.assertNotIn("set_real_ip_from", rendered)
         self.assertNotIn("real_ip_header", rendered)
         self.assertNotIn("@", rendered)
+
+    def test_sensitive_artifact_paths_are_explicitly_denied(self):
+        rendered = self.rules("")
+        self.assertIn("location ~ (^|/)\\.", rendered)
+        self.assertIn("location ~* (^|/)(data|segments)(/|$)", rendered)
+        self.assertIn("location ~* \\.(sqlite|sqlite3|db|seg)(/|$)", rendered)
+        self.assertGreaterEqual(rendered.count("return 404;"), 3)
+
+    def test_frontend_has_no_data_volume(self):
+        frontend = COMPOSE.partition("\n  frontend:")[2].partition("\n  suricata:")[0]
+        self.assertTrue(frontend, "frontend service block not found")
+        self.assertNotIn("volumes:", frontend)
+        self.assertNotIn("/data", frontend)
+        self.assertIn("- ./data:/data", COMPOSE)
 
 
 if __name__ == "__main__":
