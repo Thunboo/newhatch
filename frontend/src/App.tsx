@@ -682,7 +682,10 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
     >
       <header className="detail-header">
         <div><span className="eyebrow">Session #{session.id}</span><h2>{session.http.method ? `${session.http.method} ${decodeDisplayEscapes(session.http.path ?? "")}` : protocolLabel(session.protocol)}</h2></div>
-        <button className="icon-button" title="Close session" onClick={onClose}><X size={18} /></button>
+        <div className="detail-close">
+          <span className="close-hint"><kbd>Esc</kbd> to close</span>
+          <button className="icon-button" title="Close session" aria-label="Close session" onClick={onClose}><X size={18} /></button>
+        </div>
       </header>
       <div className="detail-meta">
         <span><small>Source</small>{session.source_name} :{session.server_port}</span>
