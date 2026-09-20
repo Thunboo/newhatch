@@ -4,6 +4,7 @@ import {
   ArrowUpDown,
   Braces,
   Check,
+  Copy,
   Flag,
   ListFilter,
   LogOut,
@@ -22,6 +23,7 @@ import type { FormEvent, ReactNode } from "react";
 import { api } from "./api";
 import { AuthGate } from "./AuthGate";
 import logoUrl from "./assets/logo.png";
+import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
 import type {
   ByteRange,
   FlagMatches,
@@ -635,6 +637,7 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
   const [payloads, setPayloads] = useState<{ c2s: Uint8Array; s2c: Uint8Array } | null>(null);
   const [matches, setMatches] = useState<FlagMatches>({ c2s: [], s2c: [] });
   const [mode, setMode] = useState<PayloadMode>("text");
+  const [formatJson, setFormatJson] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
 
@@ -678,7 +681,7 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
       aria-label="Session detail"
     >
       <header className="detail-header">
-        <div><span className="eyebrow">Session #{session.id}</span><h2>{session.http.method ? `${session.http.method} ${session.http.path ?? ""}` : protocolLabel(session.protocol)}</h2></div>
+        <div><span className="eyebrow">Session #{session.id}</span><h2>{session.http.method ? `${session.http.method} ${decodeDisplayEscapes(session.http.path ?? "")}` : protocolLabel(session.protocol)}</h2></div>
         <button className="icon-button" title="Close session" onClick={onClose}><X size={18} /></button>
       </header>
       <div className="detail-meta">
@@ -690,6 +693,15 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
       {session.contains_flag && <div className="flag-banner"><Flag size={16} /><strong>{session.flag_count} flag match{session.flag_count === 1 ? "" : "es"}</strong><span>{session.flag_direction.toUpperCase()}</span></div>}
       {error && <div className="error-strip"><AlertTriangle size={16} /> {error}</div>}
       <div className="payload-toolbar">
+        <label className={mode === "text" ? "json-toggle" : "json-toggle disabled"}>
+          <input
+            type="checkbox"
+            checked={formatJson}
+            disabled={mode !== "text"}
+            onChange={(event) => setFormatJson(event.target.checked)}
+          />
+          Format JSON
+        </label>
         <div className="segmented" role="group" aria-label="Payload format">
           <button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Braces size={14} /> Text</button>
           <button className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")}><Settings2 size={14} /> Hex</button>
@@ -697,35 +709,99 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
       </div>
       {!payloads ? <div className="payload-loading"><RefreshCw className="spin" size={17} /></div> : (
         <div className="streams">
-          <Stream title="Client -> server" bytes={payloads.c2s} ranges={matches.c2s} mode={mode} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
-          <Stream title="Server -> client" bytes={payloads.s2c} ranges={matches.s2c} mode={mode} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
+          <Stream title="Client -> server" bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
+          <Stream title="Server -> client" bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
         </div>
       )}
     </aside>
   );
 }
 
-function Stream({ title, bytes, ranges, mode, flagged }: { title: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; flagged: boolean }) {
+function Stream({ title, bytes, ranges, mode, formatJson, flagged }: { title: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean }) {
+  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
+  const copyResetRef = useRef<number | null>(null);
+  const text = useMemo(
+    () => mode === "hex" ? toHex(bytes) : displayPayload(bytes, formatJson),
+    [bytes, formatJson, mode],
+  );
+  const matchTexts = useMemo(
+    () => ranges.map((range) => decodeDisplayEscapes(decodePayload(bytes.slice(range.start, range.end)))).filter(Boolean),
+    [bytes, ranges],
+  );
+
+  useEffect(() => () => {
+    if (copyResetRef.current !== null) window.clearTimeout(copyResetRef.current);
+  }, []);
+
+  const copy = async () => {
+    try {
+      await copyText(text);
+      setCopyState("copied");
+    } catch {
+      setCopyState("failed");
+    }
+    if (copyResetRef.current !== null) window.clearTimeout(copyResetRef.current);
+    copyResetRef.current = window.setTimeout(() => setCopyState("idle"), 1_500);
+  };
+
   return (
     <section className={flagged ? "stream flagged" : "stream"}>
-      <header><span>{title}</span><span className="mono">{formatBytes(bytes.length)}</span></header>
-      <pre>{mode === "hex" ? toHex(bytes) : <HighlightedBytes bytes={bytes} ranges={ranges} />}</pre>
+      <header>
+        <span>{title}</span>
+        <span className="stream-actions">
+          <span className="mono">{formatBytes(bytes.length)}</span>
+          <button className={copyState === "failed" ? "copy-failed" : ""} type="button" title={copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : `Copy ${title}`} aria-label={`Copy ${title}`} onClick={() => void copy()}>
+            {copyState === "copied" ? <Check size={14} /> : copyState === "failed" ? <AlertTriangle size={14} /> : <Copy size={14} />}
+          </button>
+        </span>
+      </header>
+      <pre>{mode === "text" && matchTexts.length > 0 ? <HighlightedText text={text} matches={matchTexts} /> : text}</pre>
     </section>
   );
 }
 
-function HighlightedBytes({ bytes, ranges }: { bytes: Uint8Array; ranges: ByteRange[] }) {
-  const decoder = useMemo(() => new TextDecoder("utf-8", { fatal: false }), []);
-  if (ranges.length === 0) return <>{decoder.decode(bytes)}</>;
+function HighlightedText({ text, matches }: { text: string; matches: string[] }) {
+  const positions: ByteRange[] = [];
+  const cursors = new Map<string, number>();
+  for (const match of matches) {
+    const start = text.indexOf(match, cursors.get(match) ?? 0);
+    if (start < 0) continue;
+    positions.push({ start, end: start + match.length });
+    cursors.set(match, start + match.length);
+  }
+  positions.sort((left, right) => left.start - right.start);
+
   const chunks: ReactNode[] = [];
   let offset = 0;
-  for (const range of ranges) {
-    if (range.start > offset) chunks.push(decoder.decode(bytes.slice(offset, range.start)));
-    chunks.push(<mark key={`${range.start}-${range.end}`}>{decoder.decode(bytes.slice(range.start, range.end))}</mark>);
+  for (const range of positions) {
+    if (range.start < offset) continue;
+    if (range.start > offset) chunks.push(text.slice(offset, range.start));
+    chunks.push(<mark key={`${range.start}-${range.end}`}>{text.slice(range.start, range.end)}</mark>);
     offset = range.end;
   }
-  if (offset < bytes.length) chunks.push(decoder.decode(bytes.slice(offset)));
+  if (offset < text.length) chunks.push(text.slice(offset));
   return <>{chunks}</>;
+}
+
+async function copyText(text: string): Promise<void> {
+  if (navigator.clipboard?.writeText) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // The legacy path still works on browsers that restrict Clipboard API to HTTPS.
+    }
+  }
+
+  const textarea = document.createElement("textarea");
+  textarea.value = text;
+  textarea.style.position = "fixed";
+  textarea.style.opacity = "0";
+  document.body.appendChild(textarea);
+  textarea.select();
+  const copied = document.execCommand("copy");
+  textarea.remove();
+  if (!copied) throw new Error("Clipboard access was denied");
 }
 
 function toHex(bytes: Uint8Array): string {

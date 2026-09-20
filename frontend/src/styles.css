@@ -143,7 +143,10 @@ button:disabled { cursor: default; opacity: .5; }
 .detail-meta small { margin-bottom: 3px; display: block; color: #858c94; font-size: 10px; text-transform: uppercase; }
 .flag-banner { min-height: 42px; padding: 0 20px; display: flex; align-items: center; gap: 8px; color: #6d5308; background: #fff2b8; border-bottom: 1px solid #e5d17a; font-size: 13px; }
 .flag-banner span { margin-left: auto; font-family: ui-monospace, monospace; font-size: 11px; }
-.payload-toolbar { min-height: 48px; padding: 7px 20px; display: flex; justify-content: flex-end; align-items: center; }
+.payload-toolbar { min-height: 48px; padding: 7px 20px; display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.json-toggle { display: flex; align-items: center; gap: 7px; color: #4f5760; font-size: 12px; font-weight: 600; }
+.json-toggle input { margin: 0; accent-color: #202329; }
+.json-toggle.disabled { color: #9ca2a9; }
 .segmented { display: flex; padding: 2px; background: #e8ebee; border-radius: 5px; }
 .segmented button { height: 28px; padding: 0 9px; display: flex; align-items: center; gap: 5px; color: #68707a; background: transparent; border: 0; border-radius: 4px; font-size: 12px; }
 .segmented button.active { color: #202329; background: #fff; box-shadow: 0 1px 2px rgba(0,0,0,.08); }
@@ -151,6 +154,10 @@ button:disabled { cursor: default; opacity: .5; }
 .stream { min-height: 0; display: flex; flex-direction: column; background: #16191d; border: 1px solid #0d0f11; border-radius: 6px; overflow: hidden; }
 .stream.flagged { border-color: #c99918; box-shadow: 0 0 0 1px rgba(201,153,24,.2); }
 .stream > header { min-height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; color: #aeb5bd; background: #22262b; border-bottom: 1px solid #30353b; font-size: 11px; font-weight: 650; text-transform: uppercase; }
+.stream-actions { display: flex; align-items: center; gap: 8px; }
+.stream-actions button { width: 26px; height: 26px; display: grid; place-items: center; color: #aeb5bd; background: transparent; border: 1px solid #41474e; border-radius: 4px; }
+.stream-actions button:hover { color: #fff; border-color: #747c85; background: #2d3238; }
+.stream-actions button.copy-failed { color: #f08a8a; border-color: #965151; }
 .stream pre { min-height: 0; margin: 0; padding: 12px; flex: 1; overflow: auto; overscroll-behavior: contain; color: #d9dee4; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .stream mark { padding: 1px 0; color: #17191d; background: #f3c840; }
 .payload-loading { display: grid; place-items: center; flex: 1; color: #777e87; }

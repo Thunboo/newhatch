@@ -105,6 +105,13 @@ Required representations:
 - human-readable text
 - raw bytes / hex-oriented fallback
 
+The current detail panel decodes UTF-8, JSON escape sequences and percent-encoded
+URL components for the text representation. Each direction has its own copy
+button. With `Format JSON` disabled, an HTTP body (or a standalone JSON payload)
+is kept compact on one line. Enabling the frontend-only control pretty-prints
+that JSON and expands JSON objects or arrays stored in string fields to a bounded
+nesting depth. Hex view and stored payload bytes stay unchanged.
+
 HTTP and WebSocket parsing should improve readability without destroying access to raw reconstructed bytes.
 
 ## Session Protocol Values
