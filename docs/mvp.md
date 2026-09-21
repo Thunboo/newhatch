@@ -19,6 +19,10 @@ The player should not need to manually create PCAP files.
 
 The internal project/service name is `newhatch`. The current browser title and sidebar branding use the display name `Нюхач` and the bundled `frontend/src/assets/logo.png` asset.
 
+## Localization
+
+The frontend has English and Russian UI dictionaries. With no saved preference it selects Russian when any browser language starts with `ru`, otherwise English. The language button is in the sidebar immediately above Sign out; an explicit choice is stored as the non-sensitive `newhatch_language` browser preference. Switching language also updates the document `lang` attribute and locale-aware date/number formatting.
+
 ## Primary Screens
 
 ### 1. Sources / Services

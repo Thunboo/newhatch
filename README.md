@@ -36,6 +36,8 @@ While the Sessions view is at the live edge, the frontend checks for new session
 
 nginx and analyzer use Linux host networking; API port 3000 is loopback-only. Team access requires both an allowed client subnet and valid credentials. The frontend has no data volume, and nginx explicitly rejects paths resembling dotfiles, SQLite databases or stored payload segments. Sessions expire after 24 hours by default and are invalidated on analyzer restart. Missing credentials stop startup. See [authentication and deployment details](docs/authentication.md), including HTTPS, cookie settings and configuration changes.
 
+The UI supports English and Russian. Without a saved preference it follows the browser language; after sign-in, use the language button immediately above Sign out to persist a choice.
+
 ## Adding Suricata (not ready)
 
 Suricata is optional passive IDS enrichment and is not required for capture or flag detection. Start the complete default stack, including Suricata, with:

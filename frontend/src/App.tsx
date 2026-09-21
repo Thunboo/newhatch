@@ -7,6 +7,7 @@ import {
   Copy,
   Flag,
   ListFilter,
+  Languages,
   LogOut,
   Network,
   Plus,
@@ -23,6 +24,7 @@ import type { FormEvent, ReactNode } from "react";
 import { api } from "./api";
 import { AuthGate } from "./AuthGate";
 import logoUrl from "./assets/logo.png";
+import { useI18n } from "./i18n";
 import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
 import type {
   ByteRange,
@@ -68,6 +70,7 @@ export function App() {
 }
 
 function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
+  const { t, toggleLanguage } = useI18n();
   const [loggingOut, setLoggingOut] = useState(false);
   const [view, setView] = useState<View>("sessions");
   const [online, setOnline] = useState(false);
@@ -118,9 +121,9 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       setOnline(true);
     } catch (caught) {
       setOnline(false);
-      setError(messageOf(caught));
+      setError(messageOf(caught, t("error.unexpected")));
     }
-  }, []);
+  }, [t]);
 
   const refreshSessions = useCallback(async () => {
     const generation = feedGenerationRef.current;
@@ -137,14 +140,14 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     } catch (caught) {
       if (generation !== feedGenerationRef.current) return;
       setOnline(false);
-      setError(messageOf(caught));
+      setError(messageOf(caught, t("error.unexpected")));
     } finally {
       if (refreshGenerationRef.current === generation) {
         refreshGenerationRef.current = null;
         setRefreshing(false);
       }
     }
-  }, [filters]);
+  }, [filters, t]);
 
   const loadOlderSessions = useCallback(async () => {
     const generation = feedGenerationRef.current;
@@ -159,7 +162,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       const loadedIds = new Set(sessionsRef.current.map((session) => session.id));
       const added = page.items.filter((session) => !loadedIds.has(session.id)).length;
       if (page.next_cursor === cursor || (page.items.length > 0 && added === 0)) {
-        setOlderError("History pagination made no progress. Try again.");
+        setOlderError(t("history.noProgress"));
         return;
       }
       setSessions((current) => mergeSessions(current, page.items));
@@ -168,7 +171,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     } catch (caught) {
       if (generation !== feedGenerationRef.current) return;
       setOnline(false);
-      setOlderError(messageOf(caught));
+      setOlderError(messageOf(caught, t("error.unexpected")));
     } finally {
       const request = olderRequestRef.current;
       if (request?.generation === generation && request.cursor === cursor) {
@@ -176,7 +179,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         setLoadingOlder(false);
       }
     }
-  }, [filters, updateOlderCursor]);
+  }, [filters, t, updateOlderCursor]);
 
   const loadCollectors = useCallback(async () => {
     try {
@@ -186,9 +189,9 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       setOnline(true);
     } catch (caught) {
       setOnline(false);
-      setError(messageOf(caught));
+      setError(messageOf(caught, t("error.unexpected")));
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     void loadSources();
@@ -223,14 +226,14 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     }).catch((caught) => {
       if (generation !== feedGenerationRef.current) return;
       setOnline(false);
-      setError(messageOf(caught));
+      setError(messageOf(caught, t("error.unexpected")));
     }).finally(() => {
       if (initialGenerationRef.current === generation) {
         initialGenerationRef.current = null;
         setInitialLoading(false);
       }
     });
-  }, [filters, updateOlderCursor]);
+  }, [filters, t, updateOlderCursor]);
 
   useEffect(() => {
     let frame = 0;
@@ -295,31 +298,34 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     <div className="app-shell">
       <aside className="sidebar">
         <div className="brand"><img src={logoUrl} alt="Нюхач" /></div>
-        <nav aria-label="Primary navigation">
-          <button title="Sessions" className={view === "sessions" ? "nav-item active" : "nav-item"} onClick={() => setView("sessions")}>
-            <Radio size={17} /> Sessions
+        <nav aria-label={t("nav.primary")}>
+          <button title={t("nav.sessions")} className={view === "sessions" ? "nav-item active" : "nav-item"} onClick={() => setView("sessions")}>
+            <Radio size={17} /> {t("nav.sessions")}
           </button>
-          <button title="Sources" className={view === "sources" ? "nav-item active" : "nav-item"} onClick={() => setView("sources")}>
-            <Network size={17} /> Sources
+          <button title={t("nav.sources")} className={view === "sources" ? "nav-item active" : "nav-item"} onClick={() => setView("sources")}>
+            <Network size={17} /> {t("nav.sources")}
           </button>
-          <button title="Collectors" className={view === "collectors" ? "nav-item active" : "nav-item"} onClick={() => setView("collectors")}>
-            <Server size={17} /> Collectors
+          <button title={t("nav.collectors")} className={view === "collectors" ? "nav-item active" : "nav-item"} onClick={() => setView("collectors")}>
+            <Server size={17} /> {t("nav.collectors")}
           </button>
         </nav>
         <div className="connection-statuses">
-          <div className={online ? "connection online" : "connection offline"} title={online ? "Analyzer online" : "Analyzer offline"}>
-            <span /> {online ? "Analyzer online" : "Analyzer offline"}
+          <div className={online ? "connection online" : "connection offline"} title={online ? t("status.analyzerOnline") : t("status.analyzerOffline")}>
+            <span /> {online ? t("status.analyzerOnline") : t("status.analyzerOffline")}
           </div>
           {analyzerMode === "remote" && (
-            <div className={collectorOnline ? "connection online" : "connection offline"} title={collectorOnline ? "Collector online" : "Collector offline"}>
-              <span /> {collectorOnline ? "Collector online" : "Collector offline"}
+            <div className={collectorOnline ? "connection online" : "connection offline"} title={collectorOnline ? t("status.collectorOnline") : t("status.collectorOffline")}>
+              <span /> {collectorOnline ? t("status.collectorOnline") : t("status.collectorOffline")}
             </div>
           )}
         </div>
-        <button className="nav-item logout-button" title="Sign out" aria-label="Sign out" disabled={loggingOut} onClick={() => {
+        <button className="nav-item language-button" title={t("language.action")} aria-label={t("language.action")} onClick={toggleLanguage}>
+          <Languages size={17} /><span>{t("language.target")}</span>
+        </button>
+        <button className="nav-item logout-button" title={t("auth.signOut")} aria-label={t("auth.signOut")} disabled={loggingOut} onClick={() => {
           setLoggingOut(true);
-          void onLogout().catch(() => setError("Sign-out failed. Please try again.")).finally(() => setLoggingOut(false));
-        }}><LogOut size={17} /><span>Sign out</span></button>
+          void onLogout().catch(() => setError(t("auth.signOutFailed"))).finally(() => setLoggingOut(false));
+        }}><LogOut size={17} /><span>{t("auth.signOut")}</span></button>
       </aside>
 
       <main className="workspace">
@@ -356,18 +362,19 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
 }
 
 function CollectorsView({ mode, collectors, onRefresh }: { mode: "local" | "remote"; collectors: Collector[]; onRefresh: () => void }) {
+  const { locale, t } = useI18n();
   return (
     <>
       <header className="page-header">
-        <div><h1>Collectors</h1><p>{mode === "local" ? "Local capture active" : `${collectors.filter((item) => item.connected).length} connected`}</p></div>
-        <button className="icon-button" title="Refresh collectors" onClick={onRefresh}><RefreshCw size={17} /></button>
+        <div><h1>{t("nav.collectors")}</h1><p>{mode === "local" ? t("collectors.localActive") : t("collectors.connected", { count: collectors.filter((item) => item.connected).length })}</p></div>
+        <button className="icon-button" title={t("collectors.refresh")} aria-label={t("collectors.refresh")} onClick={onRefresh}><RefreshCw size={17} /></button>
       </header>
       {mode === "local" && (
         <div className="local-collector-notice">
           <Server size={20} />
           <div>
-            <strong>Запущен режим локальной сборки</strong>
-            <p>Подключение коллекторов невозможно. Установите <code>ANALYZER=remote</code> и добавьте источники.</p>
+            <strong>{t("collectors.localTitle")}</strong>
+            <p>{t("collectors.localDescriptionBefore")}<code>ANALYZER=remote</code>{t("collectors.localDescriptionAfter")}</p>
           </div>
         </div>
       )}
@@ -379,16 +386,16 @@ function CollectorsView({ mode, collectors, onRefresh }: { mode: "local" | "remo
               <span className={collector.connected ? "collector-state online" : "collector-state"} />
               <div><strong>{collector.collector_id}</strong><span className="mono">{collector.peer}</span></div>
             </div>
-            <CollectorMetric label="Captured" value={collector.captured_packets} />
-            <CollectorMetric label="Sent" value={collector.sent_packets} />
-            <CollectorMetric label="Dropped" value={collector.dropped_packets + collector.receiver_dropped_packets} warning={collector.dropped_packets + collector.receiver_dropped_packets > 0} />
-            <CollectorMetric label="Queue" value={collector.queue_depth} />
-            <CollectorMetric label="Reconnects" value={collector.reconnect_count} />
-            <div className="collector-activity"><small>Last activity</small><span>{formatDateTime(collector.last_activity)}</span></div>
+            <CollectorMetric label={t("collectors.captured")} value={collector.captured_packets} />
+            <CollectorMetric label={t("collectors.sent")} value={collector.sent_packets} />
+            <CollectorMetric label={t("collectors.dropped")} value={collector.dropped_packets + collector.receiver_dropped_packets} warning={collector.dropped_packets + collector.receiver_dropped_packets > 0} />
+            <CollectorMetric label={t("collectors.queue")} value={collector.queue_depth} />
+            <CollectorMetric label={t("collectors.reconnects")} value={collector.reconnect_count} />
+            <div className="collector-activity"><small>{t("collectors.lastActivity")}</small><span>{formatDateTime(collector.last_activity, locale)}</span></div>
             {collector.last_error && <div className="collector-error" title={collector.last_error}><AlertTriangle size={14} /> {collector.last_error}</div>}
           </article>
         ))}
-        {collectors.length === 0 && <div className="empty-state"><Server size={20} /><strong>No collectors seen</strong></div>}
+        {collectors.length === 0 && <div className="empty-state"><Server size={20} /><strong>{t("collectors.empty")}</strong></div>}
       </div>
       )}
     </>
@@ -396,7 +403,8 @@ function CollectorsView({ mode, collectors, onRefresh }: { mode: "local" | "remo
 }
 
 function CollectorMetric({ label, value, warning = false }: { label: string; value: number; warning?: boolean }) {
-  return <div className={warning ? "collector-metric warning" : "collector-metric"}><small>{label}</small><strong className="mono">{value.toLocaleString()}</strong></div>;
+  const { locale } = useI18n();
+  return <div className={warning ? "collector-metric warning" : "collector-metric"}><small>{label}</small><strong className="mono">{value.toLocaleString(locale)}</strong></div>;
 }
 
 type SessionsViewProps = {
@@ -420,12 +428,13 @@ type SessionsViewProps = {
 };
 
 function SessionsView(props: SessionsViewProps) {
+  const { locale, t } = useI18n();
   const historySentinel = useRef<HTMLDivElement>(null);
   const protocols: Array<{ label: string; value?: Protocol }> = [
-    { label: "All" },
+    { label: t("sessions.all") },
     { label: "HTTP", value: "http" },
     { label: "WebSocket", value: "websocket" },
-    { label: "Raw TCP", value: "raw_tcp" },
+    { label: t("sessions.rawTcp"), value: "raw_tcp" },
   ];
 
   useEffect(() => {
@@ -441,8 +450,8 @@ function SessionsView(props: SessionsViewProps) {
   return (
     <>
       <header className="page-header">
-        <div><h1>Sessions</h1><p>{props.sessions.length} loaded connections</p></div>
-        <button className="icon-button" title="Refresh sessions" onClick={props.onRefresh} disabled={props.initialLoading || props.refreshing}>
+        <div><h1>{t("nav.sessions")}</h1><p>{t("sessions.loaded", { count: props.sessions.length })}</p></div>
+        <button className="icon-button" title={t("sessions.refresh")} aria-label={t("sessions.refresh")} onClick={props.onRefresh} disabled={props.initialLoading || props.refreshing}>
           <RefreshCw size={17} className={props.initialLoading || props.refreshing ? "spin" : ""} />
         </button>
       </header>
@@ -450,15 +459,15 @@ function SessionsView(props: SessionsViewProps) {
       <section className="filter-bar">
         <form className="search-box" onSubmit={props.onSearch}>
           <Search size={16} />
-          <input value={props.searchValue} onChange={(event) => props.onSearchValue(event.target.value)} placeholder="Search reconstructed payload" />
-          {props.searchValue && <button type="button" title="Clear search" onClick={() => props.onSearchValue("")}><X size={15} /></button>}
+          <input value={props.searchValue} onChange={(event) => props.onSearchValue(event.target.value)} placeholder={t("sessions.searchPayload")} />
+          {props.searchValue && <button type="button" title={t("common.clearSearch")} aria-label={t("common.clearSearch")} onClick={() => props.onSearchValue("")}><X size={15} /></button>}
         </form>
         <select
-          aria-label="Source filter"
+          aria-label={t("sessions.sourceFilter")}
           value={props.filters.sourceId ?? ""}
           onChange={(event) => props.onFilters((current) => ({ ...current, sourceId: Number(event.target.value) || undefined }))}
         >
-          <option value="">All sources</option>
+          <option value="">{t("sessions.allSources")}</option>
           {props.sources.map((source) => <option key={source.id} value={source.id}>{source.name} :{source.port}</option>)}
         </select>
         <label className="flag-toggle">
@@ -467,11 +476,11 @@ function SessionsView(props: SessionsViewProps) {
             checked={props.filters.containsFlag ?? false}
             onChange={(event) => props.onFilters((current) => ({ ...current, containsFlag: event.target.checked || undefined }))}
           />
-          <Flag size={15} /> Flags only
+          <Flag size={15} /> {t("sessions.flagsOnly")}
         </label>
       </section>
 
-      <div className="protocol-tabs" role="tablist" aria-label="Protocol filter">
+      <div className="protocol-tabs" role="tablist" aria-label={t("sessions.protocolFilter")}>
         {protocols.map((protocol) => (
           <button
             key={protocol.label}
@@ -485,7 +494,7 @@ function SessionsView(props: SessionsViewProps) {
 
       <div className="table-wrap">
         <table className="session-table">
-          <thead><tr><th>Time</th><th>Source</th><th>Client</th><th></th><th>Server</th><th>Protocol</th><th>Size</th><th>Flag</th></tr></thead>
+          <thead><tr><th>{t("sessions.time")}</th><th>{t("common.source")}</th><th>{t("sessions.client")}</th><th></th><th>{t("sessions.server")}</th><th>{t("common.protocol")}</th><th>{t("sessions.size")}</th><th>{t("sessions.flag")}</th></tr></thead>
           <tbody>
             {props.sessions.map((session) => (
               <tr
@@ -494,18 +503,18 @@ function SessionsView(props: SessionsViewProps) {
                 className={[session.contains_flag ? "flag-row" : "", props.selected?.id === session.id ? "selected-row" : ""].filter(Boolean).join(" ")}
                 onClick={() => props.onSelect(session)}
               >
-                <td className="mono time-cell">{formatTime(session.started_at)}</td>
+                <td className="mono time-cell">{formatTime(session.started_at, locale)}</td>
                 <td><span className="source-name">{session.source_name}</span></td>
                 <td className="mono endpoint">{formatEndpoint(session.client_ip, session.client_port)}</td>
                 <td className="arrow-cell"><ArrowRight size={14} /></td>
                 <td className="mono endpoint">{formatEndpoint(session.server_ip, session.server_port)}</td>
-                <td><span className={`protocol protocol-${session.protocol}`}>{protocolLabel(session.protocol)}</span></td>
+                <td><span className={`protocol protocol-${session.protocol}`}>{protocolLabel(session.protocol, t("sessions.rawTcp"))}</span></td>
                 <td className="mono">{formatBytes(session.bytes_c2s + session.bytes_s2c)}</td>
                 <td>
                   <div className="signals">
-                    {session.contains_flag && <span className="flag-signal" title={`${session.flag_count} flag matches`}><Flag size={14} /> {session.flag_count}</span>}
-                    {session.suricata_alerts > 0 && <span className="alert-signal" title="Suricata alerts"><AlertTriangle size={14} /> {session.suricata_alerts}</span>}
-                    {session.incomplete && <span className="incomplete-dot" title="Incomplete session" />}
+                    {session.contains_flag && <span className="flag-signal" title={t("sessions.flagMatches", { count: session.flag_count })}><Flag size={14} /> {session.flag_count}</span>}
+                    {session.suricata_alerts > 0 && <span className="alert-signal" title={t("sessions.suricataAlerts")}><AlertTriangle size={14} /> {session.suricata_alerts}</span>}
+                    {session.incomplete && <span className="incomplete-dot" title={t("sessions.incomplete")} />}
                   </div>
                 </td>
               </tr>
@@ -513,19 +522,20 @@ function SessionsView(props: SessionsViewProps) {
           </tbody>
         </table>
         {!props.initialLoading && props.sessions.length === 0 && (
-          <div className="empty-state"><ListFilter size={20} /><strong>No sessions match</strong></div>
+          <div className="empty-state"><ListFilter size={20} /><strong>{t("sessions.empty")}</strong></div>
         )}
       </div>
       <div ref={historySentinel} className="history-sentinel" role="status" aria-live="polite">
-        {props.loadingOlder ? "Loading older sessions..." : props.olderError ? (
-          <><span>{props.olderError}</span><button onClick={props.onLoadOlder}>Retry</button></>
-        ) : !props.hasOlder && props.sessions.length > 0 ? "All loaded sessions are shown" : null}
+        {props.loadingOlder ? t("sessions.loadingOlder") : props.olderError ? (
+          <><span>{props.olderError}</span><button onClick={props.onLoadOlder}>{t("common.retry")}</button></>
+        ) : !props.hasOlder && props.sessions.length > 0 ? t("sessions.allShown") : null}
       </div>
     </>
   );
 }
 
 function SourcesView({ sources, onChanged }: { sources: Source[]; onChanged: () => Promise<void> }) {
+  const { locale, t } = useI18n();
   const [draft, setDraft] = useState<SourceInput>(emptySource);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
@@ -542,11 +552,11 @@ function SourcesView({ sources, onChanged }: { sources: Source[]; onChanged: () 
     return filtered.sort((left, right) => {
       const direction = sort.endsWith("desc") ? -1 : 1;
       const comparison = sort.startsWith("name")
-        ? left.name.localeCompare(right.name, undefined, { numeric: true, sensitivity: "base" })
+        ? left.name.localeCompare(right.name, locale, { numeric: true, sensitivity: "base" })
         : left.port - right.port;
       return direction * (comparison || left.id - right.id);
     });
-  }, [query, sort, sources]);
+  }, [locale, query, sort, sources]);
 
   async function create(event: FormEvent) {
     event.preventDefault();
@@ -557,7 +567,7 @@ function SourcesView({ sources, onChanged }: { sources: Source[]; onChanged: () 
       setDraft(emptySource);
       await onChanged();
     } catch (caught) {
-      setError(messageOf(caught));
+      setError(messageOf(caught, t("error.unexpected")));
     } finally {
       setSaving(false);
     }
@@ -567,65 +577,65 @@ function SourcesView({ sources, onChanged }: { sources: Source[]; onChanged: () 
     try {
       await api.updateSource(source.id, { name: source.name, port: source.port, enabled: !source.enabled });
       await onChanged();
-    } catch (caught) { setError(messageOf(caught)); }
+    } catch (caught) { setError(messageOf(caught, t("error.unexpected"))); }
   }
 
   async function remove(source: Source) {
-    if (!window.confirm(`Delete source "${source.name}"?`)) return;
+    if (!window.confirm(t("sources.deleteConfirm", { name: source.name }))) return;
     try {
       await api.deleteSource(source.id);
       await onChanged();
-    } catch (caught) { setError(messageOf(caught)); }
+    } catch (caught) { setError(messageOf(caught, t("error.unexpected"))); }
   }
 
   return (
     <>
-      <header className="page-header"><div><h1>Sources</h1><p>Kernel capture filter inputs</p></div></header>
+      <header className="page-header"><div><h1>{t("nav.sources")}</h1><p>{t("sources.subtitle")}</p></div></header>
       <form className="source-form" onSubmit={create}>
-        <label>Name<input required maxLength={80} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="web" /></label>
-        <label>TCP port<input required type="number" min={1} max={65535} value={draft.port} onChange={(event) => setDraft({ ...draft, port: Number(event.target.value) })} /></label>
-        <label className="enabled-field"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} /> Enabled</label>
-        <button className="primary-button" disabled={saving}><Plus size={16} /> Add source</button>
+        <label>{t("sources.name")}<input required maxLength={80} value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} placeholder="web" /></label>
+        <label>{t("sources.tcpPort")}<input required type="number" min={1} max={65535} value={draft.port} onChange={(event) => setDraft({ ...draft, port: Number(event.target.value) })} /></label>
+        <label className="enabled-field"><input type="checkbox" checked={draft.enabled} onChange={(event) => setDraft({ ...draft, enabled: event.target.checked })} /> {t("sources.enabled")}</label>
+        <button className="primary-button" disabled={saving}><Plus size={16} /> {t("sources.add")}</button>
       </form>
       {error && <div className="error-strip"><AlertTriangle size={16} /> {error}</div>}
-      <section className="source-tools" aria-label="Source list controls">
+      <section className="source-tools" aria-label={t("sources.controls")}>
         <div className="search-box">
           <Search size={16} />
           <input
             type="search"
             value={query}
             onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search by name or port"
-            aria-label="Search sources by name or port"
+            placeholder={t("sources.search")}
+            aria-label={t("sources.search")}
           />
-          {query && <button type="button" title="Clear search" onClick={() => setQuery("")}><X size={15} /></button>}
+          {query && <button type="button" title={t("common.clearSearch")} aria-label={t("common.clearSearch")} onClick={() => setQuery("")}><X size={15} /></button>}
         </div>
         <label className="source-sort">
           <ArrowUpDown size={15} />
-          <select value={sort} onChange={(event) => setSort(event.target.value as SourceSort)} aria-label="Sort sources">
-            <option value="name-asc">Name A-Z</option>
-            <option value="name-desc">Name Z-A</option>
-            <option value="port-asc">Port low-high</option>
-            <option value="port-desc">Port high-low</option>
+          <select value={sort} onChange={(event) => setSort(event.target.value as SourceSort)} aria-label={t("sources.sort")}>
+            <option value="name-asc">{t("sources.nameAsc")}</option>
+            <option value="name-desc">{t("sources.nameDesc")}</option>
+            <option value="port-asc">{t("sources.portAsc")}</option>
+            <option value="port-desc">{t("sources.portDesc")}</option>
           </select>
         </label>
       </section>
       <div className="source-list">
-        <div className="source-list-head"><span>Name</span><span>Port</span><span>Status</span><span></span></div>
+        <div className="source-list-head"><span>{t("sources.name")}</span><span>{t("sources.port")}</span><span>{t("sources.status")}</span><span></span></div>
         {visibleSources.map((source) => (
           <div className="source-row" key={source.id}>
             <span className="source-title"><Network size={16} /> {source.name}</span>
             <span className="mono">{source.port}</span>
             <button className={source.enabled ? "status-toggle enabled" : "status-toggle"} onClick={() => void toggle(source)}>
-              <span>{source.enabled ? <Check size={12} /> : null}</span>{source.enabled ? "Enabled" : "Disabled"}
+              <span>{source.enabled ? <Check size={12} /> : null}</span>{source.enabled ? t("sources.enabled") : t("sources.disabled")}
             </button>
-            <button className="icon-button danger" title="Delete source" onClick={() => void remove(source)}><Trash2 size={16} /></button>
+            <button className="icon-button danger" title={t("sources.delete")} aria-label={t("sources.delete")} onClick={() => void remove(source)}><Trash2 size={16} /></button>
           </div>
         ))}
         {visibleSources.length === 0 && (
           <div className="empty-state">
             {sources.length === 0 ? <Network size={20} /> : <ListFilter size={20} />}
-            <strong>{sources.length === 0 ? "No monitored sources" : "No sources match"}</strong>
+            <strong>{sources.length === 0 ? t("sources.empty") : t("sources.noMatch")}</strong>
           </div>
         )}
       </div>
@@ -634,6 +644,7 @@ function SourcesView({ sources, onChanged }: { sources: Source[]; onChanged: () 
 }
 
 function SessionDetail({ session, onClose }: { session: Session; onClose: () => void }) {
+  const { locale, t } = useI18n();
   const [payloads, setPayloads] = useState<{ c2s: Uint8Array; s2c: Uint8Array } | null>(null);
   const [matches, setMatches] = useState<FlagMatches>({ c2s: [], s2c: [] });
   const [mode, setMode] = useState<PayloadMode>("text");
@@ -670,30 +681,30 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
     let active = true;
     Promise.all([api.getPayload(session.id, "c2s"), api.getPayload(session.id, "s2c"), api.getFlagMatches(session.id)])
       .then(([c2s, s2c, found]) => { if (active) { setPayloads({ c2s, s2c }); setMatches(found); } })
-      .catch((caught) => { if (active) setError(messageOf(caught)); });
+      .catch((caught) => { if (active) setError(messageOf(caught, t("error.unexpected"))); });
     return () => { active = false; };
-  }, [session.id]);
+  }, [session.id, t]);
 
   return (
     <aside
       ref={panelRef}
       className="detail-panel"
-      aria-label="Session detail"
+      aria-label={t("detail.label")}
     >
       <header className="detail-header">
-        <div><span className="eyebrow">Session #{session.id}</span><h2>{session.http.method ? `${session.http.method} ${decodeDisplayEscapes(session.http.path ?? "")}` : protocolLabel(session.protocol)}</h2></div>
+        <div><span className="eyebrow">{t("detail.session", { id: session.id })}</span><h2>{session.http.method ? `${session.http.method} ${decodeDisplayEscapes(session.http.path ?? "")}` : protocolLabel(session.protocol, t("sessions.rawTcp"))}</h2></div>
         <div className="detail-close">
-          <span className="close-hint"><kbd>Esc</kbd> to close</span>
-          <button className="icon-button" title="Close session" aria-label="Close session" onClick={onClose}><X size={18} /></button>
+          <span className="close-hint"><kbd>Esc</kbd> {t("detail.closeHint")}</span>
+          <button className="icon-button" title={t("detail.close")} aria-label={t("detail.close")} onClick={onClose}><X size={18} /></button>
         </div>
       </header>
       <div className="detail-meta">
-        <span><small>Source</small>{session.source_name} :{session.server_port}</span>
-        <span><small>Started</small>{formatDateTime(session.started_at)}</span>
-        <span><small>Traffic</small>{formatBytes(session.bytes_c2s + session.bytes_s2c)}</span>
-        <span><small>Protocol</small>{protocolLabel(session.protocol)}</span>
+        <span><small>{t("common.source")}</small>{session.source_name} :{session.server_port}</span>
+        <span><small>{t("detail.started")}</small>{formatDateTime(session.started_at, locale)}</span>
+        <span><small>{t("detail.traffic")}</small>{formatBytes(session.bytes_c2s + session.bytes_s2c)}</span>
+        <span><small>{t("common.protocol")}</small>{protocolLabel(session.protocol, t("sessions.rawTcp"))}</span>
       </div>
-      {session.contains_flag && <div className="flag-banner"><Flag size={16} /><strong>{session.flag_count} flag match{session.flag_count === 1 ? "" : "es"}</strong><span>{session.flag_direction.toUpperCase()}</span></div>}
+      {session.contains_flag && <div className="flag-banner"><Flag size={16} /><strong>{t("detail.flagMatches", { count: session.flag_count })}</strong><span>{session.flag_direction.toUpperCase()}</span></div>}
       {error && <div className="error-strip"><AlertTriangle size={16} /> {error}</div>}
       <div className="payload-toolbar">
         <label className={mode === "text" ? "json-toggle" : "json-toggle disabled"}>
@@ -703,17 +714,17 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
             disabled={mode !== "text"}
             onChange={(event) => setFormatJson(event.target.checked)}
           />
-          Format JSON
+          {t("detail.formatJson")}
         </label>
-        <div className="segmented" role="group" aria-label="Payload format">
-          <button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Braces size={14} /> Text</button>
-          <button className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")}><Settings2 size={14} /> Hex</button>
+        <div className="segmented" role="group" aria-label={t("detail.payloadFormat")}>
+          <button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Braces size={14} /> {t("detail.text")}</button>
+          <button className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")}><Settings2 size={14} /> {t("detail.hex")}</button>
         </div>
       </div>
       {!payloads ? <div className="payload-loading"><RefreshCw className="spin" size={17} /></div> : (
         <div className="streams">
-          <Stream title="Client -> server" bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
-          <Stream title="Server -> client" bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
+          <Stream title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
+          <Stream title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
         </div>
       )}
     </aside>
@@ -721,6 +732,7 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
 }
 
 function Stream({ title, bytes, ranges, mode, formatJson, flagged }: { title: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean }) {
+  const { t } = useI18n();
   const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
   const copyResetRef = useRef<number | null>(null);
   const text = useMemo(
@@ -753,7 +765,7 @@ function Stream({ title, bytes, ranges, mode, formatJson, flagged }: { title: st
         <span>{title}</span>
         <span className="stream-actions">
           <span className="mono">{formatBytes(bytes.length)}</span>
-          <button className={copyState === "failed" ? "copy-failed" : ""} type="button" title={copyState === "copied" ? "Copied" : copyState === "failed" ? "Copy failed" : `Copy ${title}`} aria-label={`Copy ${title}`} onClick={() => void copy()}>
+          <button className={copyState === "failed" ? "copy-failed" : ""} type="button" title={copyState === "copied" ? t("detail.copied") : copyState === "failed" ? t("detail.copyFailed") : t("detail.copy", { title })} aria-label={t("detail.copy", { title })} onClick={() => void copy()}>
             {copyState === "copied" ? <Check size={14} /> : copyState === "failed" ? <AlertTriangle size={14} /> : <Copy size={14} />}
           </button>
         </span>
@@ -818,20 +830,20 @@ function toHex(bytes: Uint8Array): string {
   return lines.join("\n");
 }
 
-function protocolLabel(protocol: Protocol): string {
-  return protocol === "raw_tcp" ? "Raw TCP" : protocol === "websocket" ? "WebSocket" : "HTTP";
+function protocolLabel(protocol: Protocol, rawTcpLabel: string): string {
+  return protocol === "raw_tcp" ? rawTcpLabel : protocol === "websocket" ? "WebSocket" : "HTTP";
 }
 
 function formatEndpoint(ip: string, port: number): string {
   return ip.includes(":") ? `[${ip}]:${port}` : `${ip}:${port}`;
 }
 
-function formatTime(micros: number): string {
-  return new Date(micros / 1_000).toLocaleTimeString([], { hour12: false });
+function formatTime(micros: number, locale: string): string {
+  return new Date(micros / 1_000).toLocaleTimeString(locale, { hour12: false });
 }
 
-function formatDateTime(micros: number): string {
-  return new Date(micros / 1_000).toLocaleString([], { hour12: false });
+function formatDateTime(micros: number, locale: string): string {
+  return new Date(micros / 1_000).toLocaleString(locale, { hour12: false });
 }
 
 function formatBytes(bytes: number): string {
@@ -840,6 +852,6 @@ function formatBytes(bytes: number): string {
   return `${(bytes / 1_048_576).toFixed(1)} MB`;
 }
 
-function messageOf(error: unknown): string {
-  return error instanceof Error ? error.message : "Unexpected error";
+function messageOf(error: unknown, fallback: string): string {
+  return error instanceof Error ? error.message : fallback;
 }

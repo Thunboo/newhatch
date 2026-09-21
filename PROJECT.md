@@ -223,6 +223,7 @@ The first executable vertical slice includes:
 - source CRUD, bounded session browsing, payload retrieval and payload search APIs
 - a TypeScript/React UI for sources, filters, session browsing and text/hex payload inspection
 - `Нюхач` UI branding plus local source search and sorting by name or port
+- English/Russian frontend localization with browser-language default and a persisted sidebar switch
 - Docker Compose services for analyzer, frontend and parallel passive Suricata capture
 - an opt-in nginx flag-capture fixture on TCP port 18080
 - single-user authentication with startup Argon2id hashing, bounded server-side sessions, loopback-only API, nginx team-CIDR access control and explicit denial of storage/config artifact paths; see `docs/authentication.md`

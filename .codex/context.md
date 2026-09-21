@@ -35,6 +35,7 @@ Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is opt
 - Detail exposes C2S/S2C copy, decoded text/path display and optional body JSON formatting; Hex remains raw.
 - Wheel over detail never scrolls the underlying list; wheel over exposed list does.
 - Desktop sidebar is fixed.
+- English/Russian UI language follows the browser until the sidebar switch above Sign out persists `newhatch_language`.
 - Remote mode shows analyzer and collector status lights; local mode has no collector light.
 
 ## Important Storage Behavior
@@ -45,7 +46,7 @@ Retention is by rotated segment count. Rotation and expiration are checked only 
 
 - Frontend production Docker build passes.
 - Rust auth integration, nginx/Compose unit checks and isolated IPv4/IPv6 Docker auth e2e pass, including sensitive artifact denial and rejected mutation side effects.
-- Playwright: three scenarios pass, including current session-feed and detail interactions.
+- Playwright: four scenarios pass, including English/Russian browser defaults and persistence plus current session-feed and detail interactions.
 - Real split deployment over VPN/FQDN works after rebuilding the collector from current sources.
 
 ## Next Work

@@ -88,3 +88,40 @@ test("no protected requests while me is pending; network errors allow retry", as
   await expect(page.getByRole("alert")).toHaveText("Unable to connect.");
   expect(requests.length).toBe(initialRequests + 1);
 });
+
+test("language defaults from the browser and an explicit choice persists", async ({ page }) => {
+  await page.addInitScript(() => {
+    if (!sessionStorage.getItem("localization_test_initialized")) {
+      localStorage.removeItem("newhatch_language");
+      sessionStorage.setItem("localization_test_initialized", "true");
+    }
+    Object.defineProperty(navigator, "language", { configurable: true, get: () => "ru-RU" });
+    Object.defineProperty(navigator, "languages", { configurable: true, get: () => ["ru-RU", "ru"] });
+  });
+  await page.route("**/api/**", async (route) => {
+    const path = new URL(route.request().url()).pathname;
+    const send = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
+    if (path === "/api/auth/me") return send({ authenticated: true, username: "team" });
+    if (path === "/api/sources") return send([]);
+    if (path === "/api/collectors") return send({ mode: "local", collectors: [] });
+    if (path === "/api/sessions") return send({ items: [], next_cursor: null });
+    return route.fulfill({ status: 404, body: "{}" });
+  });
+
+  await page.goto("/");
+  await expect(page.getByRole("heading", { name: "Сессии", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("newhatch_language"))).toBeNull();
+  await expect(page.locator("html")).toHaveAttribute("lang", "ru");
+
+  const switcher = page.getByRole("button", { name: "Переключить на английский" });
+  await expect(page.getByRole("button", { name: "Выйти", exact: true })).toBeVisible();
+  expect(await page.locator(".language-button").evaluate((button) => button.nextElementSibling?.classList.contains("logout-button"))).toBe(true);
+
+  await switcher.click();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
+  expect(await page.evaluate(() => localStorage.getItem("newhatch_language"))).toBe("en");
+  await expect(page.locator("html")).toHaveAttribute("lang", "en");
+
+  await page.reload();
+  await expect(page.getByRole("heading", { name: "Sessions", exact: true })).toBeVisible();
+});

@@ -60,6 +60,7 @@
 - Each C2S/S2C panel has one-click copy. Optional frontend-only JSON formatting keeps JSON compact when disabled and pretty-prints bodies plus bounded nested JSON strings when enabled; Hex remains raw.
 - Wheel input over detail cannot scroll the underlying list; wheel input over the exposed list still can.
 - Desktop sidebar is fixed. In remote mode it shows analyzer and aggregate collector status lights; local mode omits the collector light.
+- UI strings are provided by English/Russian dictionaries. Browser language supplies the unsaved default; the sidebar switch above Sign out persists `newhatch_language`.
 - `frontend/src/assets/logo.png` is bundled by Vite.
 
 ## Storage And Retention
@@ -73,7 +74,7 @@
 
 - Frontend production image builds successfully.
 - Auth verification passes across Rust workspace/integration tests, nginx/Compose unit tests and the isolated IPv4/IPv6 Docker network suite, including sensitive artifact denial and unauthorized mutation side effects.
-- Current Playwright suite has three passing scenarios, including auth, live feed/pagination, collector status, selected-row state, independent scrolling, fixed sidebar, mobile layout and Escape close.
+- Current Playwright suite has four passing scenarios, including auth, English/Russian browser defaults and persistence, live feed/pagination, collector status, selected-row state, independent scrolling, fixed sidebar, mobile layout and Escape close.
 - Split deployment has worked over the user's VPN after rebuilding the collector with current FQDN-capable code.
 
 ## Remaining High-Level Work
