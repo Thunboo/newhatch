@@ -2,6 +2,8 @@
 
 `newhatch` is a lightweight live-traffic analyzer for Attack/Defence CTF competitions. The user-facing name is **Нюхач**.
 
+![Reconstructed session details](docs/images/session-detail.png)
+
 See [PROJECT.md](PROJECT.md) for the product brief, current implementation and architectural constraints. Detailed design documents live in [`docs/`](docs/).
 
 ## Login Setup
@@ -31,6 +33,8 @@ docker compose up -d --build analyzer frontend
 ```
 
 Open `http://localhost:8080`, sign in, then add monitored services on the Sources screen.
+
+![Capture sources](docs/images/sources.png)
 
 The UI supports English and Russian. Without a saved preference it follows the browser language; after sign-in, use the language button immediately above Sign out to persist a choice.
 
