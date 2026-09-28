@@ -231,3 +231,13 @@ The first executable vertical slice includes:
 - optional analyzer-side peer-IP admission, analyzer-pushed Source snapshots, collector-aware flow isolation, reconnect/drop counters and a Collectors UI view
 
 The split deployment has been validated across the user's two-host VPN/FQDN setup after rebuilding the collector from current sources; final validation on the actual competition network remains operational follow-up. The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and target-host VLAN validation remain incomplete.
+
+## Frontend notes
+
+While the Sessions view is at the live edge, the frontend checks for new sessions every five seconds. Polling pauses while older traffic is being inspected and resumes near the top; see [`LIVE_REFRESH_INTERVAL_MS` and the feed polling effect](frontend/src/App.tsx).
+
+## Security compliance
+
+The analyzer hashes the password with Argon2id during startup. See [authentication details](docs/authentication.md).
+
+nginx and analyzer use Linux host networking; API port 3000 is loopback-only. Team access requires both an allowed client subnet and valid credentials. The frontend has no data volume, and nginx explicitly rejects paths resembling dotfiles, SQLite databases or stored payload segments. Sessions expire after 24 hours by default and are invalidated on analyzer restart. Missing credentials stop startup. See [authentication and deployment details](docs/authentication.md), including HTTPS, cookie settings and configuration changes.
