@@ -6,8 +6,8 @@ One installation-level user is configured through the environment. This is a lim
 
 | Variable | Policy |
 | --- | --- |
-| `USERNAME` | Required, nonblank, at most 128 bytes |
-| `PASSWORD` | Required plaintext configuration value, 1..1024 bytes; hashed with Argon2id at analyzer startup |
+| `NEWHATCH_USERNAME` | Required, nonblank, at most 128 bytes |
+| `NEWHATCH_PASSWORD` | Required plaintext configuration value, 1..1024 bytes; hashed with Argon2id at analyzer startup |
 | `SESSION_EXPIRACY` | Absolute lifetime from login; default `86400s`, accepted range 1 second..7 days; supports `s`, `m`, `h`, `d` |
 | `AUTH_ALLOWED_SUBNETS` | nginx ingress IPv4/IPv6 CIDRs separated by commas; empty/missing allows loopback only |
 | `AUTH_COOKIE_SECURE` | Default `false` for the existing HTTP deployment; set `true` for HTTPS |
@@ -17,12 +17,14 @@ One installation-level user is configured through the environment. This is a lim
 Set credentials directly in `.env`:
 
 ```env
-USERNAME=admin
-PASSWORD=admin123
+NEWHATCH_USERNAME=admin
+NEWHATCH_PASSWORD=admin123
 SESSION_EXPIRACY=86400s
 ```
 
-Set your own password and team CIDRs. Example allowlist: `192.168.1.0/24,fd42:1234::/64`. The analyzer hashes `PASSWORD` with Argon2id and a random salt during startup; only that generated hash remains in its authentication state. The configured password is still an environment secret, so restrict access to `.env` and Docker inspection.
+Set your own password and team CIDRs. Example allowlist: `192.168.1.0/24,fd42:1234::/64`. The analyzer hashes `NEWHATCH_PASSWORD` with Argon2id and a random salt during startup; only that generated hash remains in its authentication state. The configured password is still an environment secret, so restrict access to `.env` and Docker inspection. The project-specific credential names avoid collisions with host variables such as Windows `USERNAME`.
+
+Existing installations must rename any legacy `USERNAME` and `PASSWORD` entries before recreating the analyzer container. The analyzer intentionally does not fall back to the unprefixed names.
 
 The analyzer rejects missing or empty credentials and invalid expiration values. nginx rejects invalid CIDRs, including non-canonical network addresses such as `192.168.1.100/24`; use `192.168.1.0/24` instead. Changing `.env` requires container recreation, not just `docker compose restart`.
 

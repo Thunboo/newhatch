@@ -1,6 +1,7 @@
 import importlib.util
 import ipaddress
 from pathlib import Path
+import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -61,6 +62,48 @@ class IngressConfigTests(unittest.TestCase):
         self.assertNotIn("volumes:", frontend)
         self.assertNotIn("/data", frontend)
         self.assertIn("- ./data:/data", COMPOSE)
+
+    def test_host_credentials_cannot_override_namespaced_credentials(self):
+        analyzer = COMPOSE.partition("\n  analyzer:")[2].partition("\n  collector:")[0]
+        interpolated = {
+            key: (variable, default)
+            for key, variable, default in re.findall(
+                r"^      ([A-Z][A-Z0-9_]+): \$\{([A-Z][A-Z0-9_]+):-([^}]*)\}$",
+                analyzer,
+                re.MULTILINE,
+            )
+        }
+        self.assertEqual(
+            interpolated["NEWHATCH_USERNAME"],
+            ("NEWHATCH_USERNAME", ""),
+        )
+        self.assertEqual(
+            interpolated["NEWHATCH_PASSWORD"],
+            ("NEWHATCH_PASSWORD", ""),
+        )
+        self.assertNotIn("USERNAME", interpolated)
+        self.assertNotIn("PASSWORD", interpolated)
+
+        host_environment = {"USERNAME": "Gleb", "PASSWORD": "host-password"}
+        project_environment = {
+            "NEWHATCH_USERNAME": "admin",
+            "NEWHATCH_PASSWORD": "admin123",
+        }
+
+        def resolve(variable, default):
+            return host_environment.get(
+                variable,
+                project_environment.get(variable, default),
+            )
+
+        self.assertEqual(
+            resolve(*interpolated["NEWHATCH_USERNAME"]),
+            "admin",
+        )
+        self.assertEqual(
+            resolve(*interpolated["NEWHATCH_PASSWORD"]),
+            "admin123",
+        )
 
 
 if __name__ == "__main__":

@@ -28,7 +28,7 @@ Canonical details live in `docs/agent-decisions.md`. This file is the compact wo
 
 ## Authentication Choices
 
-- User configuration favors plaintext `USERNAME`/`PASSWORD`; analyzer hashes the password at startup.
+- User configuration uses project-prefixed plaintext `NEWHATCH_USERNAME`/`NEWHATCH_PASSWORD`; analyzer hashes the password at startup.
 - Use bounded ephemeral server-side sessions and absolute expiration.
 - nginx enforces real client CIDRs; analyzer trusts only local proxy transport.
 - Frontend must not mount analyzer data; nginx denies dotfile/database/segment artifact paths before the SPA fallback.

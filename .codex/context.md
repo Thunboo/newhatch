@@ -22,7 +22,7 @@ Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is opt
 - Split analyzer: `ANALYZER=remote`, `LISTEN_CONNSTR=HOST:PORT`, optional `ALLOWED_COLLECTORS`.
 - Collector: `ANALYZER_CONNSTR=HOST:PORT`, `QUEUE_CAPACITY=8192` default.
 - IP/FQDN endpoints are supported; bracket literal IPv6. Empty collector allowlist accepts any host. No PSK yet.
-- Auth: `USERNAME`, `PASSWORD`, `SESSION_EXPIRACY`, `AUTH_ALLOWED_SUBNETS`, `AUTH_COOKIE_SECURE`.
+- Auth: `NEWHATCH_USERNAME`, `NEWHATCH_PASSWORD`, `SESSION_EXPIRACY`, `AUTH_ALLOWED_SUBNETS`, `AUTH_COOKIE_SECURE`.
 - Frontend has no `/data` mount; nginx explicitly rejects dotfile, database and segment artifact paths.
 
 ## Current UI Invariants
@@ -45,6 +45,7 @@ Retention is by rotated segment count. Rotation and expiration are checked only 
 
 ## Current Verification
 
+- Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
 - Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including real execution of generated Bash/cURL and Python/requests snippets through nginx and the existing auth/session-feed regressions.
 
 - Frontend production Docker build passes.

@@ -8,9 +8,19 @@ Run commands from the repository root unless a section says otherwise.
 cp .env.example .env
 ```
 
-At minimum, configure `USERNAME`, `PASSWORD`, `AUTH_ALLOWED_SUBNETS`, `CAPTURE_INTERFACE`, `FLAG_REGEX` and `SURICATA_BPF_FILTER`. See `docs/authentication.md`. The analyzer capture path requires Linux.
+At minimum, configure `NEWHATCH_USERNAME`, `NEWHATCH_PASSWORD`, `AUTH_ALLOWED_SUBNETS`, `CAPTURE_INTERFACE`, `FLAG_REGEX` and `SURICATA_BPF_FILTER`. See `docs/authentication.md`. The analyzer capture path requires Linux.
 
 ## Rust Analyzer
+
+Cargo does not need to be installed on the host. Run formatting and workspace tests in the same Rust version used by the analyzer image:
+
+```bash
+docker run --rm -v "${PWD}:/workspace" -w /workspace rust:1.85-bookworm cargo fmt --check
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --workspace
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo clippy --workspace --all-targets --all-features -- -D warnings
+```
+
+If Cargo is available locally, the equivalent host commands are:
 
 ```bash
 cargo fmt --check
@@ -18,7 +28,7 @@ cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-For an auto-formatting pass, run `cargo fmt` without `--check`.
+For an auto-formatting pass, run `cargo fmt` without `--check`. Agents must only present the Docker commands for the user to run; they must not execute them.
 
 ## Frontend
 
@@ -79,7 +89,7 @@ Add an enabled Source for TCP port `18080` before sending the request. See `test
 ## Authentication Tests
 
 ```bash
-cargo test --test auth
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --test auth
 python3 -m unittest discover -s test/auth -p 'test_*.py' -v
 python3 test/auth/run_e2e.py
 docker build -f test/auth/frontend.Dockerfile -t newhatch-auth-ui-test .
@@ -111,8 +121,8 @@ passing on 2026-09-29.
 CAPTURE_INTERFACE=eth0
 ANALYZER=local
 LISTEN_ADDR=127.0.0.1:3000
-USERNAME=<required>
-PASSWORD=<required>
+NEWHATCH_USERNAME=<required>
+NEWHATCH_PASSWORD=<required>
 AUTH_ALLOWED_SUBNETS=<team CIDRs; empty = loopback only>
 SESSION_EXPIRACY=86400s
 AUTH_COOKIE_SECURE=false

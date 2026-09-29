@@ -408,8 +408,8 @@ fn process_fails_closed_without_credentials_or_with_nonlocal_listener() {
     ] {
         let output = std::process::Command::new(executable)
             .env_clear()
-            .env("USERNAME", username)
-            .env("PASSWORD", password)
+            .env("NEWHATCH_USERNAME", username)
+            .env("NEWHATCH_PASSWORD", password)
             .env("SESSION_EXPIRACY", "86400s")
             .env("LISTEN_ADDR", address)
             .output()
@@ -425,6 +425,16 @@ fn process_fails_closed_without_credentials_or_with_nonlocal_listener() {
         .unwrap()
         .status
         .success());
+    let legacy = std::process::Command::new(executable)
+        .env_clear()
+        .env("USERNAME", "windows-account")
+        .env("PASSWORD", "legacy-password")
+        .output()
+        .unwrap();
+    assert!(!legacy.status.success());
+    let stderr = String::from_utf8_lossy(&legacy.stderr);
+    assert!(stderr.contains("NEWHATCH_USERNAME"));
+    assert!(!stderr.contains("legacy-password"));
 }
 
 #[tokio::test]

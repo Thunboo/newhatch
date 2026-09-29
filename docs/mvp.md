@@ -242,8 +242,8 @@ Expected environment/configuration values include:
 ANALYZER=local|remote
 CAPTURE_INTERFACE=<interface>
 LISTEN_ADDR=127.0.0.1:3000
-USERNAME=<installation user>
-PASSWORD=<installation password>
+NEWHATCH_USERNAME=<installation user>
+NEWHATCH_PASSWORD=<installation password>
 SESSION_EXPIRACY=86400s
 AUTH_ALLOWED_SUBNETS=<comma-separated team CIDRs; empty means loopback-only>
 AUTH_COOKIE_SECURE=false

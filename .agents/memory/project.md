@@ -40,7 +40,7 @@
 
 ## Authentication
 
-- Required env: `USERNAME`, plaintext `PASSWORD`, and optional `SESSION_EXPIRACY` (default `86400s`).
+- Required env: `NEWHATCH_USERNAME`, plaintext `NEWHATCH_PASSWORD`, and optional `SESSION_EXPIRACY` (default `86400s`).
 - Password is Argon2id-hashed in memory during analyzer startup.
 - nginx admits loopback plus `AUTH_ALLOWED_SUBNETS`; empty means loopback only.
 - Analyzer API binds loopback and requires server-side sessions for protected routes.
@@ -73,6 +73,7 @@
 
 ## Verification
 
+- Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
 - Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including execution of generated Bash/cURL and Python/requests snippets against nginx, unsupported-input handling, Unicode/JSON bodies, clipboard fallback and existing auth/session-feed regressions.
 
 - Frontend production image builds successfully.

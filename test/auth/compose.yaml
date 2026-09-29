@@ -26,9 +26,9 @@ services:
     environment:
       LISTEN_ADDR: 127.0.0.1:3000
       DATA_DIR: /data
-      USERNAME: team
+      NEWHATCH_USERNAME: team
       # Public test-only credential, never use in a real installation.
-      PASSWORD: test-only-password
+      NEWHATCH_PASSWORD: test-only-password
       SESSION_EXPIRACY: 86400s
       AUTH_COOKIE_SECURE: "false"
     tmpfs:

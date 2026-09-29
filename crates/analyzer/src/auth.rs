@@ -31,10 +31,12 @@ pub struct AuthConfig {
 impl AuthConfig {
     pub fn from_env() -> anyhow::Result<Self> {
         Self::parse(
-            env::var("USERNAME")
-                .map_err(|_| anyhow::anyhow!("USERNAME is required and must be valid text"))?,
-            env::var("PASSWORD")
-                .map_err(|_| anyhow::anyhow!("PASSWORD is required and must be valid text"))?,
+            env::var("NEWHATCH_USERNAME").map_err(|_| {
+                anyhow::anyhow!("NEWHATCH_USERNAME is required and must be valid text")
+            })?,
+            env::var("NEWHATCH_PASSWORD").map_err(|_| {
+                anyhow::anyhow!("NEWHATCH_PASSWORD is required and must be valid text")
+            })?,
             &optional_env("SESSION_EXPIRACY", "86400s")?,
             &optional_env("AUTH_COOKIE_SECURE", "false")?,
         )
@@ -47,10 +49,10 @@ impl AuthConfig {
         secure: &str,
     ) -> anyhow::Result<Self> {
         if username.trim().is_empty() || username.len() > 128 {
-            bail!("USERNAME must contain 1..128 bytes");
+            bail!("NEWHATCH_USERNAME must contain 1..128 bytes");
         }
         if password.is_empty() || password.len() > 1024 {
-            bail!("PASSWORD must contain 1..1024 bytes");
+            bail!("NEWHATCH_PASSWORD must contain 1..1024 bytes");
         }
         let password_hash = Argon2::default()
             .hash_password(password.as_bytes(), &SaltString::generate(&mut OsRng))

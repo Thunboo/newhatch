@@ -7,11 +7,11 @@ These fixtures are isolated from production data and do not change your `.env`.
 From the repository root:
 
 ```bash
-cargo test --workspace
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --workspace
 python3 -m unittest discover -s test/auth -p 'test_*.py' -v
 ```
 
-`backend.rs` is a Cargo integration target. It uses temporary SQLite data and injected real-peer metadata to check local/remote decisions, forged headers, every protected route, future-path fallback, rejected mutation side effects, generic login errors, cookie attributes, ID rotation, logout and absolute expiration. Python tests validate nginx generation, IPv4/IPv6 boundaries, multiple networks, sensitive artifact deny rules, frontend/data-volume isolation and fail-closed configuration.
+`backend.rs` is a Cargo integration target. It uses temporary SQLite data and injected real-peer metadata to check local/remote decisions, forged headers, every protected route, future-path fallback, rejected mutation side effects, generic login errors, cookie attributes, ID rotation, logout, absolute expiration and rejection of legacy unprefixed credential variables. Python tests validate nginx generation, IPv4/IPv6 boundaries, multiple networks, sensitive artifact deny rules, frontend/data-volume isolation, fail-closed configuration and Compose credential interpolation when the host defines conflicting `USERNAME`/`PASSWORD` values.
 
 ## Real Network Test
 
