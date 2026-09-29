@@ -222,6 +222,7 @@ The first executable vertical slice includes:
 - SQLite metadata plus versioned append-only payload segments
 - source CRUD, bounded session browsing, payload retrieval and payload search APIs
 - a TypeScript/React UI for sources, filters, session browsing and text/hex payload inspection
+- frontend-only Bash/cURL and Python/requests export of a single HTTP request using the displayed text body; see `docs/mvp.md` for supported input and limitations
 - `Нюхач` UI branding plus local source search and sorting by name or port
 - English/Russian frontend localization with browser-language default and a persisted sidebar switch
 - Docker Compose services for analyzer, frontend and parallel passive Suricata capture

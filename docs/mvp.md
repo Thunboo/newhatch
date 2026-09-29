@@ -116,6 +116,35 @@ is kept compact on one line. Enabling the frontend-only control pretty-prints
 that JSON and expands JSON objects or arrays stored in string fields to a bounded
 nesting depth. Hex view and stored payload bytes stay unchanged.
 
+The C2S header also provides **Copy as Bash (cURL)** and **Copy as Python
+(requests)** immediately before ordinary copy. Bundled cURL and Python logos
+identify the actions, with `cUrl` and `python` text fallbacks if an image cannot
+load; EN/RU hover text names the action. These exports are implemented entirely
+in the frontend. They use the currently displayed text body, including the
+Format JSON choice, and retain readable Unicode rather than byte escapes or
+base64. Captured bytes are used only to validate HTTP framing.
+
+The initial exporter accepts one complete, uncompressed UTF-8 HTTP/1.x request
+with an origin-form target and either no body or Content-Length framing. Hex mode,
+partial requests, multiple requests in one stream, binary/compressed/chunked
+payloads, Upgrade streams and unsupported/repeated headers disable export with
+an explanatory tooltip. A TCP session marked incomplete may still contain a
+complete exportable request. Ordinary copy remains available.
+
+The destination is the captured server IP/port, while the original Host header
+is kept separately. Query arguments are decoded into readable values and passed
+as cURL query options or Python params, preserving repeated names. The path keeps
+its URL escaping. Request bodies are sent as the displayed UTF-8 text; HTTP
+clients recalculate Content-Length. Connection-specific headers and
+Accept-Encoding are omitted. Python uses requests.request with headers, params,
+data, an explicit timeout and redirects disabled. Bash exports require cURL
+7.87+ for --url-query; Python exports require Python 3 and requests.
+
+The nginx-backed regression suite is in
+[test/flag_test](../test/flag_test/README.md). It executes generated snippets
+against the existing /flag fixture and a separate test-only nginx proxy that
+allows assertions on received headers, query values and body bytes.
+
 HTTP and WebSocket parsing should improve readability without destroying access to raw reconstructed bytes.
 
 ## Session Protocol Values

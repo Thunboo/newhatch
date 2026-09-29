@@ -47,6 +47,7 @@ Canonical details live in `docs/agent-decisions.md`. This file is the compact wo
 - Detail-panel interaction must not move background traffic unless the pointer is over the exposed session list.
 - Desktop navigation is fixed in the viewport.
 - Collector status is shown globally only in remote analyzer mode.
+- Issue #12 exports are frontend-only. Generate cURL/Python requests from the visible text body, including Unicode and Format JSON; raw bytes validate framing but are not the replay representation. Use the bundled cURL/Python logos with text fallbacks left of C2S ordinary copy. See `docs/mvp.md`.
 
 ## Retention Choice
 

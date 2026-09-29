@@ -31,3 +31,45 @@ Query string имитирует данные, отправленные игро�
 ```bash
 docker compose --profile test stop test-flag
 ```
+
+## Request Export Regression Tests (Issue #12)
+
+The export suite uses this fixture's existing nginx configuration and flag JSON.
+It mocks only analyzer API responses in the browser. Generated Bash/cURL and
+Python/requests snippets are actually executed against nginx inside an isolated
+test image. It does not require live capture or a production analyzer.
+
+Run from the repository root:
+
+```bash
+docker build -f test/flag_test/replay.Dockerfile -t newhatch-replay-test .
+docker run --rm --shm-size=256m newhatch-replay-test
+```
+
+Agents must not run these commands: Docker daemon operations can interrupt the
+user's VPN. The suite was last reported passing by the user on 2026-09-29:
+20 Playwright tests passed, including all request-export regressions.
+
+The build includes frontend type checking and a production build. The test run
+starts Vite, nginx on container port 18080 for /flag, and a separate nginx proxy
+on container port 18081 backed by a small loopback request-inspection server.
+It publishes no host ports and mounts no production data. A running test-flag
+Compose service is not needed.
+
+Coverage includes:
+
+- Bundled cURL/Python logos, text fallbacks and hover labels immediately before
+  C2S ordinary copy.
+- Both exported GET snippets receive the fixture's expected flag.
+- POST/PUT replay preserves the displayed body, readable Unicode, compact/pretty
+  JSON, literal quotes, shell metacharacters, leading @ and trailing newlines.
+- Received headers, cookies, query arguments with repeated names, destination
+  Host and recalculated UTF-8 Content-Length are checked through nginx.
+- Unsupported framing/encoding, multiple requests, duplicate headers and Hex
+  mode disable export while ordinary copy still works.
+- Russian labels, mobile layout and the clipboard fallback.
+- The existing auth, localization and session-feed browser regression suite.
+
+The exported Bash script requires cURL 7.87+ for --url-query. The Python script
+requires Python 3 and requests. All test dependencies are installed only in the
+test image; production frontend/backend dependencies are unchanged.

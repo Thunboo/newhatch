@@ -57,6 +57,7 @@
 - Detail closes with its close button or `Escape`.
 - Detail shows an `Esc to close` hint next to the close button.
 - Text payload view decodes JSON/Unicode escapes and percent-encoded URL components; session-header HTTP paths use the same visual decoding.
+- C2S has cURL/Python logo buttons with text fallbacks before ordinary copy for frontend-only Bash/cURL and Python/requests export. Use the displayed text body and Format JSON setting; retain readable Unicode. Validate one complete plain-text HTTP request against raw framing, recalculate Content-Length and omit connection headers. Hex/unsupported input disables export with a localized reason. Curl requires 7.87+; scripts target the captured server and preserve Host.
 - Each C2S/S2C panel has one-click copy. Optional frontend-only JSON formatting keeps JSON compact when disabled and pretty-prints bodies plus bounded nested JSON strings when enabled; Hex remains raw.
 - Wheel input over detail cannot scroll the underlying list; wheel input over the exposed list still can.
 - Desktop sidebar is fixed. In remote mode it shows analyzer and aggregate collector status lights; local mode omits the collector light.
@@ -72,9 +73,11 @@
 
 ## Verification
 
+- Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including execution of generated Bash/cURL and Python/requests snippets against nginx, unsupported-input handling, Unicode/JSON bodies, clipboard fallback and existing auth/session-feed regressions.
+
 - Frontend production image builds successfully.
 - Auth verification passes across Rust workspace/integration tests, nginx/Compose unit tests and the isolated IPv4/IPv6 Docker network suite, including sensitive artifact denial and unauthorized mutation side effects.
-- Current Playwright suite has four passing scenarios, including auth, English/Russian browser defaults and persistence, live feed/pagination, collector status, selected-row state, independent scrolling, fixed sidebar, mobile layout and Escape close.
+- The previous Playwright suite had four passing scenarios, including auth, English/Russian browser defaults and persistence, live feed/pagination, collector status, selected-row state, independent scrolling, fixed sidebar, mobile layout and Escape close.
 - Split deployment has worked over the user's VPN after rebuilding the collector with current FQDN-capable code.
 
 ## Remaining High-Level Work

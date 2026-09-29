@@ -4,6 +4,7 @@ Completed project work.
 
 ## Completed
 
+- [x] 2026-09-29: Completed GitHub issue #12: C2S requests can be copied as readable Bash/cURL or Python/requests using the displayed body, with guarded HTTP framing and nginx-backed regression coverage. The user-run Docker suite passed all 20 Playwright tests.
 - [x] 2026-09-21: Added complete English/Russian frontend localization, browser-language default, persisted `newhatch_language` preference, locale-aware formatting and a responsive sidebar switch immediately above Sign out. All four Playwright scenarios pass, including localization persistence.
 - [x] 2026-09-20: Completed GitHub issue #7 defense in depth: protected-route and no-side-effect auth tests now cover collectors and mutations; nginx explicitly denies dotfile/database/segment paths; frontend data-volume isolation and real IPv4/IPv6 network behavior are regression-tested.
 - [x] 2026-09-20 (consolidated record): Implemented the Rust analyzer/backend workspace, TypeScript frontend and Docker Compose scaffolds plus validated runtime configuration for capture, storage, queues and flow limits.

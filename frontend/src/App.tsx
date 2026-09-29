@@ -23,9 +23,13 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { FormEvent, ReactNode } from "react";
 import { api } from "./api";
 import { AuthGate } from "./AuthGate";
+import curlLogoUrl from "./assets/Curl-logo.svg";
 import logoUrl from "./assets/logo.png";
+import pythonLogoUrl from "./assets/python-logo.png";
 import { useI18n } from "./i18n";
 import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
+import { exportCurl, exportPython, parseReplayRequest } from "./requestExport";
+import type { ReplayTarget } from "./requestExport";
 import type {
   ByteRange,
   FlagMatches,
@@ -723,7 +727,7 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
       </div>
       {!payloads ? <div className="payload-loading"><RefreshCw className="spin" size={17} /></div> : (
         <div className="streams">
-          <Stream title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
+          <Stream replayTarget={{ host: session.server_ip, port: session.server_port }} title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
           <Stream title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
         </div>
       )}
@@ -731,33 +735,27 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
   );
 }
 
-function Stream({ title, bytes, ranges, mode, formatJson, flagged }: { title: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean }) {
+function Stream({ title, bytes, ranges, mode, formatJson, flagged, replayTarget }: { title: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget }) {
   const { t } = useI18n();
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "failed">("idle");
-  const copyResetRef = useRef<number | null>(null);
-  const text = useMemo(
-    () => mode === "hex" ? toHex(bytes) : displayPayload(bytes, formatJson),
-    [bytes, formatJson, mode],
+  const displayedText = useMemo(() => displayPayload(bytes, formatJson), [bytes, formatJson]);
+  const text = useMemo(() => mode === "hex" ? toHex(bytes) : displayedText, [bytes, displayedText, mode]);
+  const replay = useMemo(
+    () => replayTarget ? parseReplayRequest(bytes, displayedText, replayTarget) : null,
+    [bytes, displayedText, replayTarget?.host, replayTarget?.port],
   );
+  const problemKeys = {
+    http: "detail.exportHttp",
+    incomplete: "detail.exportIncomplete",
+    multiple: "detail.exportMultiple",
+    encoding: "detail.exportEncoding",
+    headers: "detail.exportHeaders",
+  } as const;
+  const exportDisabled = mode === "hex" ? t("detail.exportHex")
+    : replay && !replay.ok ? t(problemKeys[replay.problem]) : undefined;
   const matchTexts = useMemo(
     () => ranges.map((range) => decodeDisplayEscapes(decodePayload(bytes.slice(range.start, range.end)))).filter(Boolean),
     [bytes, ranges],
   );
-
-  useEffect(() => () => {
-    if (copyResetRef.current !== null) window.clearTimeout(copyResetRef.current);
-  }, []);
-
-  const copy = async () => {
-    try {
-      await copyText(text);
-      setCopyState("copied");
-    } catch {
-      setCopyState("failed");
-    }
-    if (copyResetRef.current !== null) window.clearTimeout(copyResetRef.current);
-    copyResetRef.current = window.setTimeout(() => setCopyState("idle"), 1_500);
-  };
 
   return (
     <section className={flagged ? "stream flagged" : "stream"}>
@@ -765,13 +763,56 @@ function Stream({ title, bytes, ranges, mode, formatJson, flagged }: { title: st
         <span>{title}</span>
         <span className="stream-actions">
           <span className="mono">{formatBytes(bytes.length)}</span>
-          <button className={copyState === "failed" ? "copy-failed" : ""} type="button" title={copyState === "copied" ? t("detail.copied") : copyState === "failed" ? t("detail.copyFailed") : t("detail.copy", { title })} aria-label={t("detail.copy", { title })} onClick={() => void copy()}>
-            {copyState === "copied" ? <Check size={14} /> : copyState === "failed" ? <AlertTriangle size={14} /> : <Copy size={14} />}
-          </button>
+          {replayTarget && <>
+            <PayloadCopyButton className="export-action export-action-curl" label={t("detail.copyBash")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportCurl(replay.request) : ""}>
+              <ExportLogo src={curlLogoUrl} fallback="cUrl" kind="curl" />
+            </PayloadCopyButton>
+            <PayloadCopyButton className="export-action export-action-python" label={t("detail.copyPython")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportPython(replay.request) : ""}>
+              <ExportLogo src={pythonLogoUrl} fallback="python" kind="python" />
+            </PayloadCopyButton>
+          </>}
+          <PayloadCopyButton label={t("detail.copy", { title })} getText={() => text}><Copy size={14} /></PayloadCopyButton>
         </span>
       </header>
       <pre>{mode === "text" && matchTexts.length > 0 ? <HighlightedText text={text} matches={matchTexts} /> : text}</pre>
     </section>
+  );
+}
+
+function ExportLogo({ src, fallback, kind }: { src: string; fallback: string; kind: "curl" | "python" }) {
+  const [failed, setFailed] = useState(false);
+  return failed
+    ? <span className="export-fallback" aria-hidden="true">{fallback}</span>
+    : <img className={`export-logo export-logo-${kind}`} src={src} alt="" aria-hidden="true" onError={() => setFailed(true)} />;
+}
+
+function PayloadCopyButton({ className, label, disabledReason, getText, children }: { className?: string; label: string; disabledReason?: string; getText: () => string; children: ReactNode }) {
+  const { t } = useI18n();
+  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
+  const resetRef = useRef<number | null>(null);
+  useEffect(() => () => {
+    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+  }, []);
+
+  const copy = async () => {
+    try {
+      await copyText(getText());
+      setState("copied");
+    } catch {
+      setState("failed");
+    }
+    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
+    resetRef.current = window.setTimeout(() => setState("idle"), 1_500);
+  };
+  const tooltip = disabledReason ?? (state === "copied" ? t("detail.copied") : state === "failed" ? t("detail.copyFailed") : label);
+  return (
+    <span title={tooltip}>
+      <button className={[className, state === "failed" ? "copy-failed" : ""].filter(Boolean).join(" ")} type="button" title={tooltip} aria-label={label} disabled={!!disabledReason} onClick={() => void copy()}>
+        <span className={`copy-button-content${state === "idle" ? "" : " is-hidden"}`}>{children}</span>
+        {state === "copied" && <span className="copy-button-feedback"><Check size={14} /></span>}
+        {state === "failed" && <span className="copy-button-feedback"><AlertTriangle size={14} /></span>}
+      </button>
+    </span>
   );
 }
 

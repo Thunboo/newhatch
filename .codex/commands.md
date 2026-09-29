@@ -88,6 +88,23 @@ docker run --rm --shm-size=256m -v /tmp/newhatch-auth-ui:/results newhatch-auth-
 
 The network suite builds an isolated stack and removes its own resources. See `test/auth/README.md`.
 
+## Request Export Tests
+
+Agent restriction still applies: these commands must be run by the user.
+From the repository root:
+
+```bash
+docker build -f test/flag_test/replay.Dockerfile -t newhatch-replay-test .
+docker run --rm --shm-size=256m newhatch-replay-test
+```
+
+The image runs frontend lint/build, then Playwright against the existing nginx
+flag fixture plus a test-only request receiver behind nginx. The tests execute
+generated Bash/cURL and Python/requests snippets and include the existing auth
+and session-feed browser checks. No host ports or production data volumes are
+used. See test/flag_test/README.md. The user reported all 20 Playwright tests
+passing on 2026-09-29.
+
 ## Main Environment Variables
 
 ```text
