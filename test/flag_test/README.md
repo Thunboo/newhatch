@@ -47,8 +47,8 @@ docker run --rm --shm-size=256m newhatch-replay-test
 ```
 
 Agents must not run these commands: Docker daemon operations can interrupt the
-user's VPN. The implementation and tests are prepared; this suite has not yet
-been executed.
+user's VPN. The suite was last reported passing by the user on 2026-09-29:
+20 Playwright tests passed, including all request-export regressions.
 
 The build includes frontend type checking and a production build. The test run
 starts Vite, nginx on container port 18080 for /flag, and a separate nginx proxy
@@ -58,7 +58,8 @@ Compose service is not needed.
 
 Coverage includes:
 
-- B/Py placeholders and hover labels immediately before C2S ordinary copy.
+- Bundled cURL/Python logos, text fallbacks and hover labels immediately before
+  C2S ordinary copy.
 - Both exported GET snippets receive the fixture's expected flag.
 - POST/PUT replay preserves the displayed body, readable Unicode, compact/pretty
   JSON, literal quotes, shell metacharacters, leading @ and trailing newlines.

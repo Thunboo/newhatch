@@ -102,7 +102,8 @@ The image runs frontend lint/build, then Playwright against the existing nginx
 flag fixture plus a test-only request receiver behind nginx. The tests execute
 generated Bash/cURL and Python/requests snippets and include the existing auth
 and session-feed browser checks. No host ports or production data volumes are
-used. See test/flag_test/README.md. Issue #12's new suite has not yet been run.
+used. See test/flag_test/README.md. The user reported all 20 Playwright tests
+passing on 2026-09-29.
 
 ## Main Environment Variables
 

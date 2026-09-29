@@ -23,7 +23,9 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } fr
 import type { FormEvent, ReactNode } from "react";
 import { api } from "./api";
 import { AuthGate } from "./AuthGate";
+import curlLogoUrl from "./assets/Curl-logo.svg";
 import logoUrl from "./assets/logo.png";
+import pythonLogoUrl from "./assets/python-logo.png";
 import { useI18n } from "./i18n";
 import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
 import { exportCurl, exportPython, parseReplayRequest } from "./requestExport";
@@ -762,11 +764,11 @@ function Stream({ title, bytes, ranges, mode, formatJson, flagged, replayTarget 
         <span className="stream-actions">
           <span className="mono">{formatBytes(bytes.length)}</span>
           {replayTarget && <>
-            <PayloadCopyButton label={t("detail.copyBash")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportCurl(replay.request) : ""}>
-              <span className="export-placeholder" aria-hidden="true">B</span>
+            <PayloadCopyButton className="export-action export-action-curl" label={t("detail.copyBash")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportCurl(replay.request) : ""}>
+              <ExportLogo src={curlLogoUrl} fallback="cUrl" kind="curl" />
             </PayloadCopyButton>
-            <PayloadCopyButton label={t("detail.copyPython")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportPython(replay.request) : ""}>
-              <span className="export-placeholder" aria-hidden="true">Py</span>
+            <PayloadCopyButton className="export-action export-action-python" label={t("detail.copyPython")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportPython(replay.request) : ""}>
+              <ExportLogo src={pythonLogoUrl} fallback="python" kind="python" />
             </PayloadCopyButton>
           </>}
           <PayloadCopyButton label={t("detail.copy", { title })} getText={() => text}><Copy size={14} /></PayloadCopyButton>
@@ -777,7 +779,14 @@ function Stream({ title, bytes, ranges, mode, formatJson, flagged, replayTarget 
   );
 }
 
-function PayloadCopyButton({ label, disabledReason, getText, children }: { label: string; disabledReason?: string; getText: () => string; children: ReactNode }) {
+function ExportLogo({ src, fallback, kind }: { src: string; fallback: string; kind: "curl" | "python" }) {
+  const [failed, setFailed] = useState(false);
+  return failed
+    ? <span className="export-fallback" aria-hidden="true">{fallback}</span>
+    : <img className={`export-logo export-logo-${kind}`} src={src} alt="" aria-hidden="true" onError={() => setFailed(true)} />;
+}
+
+function PayloadCopyButton({ className, label, disabledReason, getText, children }: { className?: string; label: string; disabledReason?: string; getText: () => string; children: ReactNode }) {
   const { t } = useI18n();
   const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
   const resetRef = useRef<number | null>(null);
@@ -798,8 +807,10 @@ function PayloadCopyButton({ label, disabledReason, getText, children }: { label
   const tooltip = disabledReason ?? (state === "copied" ? t("detail.copied") : state === "failed" ? t("detail.copyFailed") : label);
   return (
     <span title={tooltip}>
-      <button className={state === "failed" ? "copy-failed" : ""} type="button" title={tooltip} aria-label={label} disabled={!!disabledReason} onClick={() => void copy()}>
-        {state === "copied" ? <Check size={14} /> : state === "failed" ? <AlertTriangle size={14} /> : children}
+      <button className={[className, state === "failed" ? "copy-failed" : ""].filter(Boolean).join(" ")} type="button" title={tooltip} aria-label={label} disabled={!!disabledReason} onClick={() => void copy()}>
+        <span className={`copy-button-content${state === "idle" ? "" : " is-hidden"}`}>{children}</span>
+        {state === "copied" && <span className="copy-button-feedback"><Check size={14} /></span>}
+        {state === "failed" && <span className="copy-button-feedback"><AlertTriangle size={14} /></span>}
       </button>
     </span>
   );

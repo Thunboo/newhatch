@@ -33,7 +33,7 @@ Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is opt
 - Infinite cursor pagination loads older sessions automatically.
 - Open detail highlights its row and closes with `Escape`.
 - Detail exposes C2S/S2C copy, decoded text/path display and optional body JSON formatting; Hex remains raw.
-- C2S B/Py placeholders copy Bash/cURL or Python/requests using the displayed body (Unicode and Format JSON preserved). Frontend only; one complete plain-text HTTP request. Unsupported input/Hex disables export with a reason. See `docs/mvp.md`; curl requires 7.87+.
+- C2S cURL/Python logo buttons (with text fallbacks) copy Bash/cURL or Python/requests using the displayed body (Unicode and Format JSON preserved). Frontend only; one complete plain-text HTTP request. Unsupported input/Hex disables export with a reason. See `docs/mvp.md`; curl requires 7.87+.
 - Wheel over detail never scrolls the underlying list; wheel over exposed list does.
 - Desktop sidebar is fixed.
 - English/Russian UI language follows the browser until the sidebar switch above Sign out persists `newhatch_language`.
@@ -45,7 +45,7 @@ Retention is by rotated segment count. Rotation and expiration are checked only 
 
 ## Current Verification
 
-- Issue #12 code and nginx-backed export suite are prepared but await user-run Docker validation; local Node/npm are unavailable. The passing results below predate this change.
+- Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including real execution of generated Bash/cURL and Python/requests snippets through nginx and the existing auth/session-feed regressions.
 
 - Frontend production Docker build passes.
 - Rust auth integration, nginx/Compose unit checks and isolated IPv4/IPv6 Docker auth e2e pass, including sensitive artifact denial and rejected mutation side effects.

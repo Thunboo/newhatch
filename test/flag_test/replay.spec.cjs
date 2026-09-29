@@ -78,13 +78,25 @@ test("C2S export buttons precede ordinary copy and replay GET against the nginx 
   await expect(buttons.nth(0)).toHaveAttribute("aria-label", formats[0].label);
   await expect(buttons.nth(1)).toHaveAttribute("aria-label", formats[1].label);
   await expect(buttons.nth(2)).toHaveAttribute("aria-label", "Copy Client -> server");
-  await expect(buttons.nth(0)).toHaveText("B");
-  await expect(buttons.nth(1)).toHaveText("Py");
+  await expect(buttons.nth(0).locator("img.export-logo")).toHaveAttribute("src", /Curl-logo.*\.svg/);
+  await expect(buttons.nth(1).locator("img.export-logo")).toHaveAttribute("src", /python-logo/);
+  await expect(buttons.nth(0)).toHaveCSS("width", "64px");
+  await expect(buttons.nth(1)).toHaveCSS("width", "76px");
+  await expect(buttons.nth(0).locator("img.export-logo")).toHaveCSS("width", "56px");
+  await expect(buttons.nth(0).locator("img.export-logo")).toHaveCSS("height", "18px");
+  await expect(buttons.nth(1).locator("img.export-logo")).toHaveCSS("width", "68px");
+  await expect(buttons.nth(1).locator("img.export-logo")).toHaveCSS("height", "20px");
+  await expect(buttons.nth(0)).toHaveCSS("background-color", "rgb(232, 235, 238)");
+  await expect(buttons.nth(1)).toHaveCSS("background-color", "rgb(232, 235, 238)");
   await expect(buttons.nth(0)).toHaveAttribute("title", formats[0].label);
   await expect(page.locator(".stream").nth(1).getByRole("button")).toHaveCount(1);
   const boxes = await Promise.all([0, 1, 2].map((index) => buttons.nth(index).boundingBox()));
   expect(boxes[0].x).toBeLessThan(boxes[1].x);
   expect(boxes[1].x).toBeLessThan(boxes[2].x);
+  await buttons.nth(0).locator("img.export-logo").dispatchEvent("error");
+  await buttons.nth(1).locator("img.export-logo").dispatchEvent("error");
+  await expect(buttons.nth(0)).toHaveText("cUrl");
+  await expect(buttons.nth(1)).toHaveText("python");
   for (const { format, label } of formats) {
     expect(executeExport(format, await copyExport(page, stream, label))).toEqual(flag);
   }

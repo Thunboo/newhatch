@@ -117,10 +117,11 @@ that JSON and expands JSON objects or arrays stored in string fields to a bounde
 nesting depth. Hex view and stored payload bytes stay unchanged.
 
 The C2S header also provides **Copy as Bash (cURL)** and **Copy as Python
-(requests)** immediately before ordinary copy. Temporary B/Py marks stand in for
-the final icons; EN/RU hover text names the action. These exports are implemented
-entirely in the frontend. They use the currently displayed text body, including
-the Format JSON choice, and retain readable Unicode rather than byte escapes or
+(requests)** immediately before ordinary copy. Bundled cURL and Python logos
+identify the actions, with `cUrl` and `python` text fallbacks if an image cannot
+load; EN/RU hover text names the action. These exports are implemented entirely
+in the frontend. They use the currently displayed text body, including the
+Format JSON choice, and retain readable Unicode rather than byte escapes or
 base64. Captured bytes are used only to validate HTTP framing.
 
 The initial exporter accepts one complete, uncompressed UTF-8 HTTP/1.x request
