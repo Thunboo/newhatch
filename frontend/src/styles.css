@@ -159,9 +159,12 @@ button:disabled { cursor: default; opacity: .5; }
 .stream { min-height: 0; display: flex; flex-direction: column; background: #16191d; border: 1px solid #0d0f11; border-radius: 6px; overflow: hidden; }
 .stream.flagged { border-color: #c99918; box-shadow: 0 0 0 1px rgba(201,153,24,.2); }
 .stream > header { min-height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; color: #aeb5bd; background: #22262b; border-bottom: 1px solid #30353b; font-size: 11px; font-weight: 650; text-transform: uppercase; }
-.stream-actions { display: flex; align-items: center; gap: 8px; }
+.stream > header > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 8px; }
+.export-placeholder { font: 700 11px ui-monospace, monospace; text-transform: none; }
 .stream-actions button { width: 26px; height: 26px; display: grid; place-items: center; color: #aeb5bd; background: transparent; border: 1px solid #41474e; border-radius: 4px; }
-.stream-actions button:hover { color: #fff; border-color: #747c85; background: #2d3238; }
+.stream-actions button:disabled { opacity: .4; cursor: not-allowed; }
+.stream-actions button:not(:disabled):hover { color: #fff; border-color: #747c85; background: #2d3238; }
 .stream-actions button.copy-failed { color: #f08a8a; border-color: #965151; }
 .stream pre { min-height: 0; margin: 0; padding: 12px; flex: 1; overflow: auto; overscroll-behavior: contain; color: #d9dee4; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .stream mark { padding: 1px 0; color: #17191d; background: #f3c840; }

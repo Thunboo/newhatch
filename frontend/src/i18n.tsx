@@ -102,6 +102,14 @@ const en = {
   "detail.copied": "Copied",
   "detail.copyFailed": "Copy failed",
   "detail.copy": "Copy {title}",
+  "detail.copyBash": "Copy as Bash (cURL)",
+  "detail.copyPython": "Copy as Python (requests)",
+  "detail.exportHex": "Switch to Text to export the displayed request",
+  "detail.exportHttp": "Export requires an HTTP/1.x request",
+  "detail.exportIncomplete": "The HTTP request is incomplete",
+  "detail.exportMultiple": "Export supports one complete HTTP request at a time",
+  "detail.exportEncoding": "Export supports uncompressed text HTTP requests without Upgrade or chunked encoding",
+  "detail.exportHeaders": "The request contains unsupported or repeated headers",
 } as const;
 
 type TranslationKey = keyof typeof en;
@@ -202,6 +210,14 @@ const ru: Record<TranslationKey, string> = {
   "detail.copied": "Скопировано",
   "detail.copyFailed": "Не удалось скопировать",
   "detail.copy": "Копировать: {title}",
+  "detail.copyBash": "Копировать как Bash (cURL)",
+  "detail.copyPython": "Копировать как Python (requests)",
+  "detail.exportHex": "Переключитесь на текст для экспорта отображаемого запроса",
+  "detail.exportHttp": "Для экспорта нужен HTTP/1.x запрос",
+  "detail.exportIncomplete": "HTTP-запрос захвачен не полностью",
+  "detail.exportMultiple": "Экспорт поддерживает один полный HTTP-запрос",
+  "detail.exportEncoding": "Поддерживаются текстовые HTTP-запросы без сжатия, Upgrade и chunked-кодирования",
+  "detail.exportHeaders": "Запрос содержит неподдерживаемые или повторяющиеся заголовки",
 };
 
 const dictionaries: Record<Language, Record<TranslationKey, string>> = { en, ru };
