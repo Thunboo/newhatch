@@ -222,6 +222,7 @@ The first executable vertical slice includes:
 - SQLite metadata plus versioned append-only payload segments
 - source CRUD, bounded session browsing, payload retrieval and payload search APIs
 - a TypeScript/React UI for sources, filters, session browsing and text/hex payload inspection
+- optional session chains keyed by collector/client/source with adjacent start gaps up to one second, full-context cards, fixed-size nested payload scrolling and bounded on-demand queries; see [session chains](docs/session-chains.md)
 - frontend-only Bash/cURL and Python/requests export of a single HTTP request using the displayed text body; see `docs/mvp.md` for supported input and limitations
 - `Нюхач` UI branding plus local source search and sorting by name or port
 - English/Russian frontend localization with browser-language default and a persisted sidebar switch

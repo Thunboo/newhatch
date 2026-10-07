@@ -39,6 +39,9 @@ export type HttpMetadata = {
 };
 
 export type Session = {
+  collector_id: string | null;
+  first_payload_c2s_at: number | null;
+  first_payload_s2c_at: number | null;
   id: number;
   source_id: number;
   source_name: string;
@@ -74,3 +77,23 @@ export type SessionFilters = {
   payload?: string;
   cursor?: number;
 };
+
+export type Chain = {
+  id: number;
+  collector_id: string | null;
+  source_id: number;
+  source_name: string;
+  client_ip: string;
+  started_at: number;
+  ended_at: number;
+  session_count: number;
+  bytes_c2s: number;
+  bytes_s2c: number;
+  contains_flag: boolean;
+  flag_count: number;
+  suricata_alerts: number;
+  incomplete: boolean;
+  snapshot_id: number;
+};
+export type ChainPage = { items: Chain[]; next_cursor: string | null };
+export type ChainMemberPage = { chain: Chain; items: Session[]; next_cursor: string | null };

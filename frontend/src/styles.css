@@ -230,3 +230,21 @@ button:disabled { cursor: default; opacity: .5; }
   .detail-meta { grid-template-columns: 1fr 1fr; }
   .streams { padding: 0 10px 10px; }
 }
+
+/* The outer card moves between pairs; payload bodies retain independent scroll. */
+.chain-table th:nth-child(3) { width: 180px; }
+.chain-table th:nth-child(4) { width: 140px; }
+.chain-table th:nth-child(5) { width: 82px; }
+.chain-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px 20px; --payload-window-height: 180px; }
+.chain-pair { display: grid; grid-template-rows: var(--payload-window-height) var(--payload-window-height); gap: 12px; margin-bottom: 20px; }
+.chain-panel > .detail-header, .chain-panel > .detail-meta, .chain-panel > .flag-banner, .chain-panel > .payload-toolbar { flex-shrink: 0; }
+.chain-pair .stream pre { overscroll-behavior: contain; touch-action: pan-y; }
+.chain-scroll .history-sentinel { min-height: 48px; }
+.chain-pair .stream > header { min-height: 44px; }
+.chain-pair .stream-title { display: flex; flex-direction: column; }
+.chain-pair .stream-title small { font-size: 10px; line-height: 1.3; font-weight: 400; }
+.chain-pair .stream-actions { gap: 5px; margin-left: 6px; }
+@media (max-width: 820px) {
+  .chain-panel { bottom: 58px; }
+  .chain-scroll { padding-right: 10px; padding-left: 10px; }
+}

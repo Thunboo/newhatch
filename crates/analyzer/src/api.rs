@@ -12,6 +12,9 @@ use axum::{
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
 
+use crate::storage::chains::{
+    decode_cursor, ChainCursor, ChainPage, ChainReader, MemberCursor, MemberPage,
+};
 use crate::{
     auth::{self, AuthConfig},
     collector::{CollectorRegistry, CollectorStatus},
@@ -39,6 +42,8 @@ pub fn router(state: ApiState, config: AuthConfig) -> Router {
             put(update_source).delete(delete_source),
         )
         .route("/api/sessions", get(list_sessions))
+        .route("/api/chains", get(list_chains))
+        .route("/api/chains/{id}/sessions", get(list_chain_members))
         .route("/api/sessions/{id}", get(get_session))
         .route("/api/sessions/{id}/payload/{direction}", get(get_payload))
         .route("/api/sessions/{id}/flag-matches", get(get_flag_matches))
@@ -131,6 +136,7 @@ struct SessionQuery {
     cursor: Option<i64>,
     limit: Option<usize>,
     payload: Option<String>,
+    chain_cursor: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -139,30 +145,101 @@ struct SessionPage {
     next_cursor: Option<i64>,
 }
 
+impl SessionQuery {
+    fn filter(&self) -> Result<SessionFilter, ApiError> {
+        Ok(SessionFilter {
+            source_id: self.source_id,
+            contains_flag: self.contains_flag,
+            protocol: self
+                .protocol
+                .as_deref()
+                .map(SessionProtocol::from_str)
+                .transpose()
+                .map_err(|_| ApiError::bad_request("invalid protocol filter"))?,
+            client_ip: parse_optional_ip(self.client_ip.as_deref())
+                .map_err(ApiError::bad_request_error)?,
+            server_ip: parse_optional_ip(self.server_ip.as_deref())
+                .map_err(ApiError::bad_request_error)?,
+            client_port: self.client_port,
+            server_port: self.server_port,
+            started_after: self.started_after,
+            cursor: self.cursor,
+            limit: self.limit.unwrap_or(100).clamp(1, 200),
+        })
+    }
+}
+
+async fn list_chains(
+    State(state): State<Arc<ApiState>>,
+    Query(query): Query<SessionQuery>,
+) -> Result<Json<ChainPage>, ApiError> {
+    let filter = query.filter()?;
+    let cursor = query
+        .chain_cursor
+        .as_deref()
+        .map(decode_cursor::<ChainCursor>)
+        .transpose()
+        .map_err(ApiError::bad_request_error)?;
+    if cursor.as_ref().is_some_and(|cursor| cursor.snapshot < 0) {
+        return Err(ApiError::bad_request("invalid chain snapshot"));
+    }
+    let needle = query
+        .payload
+        .filter(|value| !value.is_empty())
+        .map(String::into_bytes);
+    let catalog = state.catalog.clone();
+    let data_dir = state.data_dir.clone();
+    Ok(Json(
+        chain_blocking(move || {
+            ChainReader::open(&catalog)?.list(&filter, cursor, needle.as_deref(), &data_dir)
+        })
+        .await?,
+    ))
+}
+
+#[derive(Deserialize)]
+struct MemberQuery {
+    cursor: Option<String>,
+    snapshot_id: Option<i64>,
+    limit: Option<usize>,
+}
+
+async fn list_chain_members(
+    State(state): State<Arc<ApiState>>,
+    Path(id): Path<i64>,
+    Query(query): Query<MemberQuery>,
+) -> Result<Json<MemberPage>, ApiError> {
+    let cursor = query
+        .cursor
+        .as_deref()
+        .map(decode_cursor::<MemberCursor>)
+        .transpose()
+        .map_err(ApiError::bad_request_error)?;
+    if query.snapshot_id.is_some_and(|value| value < 0)
+        || cursor.as_ref().is_some_and(|value| value.snapshot < 0)
+    {
+        return Err(ApiError::bad_request("invalid chain snapshot"));
+    }
+    let catalog = state.catalog.clone();
+    let page = chain_blocking(move || {
+        ChainReader::open(&catalog)?.member_page(
+            id,
+            cursor,
+            query.snapshot_id,
+            query.limit.unwrap_or(20),
+        )
+    })
+    .await?;
+    Ok(Json(
+        page.ok_or_else(|| ApiError::not_found("chain not found"))?,
+    ))
+}
+
 async fn list_sessions(
     State(state): State<Arc<ApiState>>,
     Query(query): Query<SessionQuery>,
 ) -> Result<Json<SessionPage>, ApiError> {
-    let protocol = query
-        .protocol
-        .as_deref()
-        .map(SessionProtocol::from_str)
-        .transpose()
-        .map_err(|_| ApiError::bad_request("invalid protocol filter"))?;
-    let base_filter = SessionFilter {
-        source_id: query.source_id,
-        contains_flag: query.contains_flag,
-        protocol,
-        client_ip: parse_optional_ip(query.client_ip.as_deref())
-            .map_err(ApiError::bad_request_error)?,
-        server_ip: parse_optional_ip(query.server_ip.as_deref())
-            .map_err(ApiError::bad_request_error)?,
-        client_port: query.client_port,
-        server_port: query.server_port,
-        started_after: query.started_after,
-        cursor: query.cursor,
-        limit: query.limit.unwrap_or(100).clamp(1, 200),
-    };
+    let base_filter = query.filter()?;
 
     let page = if let Some(payload) = query.payload.filter(|value| !value.is_empty()) {
         search_payload(state, base_filter, payload.into_bytes()).await?
@@ -355,6 +432,26 @@ where
         .map_err(ApiError::internal)
 }
 
+// Chain reads can sort a large retained catalog. Reject excess requests instead
+// of letting them occupy an unbounded number of blocking threads/connections.
+static CHAIN_READS: tokio::sync::Semaphore = tokio::sync::Semaphore::const_new(2);
+
+async fn chain_blocking<T, F>(operation: F) -> Result<T, ApiError>
+where
+    T: Send + 'static,
+    F: FnOnce() -> anyhow::Result<T> + Send + 'static,
+{
+    let permit = CHAIN_READS.try_acquire().map_err(|_| ApiError {
+        status: StatusCode::SERVICE_UNAVAILABLE,
+        message: "chain queries are busy; retry shortly".to_owned(),
+    })?;
+    blocking(move || {
+        let _permit = permit;
+        operation()
+    })
+    .await
+}
+
 #[derive(Debug)]
 struct ApiError {
     status: StatusCode,
@@ -382,6 +479,12 @@ impl ApiError {
 
     fn internal(error: anyhow::Error) -> Self {
         tracing::error!(error = ?error, "API request failed");
+        if crate::storage::chains::is_interrupted(&error) {
+            return Self {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                message: "chain query budget exceeded; narrow filters and retry".to_owned(),
+            };
+        }
         let message = if is_constraint_error(&error) {
             "source port is already in use".to_owned()
         } else {

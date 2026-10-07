@@ -248,3 +248,26 @@ The user explicitly extended the MVP to include environment-configured `NEWHATCH
 The remote split is after `ClassifiedPacket`. `crates/protocol` owns shared packet/source/domain types and a versioned length-prefixed protobuf protocol. The lightweight collector owns cooked AF_PACKET capture, BPF, classification, bounded memory, reconnect and counters; analyzer owns worker selection and every heavy processing/persistence concern. Analyzer pushes global active Source snapshots to all connected collectors. Flow identity is `CollectorId + FlowKey`.
 
 Runtime roles are selected by the service being launched. Analyzer uses `ANALYZER=local|remote` (default `local`); collector uses `ANALYZER_CONNSTR`. Connection strings support IPs or FQDNs with ports; collector DNS is resolved again on reconnect. A remote analyzer listens on `LISTEN_CONNSTR`. A non-empty `ALLOWED_COLLECTORS` restricts exact IPs and IPs resolved from FQDNs at startup, while an empty value accepts any host. The transport has no PSK or encryption; PSK authentication is backlog hardening. Collector `QUEUE_CAPACITY` defaults to 8192 packets and bounds memory by dropping and counting new packets when full.
+
+## Session Chains (2026-10-08, Issue #13)
+
+The user approved whole-session correlation by `collector_id + client_ip + source_id`.
+Adjacent capture-time session starts at most one second apart continue a chain;
+this is a sliding rule with no total-duration limit. Different services or
+collectors never merge. HTTP status is not part of correlation. Multiple exchanges
+inside one TCP session remain one existing C2S/S2C pair.
+
+Analyzer workers preserve collector identity and earliest non-empty payload
+capture times per direction. Collectors retain their current lightweight work.
+Chains are computed on demand from persisted metadata with bounded read work;
+no duplicated payloads, packet rows or live chain state are introduced. Legacy
+rows without collector identity remain singletons. Existing retention applies.
+
+Grouping is an off-by-default display checkbox. Chain filters select on one
+matching member but opening the card shows all available context. Pair order is
+session start then ID, C2S before its S2C. The card scrolls between fixed-size
+independently scrollable payload windows; cURL/Python exports appear only on C2S.
+Capture timestamps label windows without interleaving overlapping sessions.
+Late persistence is reflected on refresh; snapshot cursors keep ongoing pages
+stable. See [session chains](session-chains.md) for the agreed specification,
+API and query budgets.

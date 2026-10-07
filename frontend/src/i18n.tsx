@@ -7,6 +7,22 @@ type Variables = Record<string, string | number>;
 const STORAGE_KEY = "newhatch_language";
 
 const en = {
+  "chains.group": "Group into chains",
+  "chains.loaded": "{count} loaded chains",
+  "chains.collector": "Collector",
+  "chains.steps": "Sessions",
+  "chains.duration": "Duration",
+  "chains.unknown": "Unknown",
+  "chains.empty": "No chains match",
+  "chains.loading": "Loading chains...",
+  "chains.allShown": "All loaded chains are shown",
+  "chains.detail": "Chain details",
+  "chains.title": "Chain · {count} sessions",
+  "chains.loadingMembers": "Loading sessions...",
+  "chains.more": "Load more sessions",
+  "chains.membersLoaded": "{count} sessions shown",
+  "chains.timeUnknown": "Time unknown",
+
   "auth.checking": "Checking session...",
   "auth.unavailable": "Unable to connect.",
   "auth.retry": "Retry",
@@ -115,6 +131,22 @@ const en = {
 type TranslationKey = keyof typeof en;
 
 const ru: Record<TranslationKey, string> = {
+  "chains.group": "Группировать в цепочки",
+  "chains.loaded": "Загружено цепочек: {count}",
+  "chains.collector": "Коллектор",
+  "chains.steps": "Сессии",
+  "chains.duration": "Длительность",
+  "chains.unknown": "Неизвестно",
+  "chains.empty": "Подходящие цепочки не найдены",
+  "chains.loading": "Загрузка цепочек...",
+  "chains.allShown": "Показаны все загруженные цепочки",
+  "chains.detail": "Подробности цепочки",
+  "chains.title": "Цепочка · сессий: {count}",
+  "chains.loadingMembers": "Загрузка сессий...",
+  "chains.more": "Загрузить ещё сессии",
+  "chains.membersLoaded": "Показано сессий: {count}",
+  "chains.timeUnknown": "Время неизвестно",
+
   "auth.checking": "Проверка сессии...",
   "auth.unavailable": "Не удалось подключиться.",
   "auth.retry": "Повторить",

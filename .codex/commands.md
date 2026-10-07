@@ -98,6 +98,15 @@ docker run --rm --shm-size=256m -v /tmp/newhatch-auth-ui:/results newhatch-auth-
 
 The network suite builds an isolated stack and removes its own resources. See `test/auth/README.md`.
 
+## Session Chain Tests
+
+Host-only Rust/frontend/browser checks and user-run Docker commands are in
+`test/session_chains/README.md`. The browser configuration
+`test/session_chains/playwright.config.cjs` starts temporary Vite and includes
+auth/localization/feed regressions plus chain order/export/scroll/late-merge
+coverage. Results default to the OS temp directory; `NEWHATCH_TEST_RESULTS`
+overrides it. No production data or `.env` is used.
+
 ## Request Export Tests
 
 Agent restriction still applies: these commands must be run by the user.

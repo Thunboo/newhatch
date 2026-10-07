@@ -1,13 +1,12 @@
+#[cfg(target_os = "linux")]
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
 use tokio::sync::{mpsc, watch};
 
-use crate::{
-    domain::Source,
-    flow::{worker_index, IngressPacket},
-    storage::Catalog,
-};
+#[cfg(target_os = "linux")]
+use crate::{domain::Source, flow::worker_index};
+use crate::{flow::IngressPacket, storage::Catalog};
 
 pub async fn run(
     interface: String,
@@ -37,6 +36,7 @@ pub async fn run(
     }
 }
 
+#[cfg(target_os = "linux")]
 async fn load_sources(catalog: Catalog) -> Result<Arc<Vec<Source>>> {
     tokio::task::spawn_blocking(move || catalog.list_sources(true))
         .await

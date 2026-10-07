@@ -89,6 +89,10 @@ Hashes `CollectorId + FlowKey` into worker-local flow tables so equal endpoint t
 
 Flags are scanned incrementally with overlap and counted exactly again at finalization. A flow is finalized on RST, both-direction FIN, idle timeout or worker shutdown. Timed-out, truncated or not-fully-closed sessions are marked incomplete.
 
+Completed sessions retain collector identity and the earliest observed non-empty
+payload capture time in each direction. This metadata supports whole-session
+chain browsing without adding aggregation to the collector or persisting packets.
+
 ### `protocol.rs`
 
 Classifies finalized streams as `raw_tcp`, `http` or `websocket`. It extracts HTTP method, host, path, response status and content type with `httparse`. WebSocket Upgrade/101 is recognized, but frames are not decoded.
@@ -97,9 +101,18 @@ Classifies finalized streams as `raw_tcp`, `http` or `websocket`. It extracts HT
 
 One blocking writer thread drains batches of up to 500 completed sessions. It rejects empty sessions, appends versioned C2S/S2C records to rotating segment files, syncs segment data, then commits metadata to SQLite. Payload retrieval uses segment filename, byte offset and record length and validates record identity, lengths and CRC32.
 
+`schema.rs` migrates collector/first-payload fields without rewriting segments.
+`chains.rs` computes sliding one-second groups with SQLite window queries,
+filter-independent membership, snapshot cursors and resumable payload search.
+Legacy NULL collector IDs partition as singletons. Each reader has an isolated
+transaction, a 2 MiB cache, file-backed sorting and SQL progress interruption.
+
 ### `auth.rs` and `api.rs`
 
 `auth.rs` implements startup Argon2id credential hashing, bounded in-memory server-side sessions and local-peer/origin checks. `api.rs` provides minimal public health, login/logout/current-user endpoints, Source CRUD, cursor-based session listing, metadata filters, bounded payload substring search, directional payload retrieval, flag-match ranges and collector status. Blocking SQLite and file operations run through `spawn_blocking`.
+
+Authenticated chain list/member routes use at most two concurrent blocking reads;
+excess or interrupted requests return 503. See `docs/session-chains.md` for limits.
 
 ## Related Crates
 

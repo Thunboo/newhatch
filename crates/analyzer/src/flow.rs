@@ -137,6 +137,7 @@ impl FlowWorker {
         let should_finish = {
             let flow = self.flows.entry(key.clone()).or_insert_with(|| {
                 FlowState::new(
+                    key.collector_id.clone(),
                     classified.source_id,
                     key.flow_key.clone(),
                     classified.packet.timestamp_micros,
@@ -185,6 +186,9 @@ impl FlowWorker {
 }
 
 struct FlowState {
+    collector_id: String,
+    first_payload_c2s_at: Option<i64>,
+    first_payload_s2c_at: Option<i64>,
     source_id: i64,
     key: FlowKey,
     started_at: i64,
@@ -200,8 +204,17 @@ struct FlowState {
 }
 
 impl FlowState {
-    fn new(source_id: i64, key: FlowKey, timestamp: i64, max_stream_bytes: usize) -> Self {
+    fn new(
+        collector_id: String,
+        source_id: i64,
+        key: FlowKey,
+        timestamp: i64,
+        max_stream_bytes: usize,
+    ) -> Self {
         Self {
+            collector_id,
+            first_payload_c2s_at: None,
+            first_payload_s2c_at: None,
             source_id,
             key,
             started_at: timestamp,
@@ -220,6 +233,15 @@ impl FlowState {
     fn ingest(&mut self, classified: &ClassifiedPacket, flag_regex: &Regex) {
         self.started_at = self.started_at.min(classified.packet.timestamp_micros);
         self.ended_at = self.ended_at.max(classified.packet.timestamp_micros);
+        if !classified.packet.payload.is_empty() {
+            let first = match classified.direction {
+                Direction::C2s => &mut self.first_payload_c2s_at,
+                Direction::S2c => &mut self.first_payload_s2c_at,
+            };
+            *first = Some(first.map_or(classified.packet.timestamp_micros, |time| {
+                time.min(classified.packet.timestamp_micros)
+            }));
+        }
         let sequence = classified
             .packet
             .sequence
@@ -252,6 +274,9 @@ impl FlowState {
 
     fn finish(self, timed_out: bool, flag_regex: &Regex) -> CompletedSession {
         let FlowState {
+            collector_id,
+            first_payload_c2s_at,
+            first_payload_s2c_at,
             source_id,
             key,
             started_at,
@@ -282,6 +307,9 @@ impl FlowState {
         }
         let (protocol, http) = protocol::classify(&c2s, &s2c);
         CompletedSession {
+            collector_id,
+            first_payload_c2s_at,
+            first_payload_s2c_at,
             source_id,
             started_at,
             ended_at,
@@ -472,7 +500,7 @@ mod tests {
             },
         };
         let regex = Regex::new("FLAG").unwrap();
-        let mut flow = FlowState::new(1, key.clone(), 1, 1024);
+        let mut flow = FlowState::new("test-box".into(), 1, key.clone(), 1, 1024);
         for (sequence, payload) in [
             (100, b"hello ".as_slice()),
             (112, b"world"),
@@ -497,6 +525,57 @@ mod tests {
             flow.ingest(&decoded, &regex);
         }
         assert_eq!(flow.finish(true, &regex).c2s, b"hello brave world");
+    }
+
+    #[test]
+    fn session_metadata_uses_capture_time_and_preserves_collector() {
+        let key = FlowKey {
+            client: Endpoint {
+                ip: "10.0.0.2".parse().unwrap(),
+                port: 50000,
+            },
+            server: Endpoint {
+                ip: "10.0.0.1".parse().unwrap(),
+                port: 8080,
+            },
+        };
+        let regex = Regex::new("FLAG").unwrap();
+        let mut flow = FlowState::new("vulnbox-2".into(), 1, key.clone(), 100, 1024);
+        for (direction, timestamp, sequence, payload) in [
+            (Direction::C2s, 100, 10, b"".as_slice()),
+            (Direction::C2s, 500, 10, b"request"),
+            (Direction::S2c, 700, 20, b"FLAG"),
+            (Direction::C2s, 400, 10, b"request"),
+            (Direction::S2c, 50, 24, b""),
+        ] {
+            flow.ingest(
+                &ClassifiedPacket {
+                    source_id: 1,
+                    direction,
+                    flow_key: key.clone(),
+                    packet: TcpPacket {
+                        timestamp_micros: timestamp,
+                        src: key.client.clone(),
+                        dst: key.server.clone(),
+                        sequence,
+                        syn: false,
+                        fin: false,
+                        rst: false,
+                        payload: payload.to_vec(),
+                    },
+                },
+                &regex,
+            );
+        }
+        let session = flow.finish(true, &regex);
+        assert_eq!(session.collector_id, "vulnbox-2");
+        assert_eq!(session.started_at, 50);
+        assert_eq!(session.first_payload_c2s_at, Some(400));
+        assert_eq!(session.first_payload_s2c_at, Some(700));
+        assert_eq!(session.c2s, b"request");
+        let no_payload = FlowState::new("local".into(), 1, key, 1, 1024).finish(true, &regex);
+        assert_eq!(no_payload.first_payload_c2s_at, None);
+        assert_eq!(no_payload.first_payload_s2c_at, None);
     }
 
     #[test]

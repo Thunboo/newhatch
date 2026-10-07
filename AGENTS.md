@@ -74,6 +74,9 @@
 - Keep ingest queues bounded and backpressure explicit.
 - Prefer observable drops and bounded memory over unbounded buffering.
 - Keep MVP protocol support to `raw_tcp`, `http`, `websocket`.
+- Correlate whole TCP-session pairs by `collector_id + client_ip + source_id`, with adjacent capture-time start gaps <= 1 second; do not split HTTP exchanges for chain browsing.
+- Collect chain metadata on the analyzer; compute chains on demand with bounded read work and keep the collector lightweight.
+- Chain cards keep C2S before its S2C, C2S-only cURL/Python export and independently scrollable fixed-size payload windows inside a scrollable card.
 
 ## Working Rules
 

@@ -147,6 +147,34 @@ allows assertions on received headers, query values and body bytes.
 
 HTTP and WebSocket parsing should improve readability without destroying access to raw reconstructed bytes.
 
+## Session Chains (Issue #13)
+
+Implemented behavior and the agreed specification are documented in
+[session chains](session-chains.md).
+
+An off-by-default checkbox switches between individual sessions and chains of
+complete TCP-session C2S/S2C pairs. The key is `collector_id + client_ip + source_id`;
+adjacent session starts at most 1 second apart continue a chain. Multiple HTTP
+exchanges in one TCP session remain one pair. Chain membership is computed on
+demand from stored metadata, independently of result-page boundaries. The analyzer
+collects collector identity and the first payload capture timestamp per direction;
+the collector gains no additional aggregation work.
+
+The chain card orders pairs by session start, with C2S immediately before its S2C.
+Existing payload rendering and C2S-only cURL/Python export behavior are reused.
+The card scrolls vertically between pairs, while every expanded C2S/S2C window
+retains the current standalone dimensions for the viewport and its independent
+payload scroll. Windows must not grow with payload length or shrink as more pairs
+are loaded. Both scroll levels remain usable without scrolling the background list.
+
+A filtered chain is selected when one member satisfies all active filters; its
+card includes the other retained members as context. Chain and member pages pin
+a session-ID watermark. Refresh replaces old rows when a late session merges
+chains. Legacy records without collector identity stay singleton chains with
+unknown directional times. Members and payloads load progressively; payload
+bytes are released outside the visible area. The backend caps concurrent reads
+and interrupts expensive SQL; use narrower filters when it returns 503.
+
 ## Session Protocol Values
 
 MVP values:

@@ -15,6 +15,7 @@
 - `docs/architecture.md`: capture and processing pipeline.
 - `docs/storage.md`: SQLite plus append-only segments.
 - `docs/authentication.md`: ingress and login model.
+- `docs/session-chains.md`: Issue #13 agreed contract, API and query limits.
 - `.agents/tasks/backlog.md`: deferred work.
 
 ## Current Architecture
@@ -50,6 +51,8 @@
 ## Implemented UI Behavior
 
 - Sessions, Sources and Collectors views are operational.
+- Optional session chains use key `collector_id + client_ip + source_id` and adjacent start gaps <= 1 second. The off-by-default checkbox groups complete session pairs; filtered cards retain full context and order C2S before its S2C by session start/ID.
+- Chain cards scroll between fixed-size, independently scrollable payload windows. C2S alone exposes cURL/Python export. Payloads load near the viewport and release offscreen; late bridging sessions replace obsolete chain rows on refresh.
 - Session feed merges by ID in `id DESC` order and counts unique loaded rows.
 - Newest-page polling runs every five seconds only near the live edge; it pauses while older traffic is inspected.
 - Scrolling upward triggers one anchored catch-up refresh. Older pages load automatically through an observer sentinel.
@@ -70,10 +73,12 @@
 - Retention is segment-count based, not a continuous wall-clock cleanup job.
 - Rotation is checked only when a completed session is appended. Starting the analyzer or leaving it powered off does not by itself delete old sessions.
 - Defaults: `SEGMENT_DURATION=30m`, `SEGMENT_RETENTION_COUNT=3`.
+- Analyzer persists collector identity and earliest directional non-empty payload capture times. Nullable startup migration preserves old segments; unknown collectors stay singleton chains. On-demand SQL grouping has two concurrent readers, a 2-second/50-million-step SQL budget, capped pages and resumable 2,000-candidate payload search. Cursors pin an insertion watermark; retention can still remove members.
 
 ## Verification
 
 - Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
+- Issue #13 passed 45 Rust tests (including budget interruption), strict workspace clippy, formatting, TypeScript checking, production Vite build and 7 local Chromium browser scenarios on 2026-10-08. Coverage includes legacy migration, exact window/key rules, snapshot/member/search pagination, late merging, C2S exports and desktop/mobile nested scroll. Live Linux capture remains target-host follow-up; no Docker was run by the agent.
 - Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including execution of generated Bash/cURL and Python/requests snippets against nginx, unsupported-input handling, Unicode/JSON bodies, clipboard fallback and existing auth/session-feed regressions.
 
 - Frontend production image builds successfully.

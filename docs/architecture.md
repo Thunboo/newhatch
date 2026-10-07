@@ -296,6 +296,17 @@ The Axum API exposes source CRUD, cursor-based session listing, individual sessi
 
 The React UI currently exposes source, protocol, flag-only and payload filters for sessions. Sources can be searched and sorted locally by name or TCP port. The UI is branded `Нюхач`; `newhatch` remains the internal repository/service name.
 
+Optional session-chain browsing groups complete sessions by
+`collector_id + client_ip + source_id`, with adjacent start gaps <= one second.
+The analyzer records collector identity and first non-empty payload capture times
+while reassembling; collectors have no additional aggregation work or transport
+fields. Authenticated `/api/chains` and `/api/chains/{id}/sessions` compute groups
+on demand from stored metadata, independently of filters/pages. Bounded blocking
+readers and SQLite progress interruption isolate query work from packet workers.
+The UI keeps each C2S/S2C pair together in session-start order, uses nested fixed
+payload scrolling and loads payloads near the viewport. See
+[session chains](session-chains.md) for the full contract and limits.
+
 ## Remote Collector Boundary
 
 Capture can run locally in analyzer (`ANALYZER=local`, the default) or in the standalone diskless collector with `ANALYZER=remote` on the receiving analyzer. The remote boundary is immediately after packet classification:
@@ -325,6 +336,13 @@ ended_at   = last observed packet timestamp
 Use a compact integer representation in storage, preferably Unix nanoseconds or microseconds.
 
 The current implementation stores Unix microseconds. It uses the kernel receive timestamp when available and falls back to the current system time.
+
+`started_at`/`ended_at` use the minimum/maximum observed capture timestamps,
+including packets received out of order by the analyzer. Directional
+`first_payload_c2s_at`/`first_payload_s2c_at` store the minimum capture timestamp
+of an observed non-empty payload packet, including retransmissions. Empty
+directions and legacy records have NULL times. These signatures do not introduce
+per-packet persistence or split a session into application exchanges.
 
 ## Failure Isolation
 

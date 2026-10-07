@@ -29,10 +29,10 @@ test("auth gate, login errors, logout, expiration and stopped polling", async ({
   await expect(page).toHaveTitle("Нюхач");
   await page.setViewportSize({ width: 1280, height: 800 });
   expect(await page.locator(".auth-brand img").evaluate((image) => image.complete && image.naturalWidth > 0)).toBe(true);
-  await page.screenshot({ path: "/results/login-desktop.png" });
+  await page.screenshot({ path: (process.env.NEWHATCH_TEST_RESULTS || "/results") + "/login-desktop.png" });
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: "/results/login-mobile.png" });
+  await page.screenshot({ path: (process.env.NEWHATCH_TEST_RESULTS || "/results") + "/login-mobile.png" });
   await page.getByLabel("Username").fill("team");
   await page.getByLabel("Password").fill("wrong");
   await page.getByRole("button", { name: "Sign in", exact: true }).click();
