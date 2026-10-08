@@ -261,8 +261,8 @@ function LazyPair({ session, root, mode, formatJson }: { session: Session; root:
   const timestamp = (value: number | null) => value == null ? t("chains.timeUnknown") : new Date(value / 1_000).toLocaleTimeString(locale, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 });
   return <div ref={node} className="chain-pair" data-session-id={session.id}>
     {payload ? <>
-      <Stream title={`#${session.id} · C2S`} subtitle={timestamp(session.first_payload_c2s_at)} bytes={payload.c2s} ranges={payload.matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} replayTarget={{ host: session.server_ip, port: session.server_port }} />
-      <Stream title={`#${session.id} · S2C`} subtitle={timestamp(session.first_payload_s2c_at)} bytes={payload.s2c} ranges={payload.matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
+      <Stream chainScrollLane title={`#${session.id} · C2S`} subtitle={timestamp(session.first_payload_c2s_at)} bytes={payload.c2s} ranges={payload.matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} replayTarget={{ host: session.server_ip, port: session.server_port }} />
+      <Stream chainScrollLane title={`#${session.id} · S2C`} subtitle={timestamp(session.first_payload_s2c_at)} bytes={payload.s2c} ranges={payload.matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
     </> : ["C2S", "S2C"].map((direction) => <section key={direction} className="stream"><header><span>#{session.id} · {direction}</span></header><div className="payload-loading">{error ? <button onClick={() => setRetry((value) => value + 1)} title={error}>{t("common.retry")}</button> : visible ? <RefreshCw className="spin" size={17} /> : null}</div></section>)}
   </div>;
 }

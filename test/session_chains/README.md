@@ -37,7 +37,7 @@ NODE_PATH="$CHAIN_TEST_TOOLS/node_modules" "$CHAIN_TEST_TOOLS/node_modules/.bin/
 ```
 
 The configuration starts and stops a temporary Vite server on port 4173 and runs
-the existing auth/localization/feed regressions plus three chain scenarios.
+the existing auth/localization/feed regressions plus four chain scenarios.
 Screenshots/results default to the OS temporary directory. Optional overrides:
 `NEWHATCH_TEST_RESULTS`, `NEWHATCH_TEST_NODE`, `NEWHATCH_TEST_CHROMIUM`.
 
@@ -47,9 +47,17 @@ progressive metadata/payload loading, fixed window heights, independent inner
 and outer scroll with no background movement, mobile layout, Escape and removal
 of stale rows after a late bridge merges chains.
 
+The additional 90 px strip scenario checks outer-scroll routing over C2S and S2C
+without moving payload offsets, Python/raw copy controls above the layer,
+accessible native scrollbar tracks and background isolation at the chain end
+on both desktop and mobile viewports.
+
 On 2026-10-08, 45 Rust tests, strict clippy/fmt, TypeScript checking, Vite production
 build and all seven local Chromium scenarios passed on macOS. Live AF_PACKET
 capture and the production Linux deployment were not exercised in that run.
+
+The strip follow-up passed TypeScript/build and all four chain browser scenarios
+on the same date; it adds no backend behavior.
 
 ## User-Run Docker Checks
 

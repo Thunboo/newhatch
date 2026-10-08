@@ -41,8 +41,10 @@ The UI supports English and Russian. Without a saved preference it follows the b
 On Sessions, **Group into chains** combines complete TCP sessions from the same
 collector, client IP and service when adjacent session starts are at most one
 second apart. The option is off by default. Open a chain to inspect ordered
-C2S/S2C pairs: scroll the card between pairs, or scroll within each fixed-size
-payload window. cURL/Python export is available on C2S. Flag-only filtering keeps
+C2S/S2C pairs: scroll the card between pairs or over the invisible 90 px strip on
+the right of a window; scroll over the remaining payload area to inspect that
+request/response independently. Copy buttons stay available above the strip.
+cURL/Python export is available on C2S. Flag-only filtering keeps
 preceding sessions visible in the opened chain. Existing records without
 collector identity remain separate. See [session chains](docs/session-chains.md)
 for the exact rule, pagination and query limits.

@@ -11,7 +11,7 @@ import type { ByteRange } from "./types";
 import { formatBytes } from "./format";
 export type PayloadMode = "text" | "hex";
 
-export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagged, replayTarget }: { title: string; subtitle?: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget }) {
+export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false }: { title: string; subtitle?: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean }) {
   const { t } = useI18n();
   const displayedText = useMemo(() => displayPayload(bytes, formatJson), [bytes, formatJson]);
   const text = useMemo(() => mode === "hex" ? toHex(bytes) : displayedText, [bytes, displayedText, mode]);
@@ -51,6 +51,8 @@ export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagg
         </span>
       </header>
       <pre>{mode === "text" && matchTexts.length > 0 ? <HighlightedText text={text} matches={matchTexts} /> : text}</pre>
+      {/* A sibling of pre routes native wheel/touch scrolling to the chain body. */}
+      {chainScrollLane && <div className="chain-scroll-lane" aria-hidden="true" />}
     </section>
   );
 }

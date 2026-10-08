@@ -145,3 +145,65 @@ test("refresh replaces stale chain rows after a late session bridges them", asyn
   await expect(page.locator('[data-chain-id="41"]')).toContainText("32");
   await expect(page.locator('[data-chain-id="71"]')).toHaveCount(0);
 });
+
+test("90px right-side lanes scroll the chain while copy buttons and payload scrollbars remain accessible", async ({ page, context }) => {
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  const state = await routes(page);
+  for (const viewport of [{ width: 1280, height: 900 }, { width: 375, height: 812 }]) {
+    state.memberRequests.length = 0;
+    await page.setViewportSize(viewport);
+    await page.goto("/");
+    await page.getByRole("checkbox", { name: "Group into chains" }).check();
+    await page.locator('[data-chain-id="41"]').click();
+    // Make the background genuinely scrollable to expose accidental chaining.
+    await page.locator("main").evaluate((node) => { node.style.minHeight = "2400px"; });
+    const scroll = page.locator(".chain-scroll");
+    const streams = page.locator('.chain-pair[data-session-id="41"] .stream');
+    await expect(streams.first().locator("pre")).toContainText("POST /41");
+    const background = await page.evaluate(() => scrollY);
+    for (const stream of [streams.first(), streams.last()]) {
+      const payload = stream.locator("pre");
+      await payload.evaluate((node) => { node.scrollTop = 120; });
+      const inner = await payload.evaluate((node) => node.scrollTop);
+      const lane = await stream.locator(".chain-scroll-lane").boundingBox();
+      expect(lane.width).toBe(90);
+      const bounds = await payload.boundingBox();
+      await page.mouse.move(lane.x + lane.width / 2, bounds.y + 40);
+      await page.mouse.wheel(0, 100);
+      await expect.poll(() => scroll.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      expect(await payload.evaluate((node) => node.scrollTop)).toBe(inner);
+      expect(await page.evaluate(() => scrollY)).toBe(background);
+      await scroll.evaluate((node) => { node.scrollTop = 0; });
+
+      // The rightmost track remains hit-testable beneath no overlay.
+      const track = await payload.boundingBox();
+      expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest(".chain-scroll-lane") === null,
+        { x: track.x + track.width - 4, y: track.y + 40 })).toBe(true);
+    }
+    const c2s = streams.first();
+    const python = c2s.getByRole("button", { name: "Copy as Python (requests)" });
+    await python.click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("import requests");
+    await python.hover();
+    await page.mouse.wheel(0, 100);
+    await expect.poll(() => scroll.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+    expect(await page.evaluate(() => scrollY)).toBe(background);
+    await scroll.evaluate((node) => { node.scrollTop = 0; });
+    await c2s.locator(".stream-actions button").last().click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("POST /41");
+    await streams.last().locator(".stream-actions button").last().click();
+    await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("HTTP/1.1 200 OK");
+
+    await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+    await expect(page.locator(".chain-pair")).toHaveCount(30);
+    await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+    const last = page.locator('.chain-pair[data-session-id="70"] .stream').last();
+    await expect(last.locator("pre")).toContainText("HTTP/1.1 200 OK");
+    const lane = await last.locator(".chain-scroll-lane").boundingBox();
+    await page.mouse.move(lane.x + lane.width / 2, lane.y + lane.height - 30);
+    const end = await scroll.evaluate((node) => node.scrollTop);
+    await page.mouse.wheel(0, 500);
+    expect(await scroll.evaluate((node) => node.scrollTop)).toBe(end);
+    expect(await page.evaluate(() => scrollY)).toBe(background);
+  }
+});

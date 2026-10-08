@@ -267,6 +267,9 @@ Grouping is an off-by-default display checkbox. Chain filters select on one
 matching member but opening the card shows all available context. Pair order is
 session start then ID, C2S before its S2C. The card scrolls between fixed-size
 independently scrollable payload windows; cURL/Python exports appear only on C2S.
+A user-approved invisible 90 px strip on the right of each chain window scrolls
+the outer card. Copy actions have a higher z-index; native scrollbars remain
+accessible and window dimensions stay fixed.
 Capture timestamps label windows without interleaving overlapping sessions.
 Late persistence is reflected on refresh; snapshot cursors keep ongoing pages
 stable. See [session chains](session-chains.md) for the agreed specification,

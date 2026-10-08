@@ -57,6 +57,7 @@ Canonical details live in `docs/agent-decisions.md`. This file is the compact wo
 - Analyzer persists collector identity and first-payload capture times for both directions; do not add collector aggregation or packet/fragment chronology.
 - Grouping is an off-by-default display option computed on demand. Keep pairs together in session-start order, with C2S before S2C and cURL/Python exports only on C2S.
 - The chain card scrolls between pairs; every expanded payload window keeps its current viewport-dependent size and scrolls internally. Payload length and chain-member count must not resize windows. Neither scroll level may move the background list.
+- The user approved a 90 px transparent overlay strip at the right of each chain window for outer scrolling. Raise copy actions above it with z-index and keep native scrollbar tracks accessible; retain window dimensions. Use native scroll routing rather than manually translating wheel deltas.
 - Form membership before content filters; one member must match all filters and the card retains other context. Snapshot cursors exclude late insertions until refresh, which replaces stale split rows. Legacy NULL collectors stay singletons; retention is unchanged.
 - Chain SQL uses at most two concurrent readers with progress interruption (2 seconds/50 million steps); pages cap at 200, member default 20, payload scan max 2,000 candidates with continuation within a chain. Do not move grouping into packet workers.
 

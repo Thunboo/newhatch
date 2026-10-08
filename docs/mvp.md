@@ -167,6 +167,11 @@ retains the current standalone dimensions for the viewport and its independent
 payload scroll. Windows must not grow with payload length or shrink as more pairs
 are loaded. Both scroll levels remain usable without scrolling the background list.
 
+A transparent 90 px strip over the right side of each window provides easier
+chain scrolling. Copy/export actions sit above the strip and remain clickable;
+the native payload scrollbar edge remains accessible. The rest of the payload
+body retains its own scrolling, and window dimensions are unchanged.
+
 A filtered chain is selected when one member satisfies all active filters; its
 card includes the other retained members as context. Chain and member pages pin
 a session-ID watermark. Refresh replaces old rows when a late session merges
