@@ -191,6 +191,10 @@ test("chain export reports an unsupported offscreen request and never copies a p
   state.c2s.delete(70);
   await button.click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("Session #70 · request 1/1");
+  const script = await page.evaluate(() => navigator.clipboard.readText());
+  expect(script).not.toContain("seed_cookies");
+  expect(script).not.toContain("SimpleCookie");
+  expect(script).not.toContain("urlsplit");
   await expect(page.getByRole("alert")).toHaveCount(0);
 });
 

@@ -120,10 +120,19 @@ UTF-8 bodies follow Format JSON and Content-Length is recalculated. Timeout is
 are printed and do not skip later captured requests; transport failures stop the
 script.
 
-Cookies from the first request initialize the jar for the captured Host (or
-destination host), at path `/`. Later captured Cookie headers are omitted so
+Include `seed_cookies`, its SimpleCookie/urlsplit imports and its explanatory
+comment only when a cookie name from the first request appears in a later
+request for the same Host (or destination host). Cookie names are case-sensitive;
+host comparison ignores case and port, and cookie values may change. The check
+includes later requests within the first TCP session as well as later members.
+If no initial cookie is reused, send the first Cookie header directly and omit
+the helper; this also keeps single-request and cookie-free scripts compact.
+
+When reuse is detected, cookies from the first request initialize the jar for
+the captured host at path `/`. Later captured Cookie headers are omitted so
 Set-Cookie updates, expiry and deletion from actual responses govern following
-requests. Initial cookie paths cannot be inferred from captured request headers.
+requests, including scripts without the helper. Initial cookie paths cannot be
+inferred from captured request headers.
 Response-dependent CSRF tokens, IDs and other values require manual editing;
 their extraction/substitution is outside this export.
 

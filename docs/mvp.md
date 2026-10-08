@@ -181,8 +181,10 @@ Unlike per-window exports, it splits multiple complete HTTP/1.x requests in a
 C2S by raw byte framing, then applies readable text/Format JSON per message.
 Requests run sequentially in session-start/ID and within-stream order with
 10-second timeouts and redirects disabled. One requests.Session uses captured
-first-request cookies as initial values and then follows response Set-Cookie;
-later captured Cookie headers cannot overwrite fresh cookies. Dynamic CSRF
+first-request cookies as initial values and then follows response Set-Cookie.
+The seed_cookies helper and its imports appear only when an initial cookie name
+is reused later for the same host; otherwise the first Cookie is sent as a
+normal header. Later captured Cookie headers cannot overwrite fresh cookies. Dynamic CSRF
 tokens/IDs require manual edits. Preparation is cancellable on close and shows
 progress; unsupported/incomplete input reports the session/request and prevents
 copying a partial script. See the complete [export contract](session-chains.md#whole-chain-python-export-2026-10-08).

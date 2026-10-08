@@ -44,7 +44,7 @@ NEWHATCH_TEST_PYTHON="$CHAIN_TEST_TOOLS/python/bin/python3" NODE_PATH="$CHAIN_TE
 
 The configuration starts and stops a temporary Vite server on port 4173 and runs
 the existing auth/localization/feed regressions plus eight chain UI scenarios
-and six framing/Python replay scenarios.
+and seven framing/Python replay scenarios.
 Screenshots/results default to the OS temporary directory. Optional overrides:
 `NEWHATCH_TEST_RESULTS`, `NEWHATCH_TEST_NODE`, `NEWHATCH_TEST_CHROMIUM`,
 `NEWHATCH_TEST_PYTHON`.
@@ -85,6 +85,13 @@ Framing tests reject incomplete, binary, chunked, compressed, Upgrade and invali
 header inputs with the failing request index. TypeScript/build and all 18 unique
 local browser/replay scenarios passed on 2026-10-08; the final targeted rerun also
 checked IPv6 Host and readable button feedback. No Docker was run by the agent.
+
+The conditional-helper follow-up passed TypeScript/build and nine focused
+browser/replay scenarios on the same date. Executed scripts verify helper/import
+omission without initial cookies, for a single request, for first-only cookies,
+and when later cookie names or hosts differ. The first captured Cookie header
+still reaches the receiver, and Session continues to process response cookies
+without the helper. Reused-cookie initialization still passes all four Host cases.
 
 ## User-Run Docker Checks
 

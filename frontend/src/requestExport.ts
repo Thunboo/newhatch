@@ -232,12 +232,14 @@ export function exportPython(request: ReplayRequest): string {
   return ["import requests", "", ...pythonRequestLines(request), ...pythonSendLines(request, "requests"), "print(response.text)", ""].join("\n");
 }
 
-export function pythonChainHeader(): string {
+function pythonChainHeader(seedInitialCookies: boolean): string {
   return [
-    "import requests", "from http.cookies import SimpleCookie", "from urllib.parse import urlsplit", "",
+    "import requests",
+    ...(seedInitialCookies ? ["from http.cookies import SimpleCookie", "from urllib.parse import urlsplit"] : []), "",
     "# Requests run in capture order, waiting for each response; redirects are disabled.",
-    "# Cookies from the first request seed the jar; responses update later requests.",
+    ...(seedInitialCookies ? ["# Cookies from the first request seed the jar; responses update later requests."] : []),
     "# Edit response-dependent values (CSRF tokens, IDs, etc.) manually below.", "",
+    ...(seedInitialCookies ? [
     "def seed_cookies(client, url, host, captured):",
     "    cookies = SimpleCookie()",
     "    cookies.load(captured)",
@@ -251,19 +253,66 @@ export function pythonChainHeader(): string {
     "        domain += \".local\"",
     "    for name, cookie in cookies.items():",
     "        client.cookies.set(name, cookie.coded_value, domain=domain, path=\"/\")", "",
+    ] : []),
     "with requests.Session() as session:",
   ].join("\n") + "\n";
 }
 
-export function exportPythonChainStep(sessionId: number, requests: ReplayRequest[], firstStep: boolean): string {
-  return requests.map((request, index) => {
-    const lines = ["", `# Session #${sessionId} · request ${index + 1}/${requests.length}`, ...pythonRequestLines(request, true)];
-    const cookies = request.headers.find(([name]) => name.toLowerCase() === "cookie")?.[1];
-    if (firstStep && index === 0 && cookies) {
-      const host = request.headers.find(([name]) => name.toLowerCase() === "host")?.[1] ?? "";
-      lines.push("seed_cookies(session, url, " + pythonString(host) + ", " + pythonString(cookies) + ")");
-    }
-    lines.push(...pythonSendLines(request, "session"), `print("Session #${sessionId} · request ${index + 1}", response.status_code)`, "print(response.text)");
-    return lines.map((line) => line ? "    " + line : "").join("\n") + "\n";
-  }).join("");
+function pythonChainRequest(sessionId: number, request: ReplayRequest, index: number, count: number, initialCookies: "header" | "seed" | null): string {
+  const lines = ["", `# Session #${sessionId} · request ${index + 1}/${count}`, ...pythonRequestLines(request, initialCookies !== "header")];
+  const cookies = cookieHeader(request);
+  if (initialCookies === "seed" && cookies) {
+    const host = request.headers.find(([name]) => name.toLowerCase() === "host")?.[1] ?? "";
+    lines.push("seed_cookies(session, url, " + pythonString(host) + ", " + pythonString(cookies) + ")");
+  }
+  lines.push(...pythonSendLines(request, "session"), `print("Session #${sessionId} · request ${index + 1}", response.status_code)`, "print(response.text)");
+  return lines.map((line) => line ? "    " + line : "").join("\n") + "\n";
+}
+
+function cookieHeader(request: ReplayRequest): string {
+  return request.headers.find(([name]) => name.toLowerCase() === "cookie")?.[1] ?? "";
+}
+
+function cookieNames(request: ReplayRequest): string[] {
+  return cookieHeader(request).split(";").flatMap((part) => {
+    const equal = part.indexOf("=");
+    const name = part.slice(0, equal).trim();
+    return equal > 0 && token.test(name) ? [name] : [];
+  });
+}
+
+function cookieHost(request: ReplayRequest): string {
+  const host = request.headers.find(([name]) => name.toLowerCase() === "host")?.[1] ?? new URL(request.url).host;
+  return host.trim().toLowerCase().replace(/:\d+$/, "");
+}
+
+/** Decide whether the cookie helper is used while retaining only generated text. */
+export class PythonChainExport {
+  private chunks: string[] = [];
+  private firstSeeded = "";
+  private initialNames = new Set<string>();
+  private initialHost = "";
+  private reuseInitialCookies = false;
+
+  append(sessionId: number, requests: ReplayRequest[]): void {
+    requests.forEach((request, index) => {
+      if (!this.chunks.length) {
+        this.initialNames = new Set(cookieNames(request));
+        this.initialHost = cookieHost(request);
+        if (this.initialNames.size) this.firstSeeded = pythonChainRequest(sessionId, request, index, requests.length, "seed");
+        this.chunks.push(pythonChainRequest(sessionId, request, index, requests.length, "header"));
+      } else {
+        if (!this.reuseInitialCookies && this.initialHost === cookieHost(request)
+          && cookieNames(request).some((name) => this.initialNames.has(name))) this.reuseInitialCookies = true;
+        this.chunks.push(pythonChainRequest(sessionId, request, index, requests.length, null));
+      }
+    });
+  }
+
+  finish(): string {
+    if (!this.chunks.length) throw new Error("Cannot export an empty chain");
+    return pythonChainHeader(this.reuseInitialCookies)
+      + (this.reuseInitialCookies ? this.firstSeeded : this.chunks[0])
+      + this.chunks.slice(1).join("");
+  }
 }

@@ -19,12 +19,14 @@ test.beforeEach(async ({ page }) => {
 
 async function generate(page, steps, port, pretty = false) {
   return page.evaluate(async ({ steps, port, pretty }) => {
-    const { parseReplayRequests, pythonChainHeader, exportPythonChainStep } = await import("/src/requestExport.ts");
-    return pythonChainHeader() + steps.map((step, index) => {
+    const { parseReplayRequests, PythonChainExport } = await import("/src/requestExport.ts");
+    const script = new PythonChainExport();
+    steps.forEach((step) => {
       const result = parseReplayRequests(new TextEncoder().encode(step.payload), pretty, { host: "127.0.0.1", port });
       if (!result.ok) throw new Error(JSON.stringify(result));
-      return exportPythonChainStep(step.id, result.requests, index === 0);
-    }).join("");
+      script.append(step.id, result.requests);
+    });
+    return script.finish();
   }, { steps, port, pretty });
 }
 
@@ -69,6 +71,7 @@ for (const host of ["fixture.test", "localhost", "127.0.0.1", "[::1]"]) {
         { id: 42, payload: request("/redirect", [...base, ["Cookie", "sid=stale"]]) },
         { id: 43, payload: request("/last", [...base, ["Cookie", "sid=stale"]]) },
       ], port);
+      expect(code).toContain("def seed_cookies(");
       const output = await executePython(code);
       expect(received.map((item) => item.path)).toEqual(["/start", "/work", "/redirect", "/last"]);
       expect(received[0].headers.cookie).toContain("sid=initial");
@@ -87,6 +90,38 @@ for (const host of ["fixture.test", "localhost", "127.0.0.1", "[::1]"]) {
     } finally { await new Promise((resolve) => server.close(resolve)); }
   });
 }
+
+test("unused initial-cookie helpers are omitted while live response cookies still work", async ({ page }) => {
+  const received = [];
+  const server = http.createServer((incoming, outgoing) => {
+    received.push({ path: incoming.url, cookie: incoming.headers.cookie });
+    if (incoming.url === "/start") outgoing.setHeader("Set-Cookie", "sid=fresh; Path=/");
+    outgoing.end("ok");
+  });
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  try {
+    const port = server.address().port;
+    const base = [["Host", "fixture.test"]];
+    const cases = [
+      { name: "no initial cookie", first: [], second: [["Cookie", "sid=captured-old"]], expectedFirst: undefined, expectedSecond: "sid=fresh" },
+      { name: "only one request", first: [["Cookie", "sid=initial"]], second: null, expectedFirst: "sid=initial" },
+      { name: "cookie only in first request", first: [["Cookie", "sid=initial"]], second: [], expectedFirst: "sid=initial", expectedSecond: "sid=fresh" },
+      { name: "different cookie name", first: [["Cookie", "sid=initial"]], second: [["Cookie", "other=old"]], expectedFirst: "sid=initial", expectedSecond: "sid=fresh" },
+      { name: "different host", first: [["Cookie", "sid=initial"]], second: [["Cookie", "sid=initial"]], secondHost: [["Host", "other.test"]], expectedFirst: "sid=initial", expectedSecond: undefined },
+    ];
+    for (const item of cases) {
+      received.length = 0;
+      const steps = [{ id: 41, payload: request("/start", [...base, ...item.first]) }];
+      if (item.second !== null) steps.push({ id: 42, payload: request("/next", [...item.secondHost ?? base, ...item.second]) });
+      const code = await generate(page, steps, port);
+      expect(code, item.name).not.toMatch(/seed_cookies|SimpleCookie|urlsplit|first request seed/);
+      await executePython(code);
+      expect(received[0].cookie, item.name).toBe(item.expectedFirst);
+      expect(received.length, item.name).toBe(steps.length);
+      if (item.second !== null) expect(received[1].cookie, item.name).toBe(item.expectedSecond);
+    }
+  } finally { await new Promise((resolve) => server.close(resolve)); }
+});
 
 test("chain replay formats each JSON body before Unicode byte lengths are recalculated", async ({ page }) => {
   let received;

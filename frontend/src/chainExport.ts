@@ -1,5 +1,5 @@
 import { api } from "./api";
-import { exportPythonChainStep, parseReplayRequests, pythonChainHeader } from "./requestExport";
+import { parseReplayRequests, PythonChainExport } from "./requestExport";
 import type { ReplayProblem } from "./requestExport";
 import type { Chain, Session } from "./types";
 
@@ -11,7 +11,7 @@ export class ChainExportError extends Error {
 
 /** Read one metadata page and one payload at a time; retain only generated text. */
 export async function loadChainPython(chain: Chain, formatJson: boolean, signal: AbortSignal, progress: (count: number) => void): Promise<string> {
-  const chunks = [pythonChainHeader()];
+  const script = new PythonChainExport();
   let cursor: string | undefined;
   let previous: Session | undefined;
   let count = 0;
@@ -28,7 +28,7 @@ export async function loadChainPython(chain: Chain, formatJson: boolean, signal:
       signal.throwIfAborted();
       const parsed = parseReplayRequests(bytes, formatJson, { host: member.server_ip, port: member.server_port });
       if (!parsed.ok) throw new ChainExportError(parsed.problem, member.id, parsed.requestIndex);
-      chunks.push(exportPythonChainStep(member.id, parsed.requests, count === 0));
+      script.append(member.id, parsed.requests);
       previous = member;
       count++;
       if (count > chain.session_count) throw new ChainExportError("changed");
@@ -37,5 +37,5 @@ export async function loadChainPython(chain: Chain, formatJson: boolean, signal:
     cursor = page.next_cursor ?? undefined;
   } while (cursor);
   if (count === 0 || count !== chain.session_count) throw new ChainExportError("changed");
-  return chunks.join("");
+  return script.finish();
 }

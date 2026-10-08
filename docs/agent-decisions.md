@@ -279,6 +279,9 @@ fail the complete export on unsupported input, and preserve session-start/ID and
 within-C2S order. Use one requests.Session with initial first-request cookies and
 response Set-Cookie updates; omit later captured Cookie headers. Dynamic tokens
 remain editable rather than automatically extracted. See `docs/session-chains.md`.
+Only emit the cookie-seeding helper/imports when an initial cookie name is reused
+later for the same host. Otherwise preserve the first Cookie header directly;
+requests.Session still handles actual response cookies without the helper.
 Capture timestamps label windows without interleaving overlapping sessions.
 Late persistence is reflected on refresh; snapshot cursors keep ongoing pages
 stable. See [session chains](session-chains.md) for the agreed specification,
