@@ -1,4 +1,4 @@
-import { decodeDisplayEscapes } from "./payloadDisplay";
+import { decodeDisplayEscapes, displayPayload } from "./payloadDisplay";
 
 export type ReplayTarget = { host: string; port: number };
 export type ReplayProblem = "http" | "incomplete" | "multiple" | "encoding" | "headers";
@@ -11,6 +11,12 @@ export type ReplayRequest = {
   hasBody: boolean;
 };
 export type ReplayResult = { ok: true; request: ReplayRequest } | { ok: false; problem: ReplayProblem };
+export type ReplayRequestsResult = { ok: true; requests: ReplayRequest[] }
+  | { ok: false; problem: ReplayProblem; requestIndex: number };
+export const replayProblemKeys = {
+  http: "detail.exportHttp", incomplete: "detail.exportIncomplete",
+  multiple: "detail.exportMultiple", encoding: "detail.exportEncoding", headers: "detail.exportHeaders",
+} as const;
 
 const token = /^[!#$%&'*+.^_\x60|~0-9A-Za-z-]+$/;
 const control = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
@@ -112,6 +118,44 @@ export function parseReplayRequest(bytes: Uint8Array, displayed: string, target:
   };
 }
 
+/** Split on byte lengths before applying display transforms to each HTTP message. */
+export function parseReplayRequests(bytes: Uint8Array, formatJson: boolean, target: ReplayTarget): ReplayRequestsResult {
+  const requests: ReplayRequest[] = [];
+  const fail = (problem: ReplayProblem): ReplayRequestsResult => ({ ok: false, problem, requestIndex: requests.length + 1 });
+  let offset = 0;
+  do {
+    let headerEnd = -1;
+    for (let i = offset; i < bytes.length - 1; i++) {
+      if (bytes[i] === 10 && bytes[i + 1] === 10) { headerEnd = i + 2; break; }
+      if (bytes[i] === 13 && bytes[i + 1] === 10 && bytes[i + 2] === 13 && bytes[i + 3] === 10) { headerEnd = i + 4; break; }
+    }
+    if (headerEnd < 0) return fail("incomplete");
+    let head: string;
+    try { head = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(offset, headerEnd)); }
+    catch { return fail("encoding"); }
+    const lengths: string[] = [];
+    for (const line of head.trimEnd().split(/\r?\n/).slice(1)) {
+      const colon = line.indexOf(":");
+      if (colon < 1 || !token.test(line.slice(0, colon))) return fail("headers");
+      const name = line.slice(0, colon).toLowerCase();
+      const value = line.slice(colon + 1).trim();
+      if (name === "transfer-encoding" || name === "upgrade" || (name === "content-encoding" && value.toLowerCase() !== "identity")) return fail("encoding");
+      if (name === "content-length") lengths.push(value);
+    }
+    if (lengths.length > 1 || (lengths.length && !/^\d+$/.test(lengths[0]))) return fail("headers");
+    const length = lengths.length ? Number(lengths[0]) : 0;
+    if (!Number.isSafeInteger(length)) return fail("headers");
+    if (length > bytes.length - headerEnd) return fail("incomplete");
+    const end = headerEnd + length;
+    const message = bytes.subarray(offset, end);
+    const parsed = parseReplayRequest(message, displayPayload(message, formatJson), target);
+    if (!parsed.ok) return fail(parsed.problem);
+    requests.push(parsed.request);
+    offset = end;
+  } while (offset < bytes.length);
+  return { ok: true, requests };
+}
+
 function bashString(value: string): string {
   return "'" + value.replace(/'/g, "'\"'\"'") + "'";
 }
@@ -149,13 +193,11 @@ export function exportCurl(request: ReplayRequest): string {
   return (request.hasBody ? "printf '%s' " + bashString(request.body) + " | \\\n" : "") + command + "\n";
 }
 
-export function exportPython(request: ReplayRequest): string {
+function pythonRequestLines(request: ReplayRequest, omitCookies = false): string[] {
   const lines = [
-    "import requests",
-    "",
     "url = " + pythonString(request.url),
     "headers = {",
-    ...request.headers.map(([name, value]) => "    " + pythonString(name) + ": " + pythonString(value)
+    ...request.headers.filter(([name]) => !omitCookies || name.toLowerCase() !== "cookie").map(([name, value]) => "    " + pythonString(name) + ": " + pythonString(value)
       + (/[^\x00-\x7f]/.test(value) ? '.encode("utf-8")' : "") + ","),
     "}",
     "params = [",
@@ -168,9 +210,13 @@ export function exportPython(request: ReplayRequest): string {
     const body = request.body.replace(/\\/g, "\\\\").replace(/'/g, "\\'").replace(/\r/g, "\\r");
     lines.push("data = '''" + body + "'''.encode(\"utf-8\")");
   }
-  lines.push(
+  return lines;
+}
+
+function pythonSendLines(request: ReplayRequest, client: string): string[] {
+  return [
     "",
-    "response = requests.request(",
+    "response = " + client + ".request(",
     "    method=" + pythonString(request.method) + ",",
     "    url=url,",
     "    headers=headers,",
@@ -179,8 +225,94 @@ export function exportPython(request: ReplayRequest): string {
     "    timeout=10,",
     "    allow_redirects=False,",
     ")",
-    "print(response.text)",
-    "",
-  );
-  return lines.join("\n");
+  ];
+}
+
+export function exportPython(request: ReplayRequest): string {
+  return ["import requests", "", ...pythonRequestLines(request), ...pythonSendLines(request, "requests"), "print(response.text)", ""].join("\n");
+}
+
+function pythonChainHeader(seedInitialCookies: boolean): string {
+  return [
+    "import requests",
+    ...(seedInitialCookies ? ["from http.cookies import SimpleCookie", "from urllib.parse import urlsplit"] : []), "",
+    "# Requests run in capture order, waiting for each response; redirects are disabled.",
+    ...(seedInitialCookies ? ["# Cookies from the first request seed the jar; responses update later requests."] : []),
+    "# Edit response-dependent values (CSRF tokens, IDs, etc.) manually below.", "",
+    ...(seedInitialCookies ? [
+    "def seed_cookies(client, url, host, captured):",
+    "    cookies = SimpleCookie()",
+    "    cookies.load(captured)",
+    "    if captured and not cookies:",
+    "        raise ValueError(\"Cannot parse initial captured cookies\")",
+    "    domain = urlsplit(\"//\" + host).hostname if host else urlsplit(url).hostname",
+    "    # Match Python's cookie-jar host spelling, including IPv6 brackets.",
+    "    if \":\" in domain:",
+    "        domain = \"[\" + domain + \"]\"",
+    "    if \".\" not in domain:",
+    "        domain += \".local\"",
+    "    for name, cookie in cookies.items():",
+    "        client.cookies.set(name, cookie.coded_value, domain=domain, path=\"/\")", "",
+    ] : []),
+    "with requests.Session() as session:",
+  ].join("\n") + "\n";
+}
+
+function pythonChainRequest(sessionId: number, request: ReplayRequest, index: number, count: number, initialCookies: "header" | "seed" | null): string {
+  const lines = ["", `# Session #${sessionId} · request ${index + 1}/${count}`, ...pythonRequestLines(request, initialCookies !== "header")];
+  const cookies = cookieHeader(request);
+  if (initialCookies === "seed" && cookies) {
+    const host = request.headers.find(([name]) => name.toLowerCase() === "host")?.[1] ?? "";
+    lines.push("seed_cookies(session, url, " + pythonString(host) + ", " + pythonString(cookies) + ")");
+  }
+  lines.push(...pythonSendLines(request, "session"), `print("Session #${sessionId} · request ${index + 1}", response.status_code)`, "print(response.text)");
+  return lines.map((line) => line ? "    " + line : "").join("\n") + "\n";
+}
+
+function cookieHeader(request: ReplayRequest): string {
+  return request.headers.find(([name]) => name.toLowerCase() === "cookie")?.[1] ?? "";
+}
+
+function cookieNames(request: ReplayRequest): string[] {
+  return cookieHeader(request).split(";").flatMap((part) => {
+    const equal = part.indexOf("=");
+    const name = part.slice(0, equal).trim();
+    return equal > 0 && token.test(name) ? [name] : [];
+  });
+}
+
+function cookieHost(request: ReplayRequest): string {
+  const host = request.headers.find(([name]) => name.toLowerCase() === "host")?.[1] ?? new URL(request.url).host;
+  return host.trim().toLowerCase().replace(/:\d+$/, "");
+}
+
+/** Decide whether the cookie helper is used while retaining only generated text. */
+export class PythonChainExport {
+  private chunks: string[] = [];
+  private firstSeeded = "";
+  private initialNames = new Set<string>();
+  private initialHost = "";
+  private reuseInitialCookies = false;
+
+  append(sessionId: number, requests: ReplayRequest[]): void {
+    requests.forEach((request, index) => {
+      if (!this.chunks.length) {
+        this.initialNames = new Set(cookieNames(request));
+        this.initialHost = cookieHost(request);
+        if (this.initialNames.size) this.firstSeeded = pythonChainRequest(sessionId, request, index, requests.length, "seed");
+        this.chunks.push(pythonChainRequest(sessionId, request, index, requests.length, "header"));
+      } else {
+        if (!this.reuseInitialCookies && this.initialHost === cookieHost(request)
+          && cookieNames(request).some((name) => this.initialNames.has(name))) this.reuseInitialCookies = true;
+        this.chunks.push(pythonChainRequest(sessionId, request, index, requests.length, null));
+      }
+    });
+  }
+
+  finish(): string {
+    if (!this.chunks.length) throw new Error("Cannot export an empty chain");
+    return pythonChainHeader(this.reuseInitialCookies)
+      + (this.reuseInitialCookies ? this.firstSeeded : this.chunks[0])
+      + this.chunks.slice(1).join("");
+  }
 }

@@ -63,12 +63,51 @@ pub fn migrate(connection: &Connection) -> Result<()> {
         DELETE FROM sessions
         WHERE protocol = 0 AND bytes_c2s = 0 AND bytes_s2c = 0;
         "#,
+    )?;
+    // Existing rows deliberately retain NULL: their originating collector and
+    // first directional payload times cannot be recovered from stored streams.
+    let columns = {
+        let mut statement = connection.prepare("PRAGMA table_info(sessions)")?;
+        let rows = statement.query_map([], |row| row.get::<_, String>(1))?;
+        rows.collect::<Result<Vec<_>>>()?
+    };
+    for (name, kind) in [
+        ("collector_id", "TEXT"),
+        ("first_payload_c2s_at", "INTEGER"),
+        ("first_payload_s2c_at", "INTEGER"),
+    ] {
+        if !columns.iter().any(|column| column == name) {
+            connection.execute_batch(&format!("ALTER TABLE sessions ADD COLUMN {name} {kind}"))?;
+        }
+    }
+    connection.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_sessions_chain_key_time ON sessions(collector_id, client_ip, source_id, started_at, id);",
     )
 }
 
 #[cfg(test)]
 mod tests {
     use super::migrate;
+
+    #[test]
+    fn legacy_migration_preserves_rows_without_inventing_identity_or_times() {
+        let connection = rusqlite::Connection::open_in_memory().unwrap();
+        migrate(&connection).unwrap();
+        connection.execute_batch("DROP INDEX idx_sessions_chain_key_time;
+            ALTER TABLE sessions DROP COLUMN collector_id;
+            ALTER TABLE sessions DROP COLUMN first_payload_c2s_at;
+            ALTER TABLE sessions DROP COLUMN first_payload_s2c_at;
+            INSERT INTO sources(id,name,port) VALUES(1,'web',8080);
+            INSERT INTO segments(id,filename,created_at) VALUES(1,'test.seg',0);
+            INSERT INTO sessions(id,segment_id,segment_offset,record_length,started_at,ended_at,source_id,client_ip,client_port,server_ip,server_port,protocol,bytes_c2s,bytes_s2c) VALUES(7,1,52,100,10,20,1,X'7F000001',50000,X'7F000001',8080,1,20,28);").unwrap();
+        migrate(&connection).unwrap();
+        migrate(&connection).unwrap();
+        let values: (i64, i64, Option<String>, Option<i64>, Option<i64>) = connection.query_row(
+            "SELECT segment_offset, record_length, collector_id, first_payload_c2s_at, first_payload_s2c_at FROM sessions WHERE id=7", [],
+            |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        ).unwrap();
+        assert_eq!(values, (52, 100, None, None, None));
+    }
 
     #[test]
     fn migration_removes_legacy_empty_raw_tcp_sessions() {

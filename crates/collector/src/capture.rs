@@ -6,6 +6,7 @@ use anyhow::Result;
 use newhatch_protocol::{ClassifiedPacket, Source};
 use tokio::sync::{mpsc, watch};
 
+#[cfg(target_os = "linux")]
 use crate::packet::{classify, parse_ip_tcp};
 
 #[derive(Default)]

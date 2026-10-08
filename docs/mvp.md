@@ -124,7 +124,7 @@ in the frontend. They use the currently displayed text body, including the
 Format JSON choice, and retain readable Unicode rather than byte escapes or
 base64. Captured bytes are used only to validate HTTP framing.
 
-The initial exporter accepts one complete, uncompressed UTF-8 HTTP/1.x request
+The per-window exporter accepts one complete, uncompressed UTF-8 HTTP/1.x request
 with an origin-form target and either no body or Content-Length framing. Hex mode,
 partial requests, multiple requests in one stream, binary/compressed/chunked
 payloads, Upgrade streams and unsupported/repeated headers disable export with
@@ -146,6 +146,56 @@ against the existing /flag fixture and a separate test-only nginx proxy that
 allows assertions on received headers, query values and body bytes.
 
 HTTP and WebSocket parsing should improve readability without destroying access to raw reconstructed bytes.
+
+## Session Chains (Issue #13)
+
+Implemented behavior and the agreed specification are documented in
+[session chains](session-chains.md).
+
+An off-by-default checkbox switches between individual sessions and chains of
+complete TCP-session C2S/S2C pairs. The key is `collector_id + client_ip + source_id`;
+adjacent session starts at most 1 second apart continue a chain. Multiple HTTP
+exchanges in one TCP session remain one pair. Chain membership is computed on
+demand from stored metadata, independently of result-page boundaries. The analyzer
+collects collector identity and the first payload capture timestamp per direction;
+the collector gains no additional aggregation work.
+
+The chain card orders pairs by session start, with C2S immediately before its S2C.
+Existing payload rendering and C2S-only per-window cURL/Python export behavior are reused.
+The card scrolls vertically between pairs, while every expanded C2S/S2C window
+retains the current standalone dimensions for the viewport and its independent
+payload scroll. Windows must not grow with payload length or shrink as more pairs
+are loaded. Both scroll levels remain usable without scrolling the background list.
+
+A transparent strip over the right side of each window uses 26% width, with a
+100 px minimum, for easier chain scrolling. Copy/export actions sit above it and remain clickable;
+the strip reaches the right edge with `right: 0px`. The rest of the payload
+body retains its own scrolling, and window dimensions are unchanged.
+
+Only chain detail shows a small "Scroll sessions here" hint below Text/Hex
+("Прокручивайте сессии здесь" in Russian) to explain the right-side scroll area.
+
+The center toolbar Python button copies the entire selected chain as one
+Python/requests script in Text mode, including offscreen and later-page members.
+Unlike per-window exports, it splits multiple complete HTTP/1.x requests in a
+C2S by raw byte framing, then applies readable text/Format JSON per message.
+Requests run sequentially in session-start/ID and within-stream order with
+10-second timeouts and redirects disabled. One requests.Session uses captured
+first-request cookies as initial values and then follows response Set-Cookie.
+The seed_cookies helper and its imports appear only when an initial cookie name
+is reused later for the same host; otherwise the first Cookie is sent as a
+normal header. Later captured Cookie headers cannot overwrite fresh cookies. Dynamic CSRF
+tokens/IDs require manual edits. Preparation is cancellable on close and shows
+progress; unsupported/incomplete input reports the session/request and prevents
+copying a partial script. See the complete [export contract](session-chains.md#whole-chain-python-export-2026-10-08).
+
+A filtered chain is selected when one member satisfies all active filters; its
+card includes the other retained members as context. Chain and member pages pin
+a session-ID watermark. Refresh replaces old rows when a late session merges
+chains. Legacy records without collector identity stay singleton chains with
+unknown directional times. Members and payloads load progressively; payload
+bytes are released outside the visible area. The backend caps concurrent reads
+and interrupts expensive SQL; use narrower filters when it returns 503.
 
 ## Session Protocol Values
 

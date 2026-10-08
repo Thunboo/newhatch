@@ -1,4 +1,5 @@
 mod catalog;
+pub mod chains;
 mod record;
 mod schema;
 mod segment;
@@ -113,11 +114,12 @@ fn run_writer(
                     protocol, bytes_c2s, bytes_s2c,
                     contains_flag, flag_direction, flag_count,
                     incomplete, http_method, http_host, http_path,
-                    http_status, http_content_type
+                    http_status, http_content_type, collector_id,
+                    first_payload_c2s_at, first_payload_s2c_at
                 ) VALUES (
                     ?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11,
                     ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21,
-                    ?22, ?23
+                    ?22, ?23, ?24, ?25, ?26
                 )
                 "#,
                 params![
@@ -144,6 +146,9 @@ fn run_writer(
                     session.http.path,
                     session.http.status,
                     session.http.content_type,
+                    session.collector_id,
+                    session.first_payload_c2s_at,
+                    session.first_payload_s2c_at,
                 ],
             )?;
         }
@@ -203,6 +208,9 @@ mod tests {
 
         sender
             .blocking_send(CompletedSession {
+                collector_id: "local".into(),
+                first_payload_c2s_at: None,
+                first_payload_s2c_at: None,
                 source_id: source.id,
                 started_at: 1,
                 ended_at: 1,
@@ -221,6 +229,9 @@ mod tests {
             .unwrap();
         sender
             .blocking_send(CompletedSession {
+                collector_id: "local".into(),
+                first_payload_c2s_at: Some(1),
+                first_payload_s2c_at: Some(2),
                 source_id: source.id,
                 started_at: 1,
                 ended_at: 2,
@@ -248,6 +259,9 @@ mod tests {
             .unwrap();
         assert_eq!(sessions.len(), 1);
         assert!(sessions[0].contains_flag);
+        assert_eq!(sessions[0].collector_id.as_deref(), Some("local"));
+        assert_eq!(sessions[0].first_payload_c2s_at, Some(1));
+        assert_eq!(sessions[0].first_payload_s2c_at, Some(2));
         let stored = catalog.get_session(sessions[0].id).unwrap().unwrap();
         let payload = read_payload(data_dir, &stored).unwrap();
         assert_eq!(payload.c2s, b"GET / HTTP/1.1\r\n\r\n");
@@ -257,6 +271,9 @@ mod tests {
     #[test]
     fn persistence_policy_discards_only_empty_raw_tcp_sessions() {
         let session = CompletedSession {
+            collector_id: "local".into(),
+            first_payload_c2s_at: None,
+            first_payload_s2c_at: None,
             source_id: 1,
             started_at: 1,
             ended_at: 2,

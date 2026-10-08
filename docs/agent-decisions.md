@@ -248,3 +248,41 @@ The user explicitly extended the MVP to include environment-configured `NEWHATCH
 The remote split is after `ClassifiedPacket`. `crates/protocol` owns shared packet/source/domain types and a versioned length-prefixed protobuf protocol. The lightweight collector owns cooked AF_PACKET capture, BPF, classification, bounded memory, reconnect and counters; analyzer owns worker selection and every heavy processing/persistence concern. Analyzer pushes global active Source snapshots to all connected collectors. Flow identity is `CollectorId + FlowKey`.
 
 Runtime roles are selected by the service being launched. Analyzer uses `ANALYZER=local|remote` (default `local`); collector uses `ANALYZER_CONNSTR`. Connection strings support IPs or FQDNs with ports; collector DNS is resolved again on reconnect. A remote analyzer listens on `LISTEN_CONNSTR`. A non-empty `ALLOWED_COLLECTORS` restricts exact IPs and IPs resolved from FQDNs at startup, while an empty value accepts any host. The transport has no PSK or encryption; PSK authentication is backlog hardening. Collector `QUEUE_CAPACITY` defaults to 8192 packets and bounds memory by dropping and counting new packets when full.
+
+## Session Chains (2026-10-08, Issue #13)
+
+The user approved whole-session correlation by `collector_id + client_ip + source_id`.
+Adjacent capture-time session starts at most one second apart continue a chain;
+this is a sliding rule with no total-duration limit. Different services or
+collectors never merge. HTTP status is not part of correlation. Multiple exchanges
+inside one TCP session remain one existing C2S/S2C pair.
+
+Analyzer workers preserve collector identity and earliest non-empty payload
+capture times per direction. Collectors retain their current lightweight work.
+Chains are computed on demand from persisted metadata with bounded read work;
+no duplicated payloads, packet rows or live chain state are introduced. Legacy
+rows without collector identity remain singletons. Existing retention applies.
+
+Grouping is an off-by-default display checkbox. Chain filters select on one
+matching member but opening the card shows all available context. Pair order is
+session start then ID, C2S before its S2C. The card scrolls between fixed-size
+independently scrollable payload windows; per-window cURL/Python exports appear only on C2S.
+A user-approved invisible strip (`right: 0px; width: 26%; min-width: 100px`) on the right of each chain window scrolls
+the outer card all the way to the window edge. Copy actions have a higher z-index;
+payload scrolling remains available over the uncovered text and window dimensions stay fixed.
+
+The user also approved a center-toolbar Python action exporting all supported
+HTTP/1.x requests from every snapshot member, including multiple requests inside
+one C2S. This is frontend-only request extraction for export, not a change to
+session persistence or browsing. Load pages/payloads on demand with cancellation,
+fail the complete export on unsupported input, and preserve session-start/ID and
+within-C2S order. Use one requests.Session with initial first-request cookies and
+response Set-Cookie updates; omit later captured Cookie headers. Dynamic tokens
+remain editable rather than automatically extracted. See `docs/session-chains.md`.
+Only emit the cookie-seeding helper/imports when an initial cookie name is reused
+later for the same host. Otherwise preserve the first Cookie header directly;
+requests.Session still handles actual response cookies without the helper.
+Capture timestamps label windows without interleaving overlapping sessions.
+Late persistence is reflected on refresh; snapshot cursors keep ongoing pages
+stable. See [session chains](session-chains.md) for the agreed specification,
+API and query budgets.

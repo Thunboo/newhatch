@@ -125,5 +125,5 @@ test("live feed merges refreshes, pauses away from the top and loads history aut
 
   await page.setViewportSize({ width: 375, height: 812 });
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
-  await page.screenshot({ path: "/results/session-feed-mobile.png" });
+  await page.screenshot({ path: (process.env.NEWHATCH_TEST_RESULTS || "/results") + "/session-feed-mobile.png" });
 });

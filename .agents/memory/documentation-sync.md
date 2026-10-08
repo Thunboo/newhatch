@@ -73,6 +73,15 @@ When saving or refreshing context:
 - Operator-visible live behavior when relevant: `README.md`.
 - Mirrors: `.agents/memory/project.md`, `.agents/memory/decisions.md`, `.codex/context.md`.
 
+### Session Chains (Issue #13)
+
+- Agreed contract/API/query limits: `docs/session-chains.md`.
+- UX and operator summaries: `docs/mvp.md`, `README.md`, `PROJECT.md`.
+- Architecture/storage/code map: `docs/agent-decisions.md`, `docs/architecture.md`, `docs/storage.md`, `crates/analyzer/LOGIC.md`.
+- Verification: `test/session_chains/README.md`, `.codex/commands.md`.
+- Mirrors: `AGENTS.md`, `.agents/memory/project.md`, `.agents/memory/decisions.md`, `.codex/context.md`.
+- Task state: `.agents/tasks/active.md`, `.agents/tasks/done.md`; the completed standalone task was moved into the project contract.
+
 ### Runtime Configuration
 
 - Runtime defaults: `.env.example`, `compose.yaml`, analyzer/collector config code.

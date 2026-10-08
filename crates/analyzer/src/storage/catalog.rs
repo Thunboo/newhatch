@@ -142,7 +142,8 @@ impl Catalog {
                    s.protocol, s.bytes_c2s, s.bytes_s2c, s.contains_flag,
                    s.flag_direction, s.flag_count, s.suricata_alerts, s.incomplete,
                    s.http_method, s.http_host, s.http_path, s.http_status,
-                   s.http_content_type
+                   s.http_content_type, s.collector_id,
+                   s.first_payload_c2s_at, s.first_payload_s2c_at
             FROM sessions s
             JOIN sources src ON src.id = s.source_id
             WHERE (s.protocol != 0 OR s.bytes_c2s != 0 OR s.bytes_s2c != 0)
@@ -215,7 +216,9 @@ impl Catalog {
                        s.protocol, s.bytes_c2s, s.bytes_s2c, s.contains_flag,
                        s.flag_direction, s.flag_count, s.suricata_alerts, s.incomplete,
                        s.http_method, s.http_host, s.http_path, s.http_status,
-                       s.http_content_type, s.segment_id, seg.filename,
+                       s.http_content_type, s.collector_id,
+                       s.first_payload_c2s_at, s.first_payload_s2c_at,
+                       s.segment_id, seg.filename,
                        s.segment_offset, s.record_length
                 FROM sessions s
                 JOIN sources src ON src.id = s.source_id
@@ -226,10 +229,10 @@ impl Catalog {
                 |row| {
                     Ok(StoredSession {
                         summary: map_session_summary(row)?,
-                        segment_id: row.get(22)?,
-                        segment_filename: row.get(23)?,
-                        segment_offset: row.get::<_, i64>(24)? as u64,
-                        record_length: row.get::<_, i64>(25)? as u64,
+                        segment_id: row.get(25)?,
+                        segment_filename: row.get(26)?,
+                        segment_offset: row.get::<_, i64>(27)? as u64,
+                        record_length: row.get::<_, i64>(28)? as u64,
                     })
                 },
             )
@@ -267,10 +270,13 @@ fn map_source(row: &Row<'_>) -> rusqlite::Result<Source> {
     })
 }
 
-fn map_session_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
+pub(super) fn map_session_summary(row: &Row<'_>) -> rusqlite::Result<SessionSummary> {
     let protocol_value: i64 = row.get(9)?;
     let direction_value: i64 = row.get(13)?;
     Ok(SessionSummary {
+        collector_id: row.get(22)?,
+        first_payload_c2s_at: row.get(23)?,
+        first_payload_s2c_at: row.get(24)?,
         id: row.get(0)?,
         source_id: row.get(1)?,
         source_name: row.get(2)?,
@@ -319,7 +325,7 @@ pub fn ip_to_blob(ip: IpAddr) -> Vec<u8> {
     }
 }
 
-fn blob_to_ip(bytes: &[u8]) -> Result<IpAddr> {
+pub(super) fn blob_to_ip(bytes: &[u8]) -> Result<IpAddr> {
     match bytes.len() {
         4 => Ok(IpAddr::V4(Ipv4Addr::new(
             bytes[0], bytes[1], bytes[2], bytes[3],
@@ -332,7 +338,7 @@ fn blob_to_ip(bytes: &[u8]) -> Result<IpAddr> {
     }
 }
 
-fn to_sql_error(error: anyhow::Error) -> rusqlite::Error {
+pub(super) fn to_sql_error(error: anyhow::Error) -> rusqlite::Error {
     rusqlite::Error::FromSqlConversionFailure(
         0,
         rusqlite::types::Type::Blob,

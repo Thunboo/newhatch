@@ -4,7 +4,6 @@ import {
   ArrowUpDown,
   Braces,
   Check,
-  Copy,
   Flag,
   ListFilter,
   Languages,
@@ -20,18 +19,18 @@ import {
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
-import type { FormEvent, ReactNode } from "react";
+import type { FormEvent } from "react";
 import { api } from "./api";
 import { AuthGate } from "./AuthGate";
-import curlLogoUrl from "./assets/Curl-logo.svg";
 import logoUrl from "./assets/logo.png";
-import pythonLogoUrl from "./assets/python-logo.png";
 import { useI18n } from "./i18n";
-import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
-import { exportCurl, exportPython, parseReplayRequest } from "./requestExport";
-import type { ReplayTarget } from "./requestExport";
+import { decodeDisplayEscapes } from "./payloadDisplay";
+import { Stream } from "./Stream";
+import type { PayloadMode } from "./Stream";
+import { formatBytes, formatDateTime, formatEndpoint, formatTime, messageOf, protocolLabel } from "./format";
+import { TrafficFilters } from "./TrafficFilters";
+import { ChainBrowser } from "./ChainBrowser";
 import type {
-  ByteRange,
   FlagMatches,
   Protocol,
   Session,
@@ -42,7 +41,6 @@ import type {
 } from "./types";
 
 type View = "sessions" | "sources" | "collectors";
-type PayloadMode = "text" | "hex";
 type SourceSort = "name-asc" | "name-desc" | "port-asc" | "port-desc";
 
 const emptySource: SourceInput = { name: "", port: 8080, enabled: true };
@@ -81,6 +79,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   const [sources, setSources] = useState<Source[]>([]);
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [analyzerMode, setAnalyzerMode] = useState<"local" | "remote">("local");
+  const [grouped, setGrouped] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [olderCursor, setOlderCursorState] = useState<number | null>(null);
   const [selected, setSelected] = useState<Session | null>(null);
@@ -130,6 +129,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   }, [t]);
 
   const refreshSessions = useCallback(async () => {
+    if (grouped) return;
     const generation = feedGenerationRef.current;
     if (initialGenerationRef.current === generation || refreshGenerationRef.current === generation) return;
     refreshGenerationRef.current = generation;
@@ -151,7 +151,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         setRefreshing(false);
       }
     }
-  }, [filters, t]);
+  }, [filters, grouped, t]);
 
   const loadOlderSessions = useCallback(async () => {
     const generation = feedGenerationRef.current;
@@ -204,6 +204,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
 
   useEffect(() => {
     const generation = ++feedGenerationRef.current;
+    if (grouped) return;
     initialGenerationRef.current = generation;
     refreshGenerationRef.current = null;
     olderRequestRef.current = null;
@@ -237,7 +238,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         setInitialLoading(false);
       }
     });
-  }, [filters, t, updateOlderCursor]);
+  }, [filters, grouped, t, updateOlderCursor]);
 
   useEffect(() => {
     let frame = 0;
@@ -257,6 +258,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         && direction !== "up"
         && !nextLiveEdge
         && view === "sessions"
+        && !grouped
         && !selected
         && !filters.payload
       ) {
@@ -274,15 +276,15 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       window.removeEventListener("scroll", onScroll);
       if (frame) window.cancelAnimationFrame(frame);
     };
-  }, [filters.payload, refreshSessions, selected, view]);
+  }, [filters.payload, grouped, refreshSessions, selected, view]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (view === "sessions" && !selected && !filters.payload && atLiveEdge) void refreshSessions();
+      if (view === "sessions" && !grouped && !selected && !filters.payload && atLiveEdge) void refreshSessions();
       if (view === "collectors" || analyzerMode === "remote") void loadCollectors();
     }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
-  }, [analyzerMode, atLiveEdge, filters.payload, loadCollectors, refreshSessions, selected, view]);
+  }, [analyzerMode, atLiveEdge, filters.payload, grouped, loadCollectors, refreshSessions, selected, view]);
 
   useEffect(() => {
     if (view === "collectors") void loadCollectors();
@@ -333,8 +335,13 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       </aside>
 
       <main className="workspace">
-        {view === "sessions" ? (
+        {view === "sessions" ? grouped ? (
+          <ChainBrowser sources={sources} filters={filters} searchValue={searchValue}
+            onFilters={setFilters} onSearchValue={setSearchValue} onSearch={submitSearch}
+            onUngroup={() => setGrouped(false)} />
+        ) : (
           <SessionsView
+            onGroup={() => { setSelected(null); setGrouped(true); }}
             sources={sources}
             sessions={sessions}
             selected={selected}
@@ -412,6 +419,7 @@ function CollectorMetric({ label, value, warning = false }: { label: string; val
 }
 
 type SessionsViewProps = {
+  onGroup: () => void;
   sources: Source[];
   sessions: Session[];
   selected: Session | null;
@@ -434,12 +442,7 @@ type SessionsViewProps = {
 function SessionsView(props: SessionsViewProps) {
   const { locale, t } = useI18n();
   const historySentinel = useRef<HTMLDivElement>(null);
-  const protocols: Array<{ label: string; value?: Protocol }> = [
-    { label: t("sessions.all") },
-    { label: "HTTP", value: "http" },
-    { label: "WebSocket", value: "websocket" },
-    { label: t("sessions.rawTcp"), value: "raw_tcp" },
-  ];
+
 
   useEffect(() => {
     const sentinel = historySentinel.current;
@@ -460,39 +463,9 @@ function SessionsView(props: SessionsViewProps) {
         </button>
       </header>
 
-      <section className="filter-bar">
-        <form className="search-box" onSubmit={props.onSearch}>
-          <Search size={16} />
-          <input value={props.searchValue} onChange={(event) => props.onSearchValue(event.target.value)} placeholder={t("sessions.searchPayload")} />
-          {props.searchValue && <button type="button" title={t("common.clearSearch")} aria-label={t("common.clearSearch")} onClick={() => props.onSearchValue("")}><X size={15} /></button>}
-        </form>
-        <select
-          aria-label={t("sessions.sourceFilter")}
-          value={props.filters.sourceId ?? ""}
-          onChange={(event) => props.onFilters((current) => ({ ...current, sourceId: Number(event.target.value) || undefined }))}
-        >
-          <option value="">{t("sessions.allSources")}</option>
-          {props.sources.map((source) => <option key={source.id} value={source.id}>{source.name} :{source.port}</option>)}
-        </select>
-        <label className="flag-toggle">
-          <input
-            type="checkbox"
-            checked={props.filters.containsFlag ?? false}
-            onChange={(event) => props.onFilters((current) => ({ ...current, containsFlag: event.target.checked || undefined }))}
-          />
-          <Flag size={15} /> {t("sessions.flagsOnly")}
-        </label>
-      </section>
-
-      <div className="protocol-tabs" role="tablist" aria-label={t("sessions.protocolFilter")}>
-        {protocols.map((protocol) => (
-          <button
-            key={protocol.label}
-            className={props.filters.protocol === protocol.value ? "active" : ""}
-            onClick={() => props.onFilters((current) => ({ ...current, protocol: protocol.value }))}
-          >{protocol.label}</button>
-        ))}
-      </div>
+      <TrafficFilters sources={props.sources} filters={props.filters} searchValue={props.searchValue}
+        grouped={false} onToggleGroup={props.onGroup} onFilters={props.onFilters}
+        onSearchValue={props.onSearchValue} onSearch={props.onSearch} />
 
       {props.error && <div className="error-strip"><AlertTriangle size={16} /> {props.error}</div>}
 
@@ -733,166 +706,4 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
       )}
     </aside>
   );
-}
-
-function Stream({ title, bytes, ranges, mode, formatJson, flagged, replayTarget }: { title: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget }) {
-  const { t } = useI18n();
-  const displayedText = useMemo(() => displayPayload(bytes, formatJson), [bytes, formatJson]);
-  const text = useMemo(() => mode === "hex" ? toHex(bytes) : displayedText, [bytes, displayedText, mode]);
-  const replay = useMemo(
-    () => replayTarget ? parseReplayRequest(bytes, displayedText, replayTarget) : null,
-    [bytes, displayedText, replayTarget?.host, replayTarget?.port],
-  );
-  const problemKeys = {
-    http: "detail.exportHttp",
-    incomplete: "detail.exportIncomplete",
-    multiple: "detail.exportMultiple",
-    encoding: "detail.exportEncoding",
-    headers: "detail.exportHeaders",
-  } as const;
-  const exportDisabled = mode === "hex" ? t("detail.exportHex")
-    : replay && !replay.ok ? t(problemKeys[replay.problem]) : undefined;
-  const matchTexts = useMemo(
-    () => ranges.map((range) => decodeDisplayEscapes(decodePayload(bytes.slice(range.start, range.end)))).filter(Boolean),
-    [bytes, ranges],
-  );
-
-  return (
-    <section className={flagged ? "stream flagged" : "stream"}>
-      <header>
-        <span>{title}</span>
-        <span className="stream-actions">
-          <span className="mono">{formatBytes(bytes.length)}</span>
-          {replayTarget && <>
-            <PayloadCopyButton className="export-action export-action-curl" label={t("detail.copyBash")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportCurl(replay.request) : ""}>
-              <ExportLogo src={curlLogoUrl} fallback="cUrl" kind="curl" />
-            </PayloadCopyButton>
-            <PayloadCopyButton className="export-action export-action-python" label={t("detail.copyPython")} disabledReason={exportDisabled} getText={() => replay?.ok ? exportPython(replay.request) : ""}>
-              <ExportLogo src={pythonLogoUrl} fallback="python" kind="python" />
-            </PayloadCopyButton>
-          </>}
-          <PayloadCopyButton label={t("detail.copy", { title })} getText={() => text}><Copy size={14} /></PayloadCopyButton>
-        </span>
-      </header>
-      <pre>{mode === "text" && matchTexts.length > 0 ? <HighlightedText text={text} matches={matchTexts} /> : text}</pre>
-    </section>
-  );
-}
-
-function ExportLogo({ src, fallback, kind }: { src: string; fallback: string; kind: "curl" | "python" }) {
-  const [failed, setFailed] = useState(false);
-  return failed
-    ? <span className="export-fallback" aria-hidden="true">{fallback}</span>
-    : <img className={`export-logo export-logo-${kind}`} src={src} alt="" aria-hidden="true" onError={() => setFailed(true)} />;
-}
-
-function PayloadCopyButton({ className, label, disabledReason, getText, children }: { className?: string; label: string; disabledReason?: string; getText: () => string; children: ReactNode }) {
-  const { t } = useI18n();
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-  const resetRef = useRef<number | null>(null);
-  useEffect(() => () => {
-    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-  }, []);
-
-  const copy = async () => {
-    try {
-      await copyText(getText());
-      setState("copied");
-    } catch {
-      setState("failed");
-    }
-    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-    resetRef.current = window.setTimeout(() => setState("idle"), 1_500);
-  };
-  const tooltip = disabledReason ?? (state === "copied" ? t("detail.copied") : state === "failed" ? t("detail.copyFailed") : label);
-  return (
-    <span title={tooltip}>
-      <button className={[className, state === "failed" ? "copy-failed" : ""].filter(Boolean).join(" ")} type="button" title={tooltip} aria-label={label} disabled={!!disabledReason} onClick={() => void copy()}>
-        <span className={`copy-button-content${state === "idle" ? "" : " is-hidden"}`}>{children}</span>
-        {state === "copied" && <span className="copy-button-feedback"><Check size={14} /></span>}
-        {state === "failed" && <span className="copy-button-feedback"><AlertTriangle size={14} /></span>}
-      </button>
-    </span>
-  );
-}
-
-function HighlightedText({ text, matches }: { text: string; matches: string[] }) {
-  const positions: ByteRange[] = [];
-  const cursors = new Map<string, number>();
-  for (const match of matches) {
-    const start = text.indexOf(match, cursors.get(match) ?? 0);
-    if (start < 0) continue;
-    positions.push({ start, end: start + match.length });
-    cursors.set(match, start + match.length);
-  }
-  positions.sort((left, right) => left.start - right.start);
-
-  const chunks: ReactNode[] = [];
-  let offset = 0;
-  for (const range of positions) {
-    if (range.start < offset) continue;
-    if (range.start > offset) chunks.push(text.slice(offset, range.start));
-    chunks.push(<mark key={`${range.start}-${range.end}`}>{text.slice(range.start, range.end)}</mark>);
-    offset = range.end;
-  }
-  if (offset < text.length) chunks.push(text.slice(offset));
-  return <>{chunks}</>;
-}
-
-async function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // The legacy path still works on browsers that restrict Clipboard API to HTTPS.
-    }
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  textarea.remove();
-  if (!copied) throw new Error("Clipboard access was denied");
-}
-
-function toHex(bytes: Uint8Array): string {
-  const lines: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += 16) {
-    const slice = bytes.slice(offset, offset + 16);
-    const hex = Array.from(slice, (byte) => byte.toString(16).padStart(2, "0")).join(" ").padEnd(47, " ");
-    const ascii = Array.from(slice, (byte) => byte >= 32 && byte <= 126 ? String.fromCharCode(byte) : ".").join("");
-    lines.push(`${offset.toString(16).padStart(8, "0")}  ${hex}  ${ascii}`);
-  }
-  return lines.join("\n");
-}
-
-function protocolLabel(protocol: Protocol, rawTcpLabel: string): string {
-  return protocol === "raw_tcp" ? rawTcpLabel : protocol === "websocket" ? "WebSocket" : "HTTP";
-}
-
-function formatEndpoint(ip: string, port: number): string {
-  return ip.includes(":") ? `[${ip}]:${port}` : `${ip}:${port}`;
-}
-
-function formatTime(micros: number, locale: string): string {
-  return new Date(micros / 1_000).toLocaleTimeString(locale, { hour12: false });
-}
-
-function formatDateTime(micros: number, locale: string): string {
-  return new Date(micros / 1_000).toLocaleString(locale, { hour12: false });
-}
-
-function formatBytes(bytes: number): string {
-  if (bytes < 1_024) return `${bytes} B`;
-  if (bytes < 1_048_576) return `${(bytes / 1_024).toFixed(1)} KB`;
-  return `${(bytes / 1_048_576).toFixed(1)} MB`;
-}
-
-function messageOf(error: unknown, fallback: string): string {
-  return error instanceof Error ? error.message : fallback;
 }

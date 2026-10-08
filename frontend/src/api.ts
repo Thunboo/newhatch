@@ -1,4 +1,6 @@
 import type {
+  ChainPage,
+  ChainMemberPage,
   FlagMatches,
   Session,
   SessionFilters,
@@ -88,16 +90,32 @@ export const api = {
     return request<SessionPage>(`/api/sessions?${params}`);
   },
 
+  listChains: (filters: SessionFilters = {}, cursor?: string, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ limit: "100" });
+    if (filters.sourceId) params.set("source_id", String(filters.sourceId));
+    if (filters.containsFlag) params.set("contains_flag", "true");
+    if (filters.protocol) params.set("protocol", filters.protocol);
+    if (filters.payload) params.set("payload", filters.payload);
+    if (cursor) params.set("chain_cursor", cursor);
+    return request<ChainPage>(`/api/chains?${params}`, { signal });
+  },
+
+  getChainMembers: (id: number, snapshot: number, cursor?: string, signal?: AbortSignal) => {
+    const params = new URLSearchParams({ limit: "20", snapshot_id: String(snapshot) });
+    if (cursor) params.set("cursor", cursor);
+    return request<ChainMemberPage>(`/api/chains/${id}/sessions?${params}`, { signal });
+  },
+
   getSession: (id: number) => request<Session>(`/api/sessions/${id}`),
 
-  getPayload: async (id: number, direction: "c2s" | "s2c") => {
+  getPayload: async (id: number, direction: "c2s" | "s2c", signal?: AbortSignal) => {
     const response = await fetchApi(
-      `/api/sessions/${id}/payload/${direction}`,
+      `/api/sessions/${id}/payload/${direction}`, { signal },
     );
     if (!response.ok) throw new Error(`Payload request failed with ${response.status}`);
     return new Uint8Array(await response.arrayBuffer());
   },
 
-  getFlagMatches: (id: number) =>
-    request<FlagMatches>(`/api/sessions/${id}/flag-matches`),
+  getFlagMatches: (id: number, signal?: AbortSignal) =>
+    request<FlagMatches>(`/api/sessions/${id}/flag-matches`, { signal }),
 };

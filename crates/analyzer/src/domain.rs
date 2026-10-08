@@ -101,6 +101,9 @@ pub struct HttpMetadata {
 
 #[derive(Clone, Debug)]
 pub struct CompletedSession {
+    pub collector_id: String,
+    pub first_payload_c2s_at: Option<i64>,
+    pub first_payload_s2c_at: Option<i64>,
     pub source_id: i64,
     pub started_at: i64,
     pub ended_at: i64,
@@ -119,6 +122,9 @@ pub struct CompletedSession {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct SessionSummary {
+    pub collector_id: Option<String>,
+    pub first_payload_c2s_at: Option<i64>,
+    pub first_payload_s2c_at: Option<i64>,
     pub id: i64,
     pub source_id: i64,
     pub source_name: String,

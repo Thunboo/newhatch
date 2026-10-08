@@ -494,3 +494,60 @@ fn config_rejects_missing_malformed_or_unsafe_values() {
     }
     assert!(AuthConfig::parse("team".into(), "password".into(), "86400s", "yes").is_err());
 }
+
+#[tokio::test]
+async fn chains_share_auth_boundary_and_validate_filters_and_cursors() {
+    let (app, _dir) = app("86400s", "false");
+    for path in ["/api/chains", "/api/chains/1/sessions"] {
+        assert_eq!(
+            call(&app, "127.0.0.1:1", "GET", path, "", "", &[])
+                .await
+                .status(),
+            StatusCode::UNAUTHORIZED
+        );
+    }
+    let session = login(&app, "").await;
+    let session = cookie(&session);
+    let response = call(
+        &app,
+        "127.0.0.1:1",
+        "GET",
+        "/api/chains?source_id=1&contains_flag=true&protocol=http&limit=10",
+        session,
+        "",
+        &[],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = to_bytes(response.into_body(), 1024).await.unwrap();
+    let value: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(value["items"], serde_json::json!([]));
+    for path in [
+        "/api/chains?protocol=invalid",
+        "/api/chains?chain_cursor=invalid",
+        "/api/chains/1/sessions?snapshot_id=-1",
+        "/api/chains/1/sessions?cursor=invalid",
+    ] {
+        assert_eq!(
+            call(&app, "127.0.0.1:1", "GET", path, session, "", &[])
+                .await
+                .status(),
+            StatusCode::BAD_REQUEST,
+            "{path}"
+        );
+    }
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "GET",
+            "/api/chains/1/sessions",
+            session,
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        StatusCode::NOT_FOUND
+    );
+}

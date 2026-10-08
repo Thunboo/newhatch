@@ -13,6 +13,11 @@ python3 -m unittest discover -s test/auth -p 'test_*.py' -v
 
 `backend.rs` is a Cargo integration target. It uses temporary SQLite data and injected real-peer metadata to check local/remote decisions, forged headers, every protected route, future-path fallback, rejected mutation side effects, generic login errors, cookie attributes, ID rotation, logout, absolute expiration and rejection of legacy unprefixed credential variables. Python tests validate nginx generation, IPv4/IPv6 boundaries, multiple networks, sensitive artifact deny rules, frontend/data-volume isolation, fail-closed configuration and Compose credential interpolation when the host defines conflicting `USERNAME`/`PASSWORD` values.
 
+Chain list/member routes share the same protected boundary and have invalid
+filter/cursor regression coverage. The browser image also picks up chain-card
+tests from `session-chains.spec.cjs`; host-only execution is documented in
+[session-chain verification](../session_chains/README.md).
+
 ## Real Network Test
 
 ```bash

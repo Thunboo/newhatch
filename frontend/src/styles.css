@@ -169,7 +169,7 @@ button:disabled { cursor: default; opacity: .5; }
 .export-logo-curl { width: 56px; height: 18px; object-fit: contain; }
 .export-logo-python { width: 68px; height: 20px; object-fit: contain; }
 .export-fallback { font: 700 9px ui-monospace, monospace; letter-spacing: 0; text-transform: none; }
-.copy-button-content, .copy-button-feedback { grid-area: 1 / 1; display: grid; place-items: center; }
+.copy-button-content, .copy-button-feedback, .copy-button-loading { grid-area: 1 / 1; display: grid; place-items: center; }
 .copy-button-content { opacity: 1; transform: scale(1); transition: opacity 160ms ease, transform 180ms ease; }
 .copy-button-content.is-hidden { opacity: 0; transform: scale(.82); }
 .copy-button-feedback { animation: copy-feedback 1500ms ease-in-out both; }
@@ -229,4 +229,41 @@ button:disabled { cursor: default; opacity: .5; }
   .source-list-head, .source-row { min-width: 520px; }
   .detail-meta { grid-template-columns: 1fr 1fr; }
   .streams { padding: 0 10px 10px; }
+}
+
+/* The outer card moves between pairs; payload bodies retain independent scroll. */
+.chain-table th:nth-child(3) { width: 180px; }
+.chain-table th:nth-child(4) { width: 140px; }
+.chain-table th:nth-child(5) { width: 82px; }
+.chain-scroll { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; padding: 0 20px 20px; --payload-window-height: 180px; }
+.chain-pair { display: grid; grid-template-rows: var(--payload-window-height) var(--payload-window-height); gap: 12px; margin-bottom: 20px; }
+.chain-pair .stream { position: relative; }
+/* The lane reaches the right edge; copy actions sit above it. */
+.chain-scroll-lane { position: absolute; z-index: 1; top: 0; bottom: 0; right: 0px; width: 26%; min-width: 100px; touch-action: pan-y; }
+.chain-panel > .detail-header, .chain-panel > .detail-meta, .chain-panel > .flag-banner, .chain-panel > .payload-toolbar { flex-shrink: 0; }
+.chain-panel .payload-toolbar { display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: start; gap: 8px; }
+.chain-panel .payload-toolbar > span { justify-self: center; }
+.chain-export-action { width: 76px; height: 32px; padding: 0; display: grid; place-items: center; color: #30363d; background: #e8ebee; border: 1px solid #bbc3cb; border-radius: 5px; }
+.chain-export-action:not(:disabled):hover { background: #fff; border-color: #747c85; }
+.chain-export-action:disabled { opacity: .4; cursor: not-allowed; }
+.chain-export-action.copy-failed { border-color: #965151; color: #965151; }
+.chain-panel > .chain-export-error { flex-shrink: 0; }
+.chain-panel .json-toggle { min-height: 32px; }
+.chain-format-controls { display: flex; flex-direction: column; align-items: flex-end; justify-self: end; gap: 3px; flex-shrink: 0; }
+.chain-scroll-hint { color: #707780; font-size: 10px; line-height: 1.3; }
+.chain-pair .stream pre { overscroll-behavior: contain; touch-action: pan-y; }
+.chain-scroll .history-sentinel { min-height: 48px; }
+.chain-pair .stream > header { min-height: 44px; }
+.chain-pair .stream-title { display: flex; flex-direction: column; }
+.chain-pair .stream-title small { font-size: 10px; line-height: 1.3; font-weight: 400; }
+.chain-pair .stream-actions { position: relative; z-index: 2; gap: 5px; margin-left: 6px; }
+@media (max-width: 820px) {
+  .chain-panel { bottom: 58px; }
+  .chain-scroll { padding-right: 10px; padding-left: 10px; }
+}
+@media (max-width: 480px) {
+  .chain-panel .payload-toolbar { padding-right: 10px; padding-left: 10px; gap: 5px; }
+  .chain-panel .payload-toolbar .segmented button { padding: 0 5px; }
+  .chain-export-action { width: 60px; }
+  .chain-export-action .export-logo-python { width: 52px; }
 }

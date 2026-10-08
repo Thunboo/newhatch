@@ -206,11 +206,21 @@ CREATE TABLE sessions (
     http_host           TEXT,
     http_path           TEXT,
     http_status         INTEGER,
-    http_content_type   TEXT
+    http_content_type   TEXT,
+    collector_id        TEXT,
+    first_payload_c2s_at INTEGER,
+    first_payload_s2c_at INTEGER
 );
 ```
 
 IPv4 addresses are stored as 4-byte blobs and IPv6 addresses as 16-byte blobs. Protocol and flag direction are compact integer enums. `suricata_alerts` is reserved but is not populated until correlation is implemented.
+
+An idempotent startup migration adds the three nullable chain fields to existing
+catalogs. New sessions preserve their originating collector (`local` for local
+capture); directional timestamps are the earliest observed non-empty payload
+capture times in Unix microseconds. Legacy NULL values remain unknown, and
+collector-less records stay singleton chains. Migration does not rewrite segment
+files or their direct record pointers.
 
 ## Initial Indexes
 
@@ -230,9 +240,28 @@ ON sessions(contains_flag, started_at DESC);
 
 CREATE INDEX idx_sessions_segment
 ON sessions(segment_id);
+
+CREATE INDEX idx_sessions_chain_key_time
+ON sessions(collector_id, client_ip, source_id, started_at, id);
 ```
 
 Additional indexes should be added only after measured query patterns justify them.
+
+## On-Demand Session Chains
+
+Chains are computed from retained session metadata using the three-field key and
+adjacent start gaps of at most one second. No chain table, payload duplication or
+packet rows are added. Membership is formed before flag/protocol/payload filters;
+one matching member selects a chain and its full retained context.
+
+Each request reads one SQLite transaction; pagination cursors pin the maximum
+session ID so new insertions cannot change subsequent pages until refresh.
+Retention remains active and can remove members. Queries use at most two
+concurrent blocking readers, interruptible SQL, a 2 MiB page cache and file-backed
+temporary sorting. Chain/member responses cap at 200 rows; payload search caps
+at 2,000 candidates and can resume within one chain. See
+[session chains](session-chains.md#12-implemented-api-and-work-limits) for API,
+deadlines and overload behavior.
 
 ## SQLite Write Model
 

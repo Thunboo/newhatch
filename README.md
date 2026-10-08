@@ -38,6 +38,22 @@ Open `http://localhost:8080`, sign in, then add monitored services on the Source
 
 The UI supports English and Russian. Without a saved preference it follows the browser language; after sign-in, use the language button immediately above Sign out to persist a choice.
 
+On Sessions, **Group into chains** combines complete TCP sessions from the same
+collector, client IP and service when adjacent session starts are at most one
+second apart. The option is off by default. Open a chain to inspect ordered
+C2S/S2C pairs: scroll the card between pairs or over the invisible strip on the
+right of a window (26% of its width, at least 100 px, flush with the right edge); scroll over the remaining payload area to inspect that
+request/response independently. Copy buttons stay available above the strip.
+A small "Scroll sessions here" hint below Text/Hex identifies the area in chain detail.
+cURL/Python export is available on C2S. The center Python button in the chain
+toolbar copies all supported HTTP requests as one sequential script, including
+offscreen sessions and multiple requests in one C2S; cookies update from server
+responses. Unsupported input reports the session and prevents a partial export.
+Flag-only filtering keeps
+preceding sessions visible in the opened chain. Existing records without
+collector identity remain separate. See [session chains](docs/session-chains.md)
+for the exact rule, pagination and query limits.
+
 ## Split Collector Deployment
 
 The default `ANALYZER=local` keeps capture and analysis on one host in a single `analyzer` container. For a split deployment (that lowers the load on vulnbox by design), use the following configuration:
