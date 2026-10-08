@@ -1,11 +1,12 @@
-import { AlertTriangle, Check, Copy } from "lucide-react";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Copy } from "lucide-react";
+import { useMemo } from "react";
 import type { ReactNode } from "react";
 import curlLogoUrl from "./assets/Curl-logo.svg";
 import pythonLogoUrl from "./assets/python-logo.png";
 import { useI18n } from "./i18n";
 import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
-import { exportCurl, exportPython, parseReplayRequest } from "./requestExport";
+import { exportCurl, exportPython, parseReplayRequest, replayProblemKeys } from "./requestExport";
+import { ExportLogo, PayloadCopyButton } from "./PayloadCopyButton";
 import type { ReplayTarget } from "./requestExport";
 import type { ByteRange } from "./types";
 import { formatBytes } from "./format";
@@ -19,15 +20,8 @@ export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagg
     () => replayTarget ? parseReplayRequest(bytes, displayedText, replayTarget) : null,
     [bytes, displayedText, replayTarget?.host, replayTarget?.port],
   );
-  const problemKeys = {
-    http: "detail.exportHttp",
-    incomplete: "detail.exportIncomplete",
-    multiple: "detail.exportMultiple",
-    encoding: "detail.exportEncoding",
-    headers: "detail.exportHeaders",
-  } as const;
   const exportDisabled = mode === "hex" ? t("detail.exportHex")
-    : replay && !replay.ok ? t(problemKeys[replay.problem]) : undefined;
+    : replay && !replay.ok ? t(replayProblemKeys[replay.problem]) : undefined;
   const matchTexts = useMemo(
     () => ranges.map((range) => decodeDisplayEscapes(decodePayload(bytes.slice(range.start, range.end)))).filter(Boolean),
     [bytes, ranges],
@@ -57,43 +51,6 @@ export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagg
   );
 }
 
-function ExportLogo({ src, fallback, kind }: { src: string; fallback: string; kind: "curl" | "python" }) {
-  const [failed, setFailed] = useState(false);
-  return failed
-    ? <span className="export-fallback" aria-hidden="true">{fallback}</span>
-    : <img className={`export-logo export-logo-${kind}`} src={src} alt="" aria-hidden="true" onError={() => setFailed(true)} />;
-}
-
-function PayloadCopyButton({ className, label, disabledReason, getText, children }: { className?: string; label: string; disabledReason?: string; getText: () => string; children: ReactNode }) {
-  const { t } = useI18n();
-  const [state, setState] = useState<"idle" | "copied" | "failed">("idle");
-  const resetRef = useRef<number | null>(null);
-  useEffect(() => () => {
-    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-  }, []);
-
-  const copy = async () => {
-    try {
-      await copyText(getText());
-      setState("copied");
-    } catch {
-      setState("failed");
-    }
-    if (resetRef.current !== null) window.clearTimeout(resetRef.current);
-    resetRef.current = window.setTimeout(() => setState("idle"), 1_500);
-  };
-  const tooltip = disabledReason ?? (state === "copied" ? t("detail.copied") : state === "failed" ? t("detail.copyFailed") : label);
-  return (
-    <span title={tooltip}>
-      <button className={[className, state === "failed" ? "copy-failed" : ""].filter(Boolean).join(" ")} type="button" title={tooltip} aria-label={label} disabled={!!disabledReason} onClick={() => void copy()}>
-        <span className={`copy-button-content${state === "idle" ? "" : " is-hidden"}`}>{children}</span>
-        {state === "copied" && <span className="copy-button-feedback"><Check size={14} /></span>}
-        {state === "failed" && <span className="copy-button-feedback"><AlertTriangle size={14} /></span>}
-      </button>
-    </span>
-  );
-}
-
 function HighlightedText({ text, matches }: { text: string; matches: string[] }) {
   const positions: ByteRange[] = [];
   const cursors = new Map<string, number>();
@@ -115,27 +72,6 @@ function HighlightedText({ text, matches }: { text: string; matches: string[] })
   }
   if (offset < text.length) chunks.push(text.slice(offset));
   return <>{chunks}</>;
-}
-
-async function copyText(text: string): Promise<void> {
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch {
-      // The legacy path still works on browsers that restrict Clipboard API to HTTPS.
-    }
-  }
-
-  const textarea = document.createElement("textarea");
-  textarea.value = text;
-  textarea.style.position = "fixed";
-  textarea.style.opacity = "0";
-  document.body.appendChild(textarea);
-  textarea.select();
-  const copied = document.execCommand("copy");
-  textarea.remove();
-  if (!copied) throw new Error("Clipboard access was denied");
 }
 
 function toHex(bytes: Uint8Array): string {

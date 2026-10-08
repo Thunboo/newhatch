@@ -124,7 +124,7 @@ in the frontend. They use the currently displayed text body, including the
 Format JSON choice, and retain readable Unicode rather than byte escapes or
 base64. Captured bytes are used only to validate HTTP framing.
 
-The initial exporter accepts one complete, uncompressed UTF-8 HTTP/1.x request
+The per-window exporter accepts one complete, uncompressed UTF-8 HTTP/1.x request
 with an origin-form target and either no body or Content-Length framing. Hex mode,
 partial requests, multiple requests in one stream, binary/compressed/chunked
 payloads, Upgrade streams and unsupported/repeated headers disable export with
@@ -161,7 +161,7 @@ collects collector identity and the first payload capture timestamp per directio
 the collector gains no additional aggregation work.
 
 The chain card orders pairs by session start, with C2S immediately before its S2C.
-Existing payload rendering and C2S-only cURL/Python export behavior are reused.
+Existing payload rendering and C2S-only per-window cURL/Python export behavior are reused.
 The card scrolls vertically between pairs, while every expanded C2S/S2C window
 retains the current standalone dimensions for the viewport and its independent
 payload scroll. Windows must not grow with payload length or shrink as more pairs
@@ -174,6 +174,18 @@ body retains its own scrolling, and window dimensions are unchanged.
 
 Only chain detail shows a small "Scroll sessions here" hint below Text/Hex
 ("Прокручивайте сессии здесь" in Russian) to explain the right-side scroll area.
+
+The center toolbar Python button copies the entire selected chain as one
+Python/requests script in Text mode, including offscreen and later-page members.
+Unlike per-window exports, it splits multiple complete HTTP/1.x requests in a
+C2S by raw byte framing, then applies readable text/Format JSON per message.
+Requests run sequentially in session-start/ID and within-stream order with
+10-second timeouts and redirects disabled. One requests.Session uses captured
+first-request cookies as initial values and then follows response Set-Cookie;
+later captured Cookie headers cannot overwrite fresh cookies. Dynamic CSRF
+tokens/IDs require manual edits. Preparation is cancellable on close and shows
+progress; unsupported/incomplete input reports the session/request and prevents
+copying a partial script. See the complete [export contract](session-chains.md#whole-chain-python-export-2026-10-08).
 
 A filtered chain is selected when one member satisfies all active filters; its
 card includes the other retained members as context. Chain and member pages pin

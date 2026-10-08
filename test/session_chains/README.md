@@ -29,20 +29,28 @@ Authentication integration tests cover both new routes and invalid cursors/filte
 Install the browser test runner outside the repository, then run the dedicated
 configuration from the repository root:
 
+The complete suite also requires Python 3 with `requests` to execute generated
+scripts against a temporary loopback-only HTTP receiver. A temporary virtual
+environment keeps these test dependencies outside the repository.
+
 ```bash
 CHAIN_TEST_TOOLS="$(mktemp -d)"
 npm install --prefix "$CHAIN_TEST_TOOLS" --no-audit --no-fund @playwright/test@1.51.1
 "$CHAIN_TEST_TOOLS/node_modules/.bin/playwright" install chromium
-NODE_PATH="$CHAIN_TEST_TOOLS/node_modules" "$CHAIN_TEST_TOOLS/node_modules/.bin/playwright" test --config=test/session_chains/playwright.config.cjs
+python3 -m venv "$CHAIN_TEST_TOOLS/python"
+"$CHAIN_TEST_TOOLS/python/bin/pip" install requests
+NEWHATCH_TEST_PYTHON="$CHAIN_TEST_TOOLS/python/bin/python3" NODE_PATH="$CHAIN_TEST_TOOLS/node_modules" "$CHAIN_TEST_TOOLS/node_modules/.bin/playwright" test --config=test/session_chains/playwright.config.cjs
 ```
 
 The configuration starts and stops a temporary Vite server on port 4173 and runs
-the existing auth/localization/feed regressions plus four chain scenarios.
+the existing auth/localization/feed regressions plus eight chain UI scenarios
+and six framing/Python replay scenarios.
 Screenshots/results default to the OS temporary directory. Optional overrides:
-`NEWHATCH_TEST_RESULTS`, `NEWHATCH_TEST_NODE`, `NEWHATCH_TEST_CHROMIUM`.
+`NEWHATCH_TEST_RESULTS`, `NEWHATCH_TEST_NODE`, `NEWHATCH_TEST_CHROMIUM`,
+`NEWHATCH_TEST_PYTHON`.
 
 Chain browser coverage verifies the default checkbox, active filters, whole-pair
-order and timestamps, C2S-only cURL/Python actions, clipboard/Hex behavior,
+order and timestamps, C2S-only per-window cURL/Python actions, clipboard/Hex behavior,
 progressive metadata/payload loading, fixed window heights, independent inner
 and outer scroll with no background movement, mobile layout, Escape and removal
 of stale rows after a late bridge merges chains.
@@ -62,6 +70,21 @@ capture and the production Linux deployment were not exercised in that run.
 The current chain UI follow-ups passed TypeScript/build and all four chain browser
 scenarios on the same date, including right-edge scroll routing and chain-only
 hint visibility. They add no backend behavior.
+
+Whole-chain export coverage includes all 30 paginated members without scrolling,
+multiple requests inside one C2S, Unicode/JSON display transforms, contextual
+offscreen failures without partial copy, retry, abort on close, retention changes
+and Russian mobile clipboard fallback. The toolbar action is absent from ordinary
+session detail and stays centered on mobile.
+
+`replay.spec.cjs` executes generated Python against a temporary HTTP receiver,
+checking request order, byte-accurate Unicode bodies, cookie replacement/deletion
+and initial cookies under DNS, single-label, IPv4 and IPv6 Host headers. HTTP 500
+does not skip later requests and 302 does not introduce an uncaptured redirect.
+Framing tests reject incomplete, binary, chunked, compressed, Upgrade and invalid
+header inputs with the failing request index. TypeScript/build and all 18 unique
+local browser/replay scenarios passed on 2026-10-08; the final targeted rerun also
+checked IPv6 Host and readable button feedback. No Docker was run by the agent.
 
 ## User-Run Docker Checks
 

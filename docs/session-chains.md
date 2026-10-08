@@ -86,7 +86,46 @@ For each session, display C2S immediately followed by that session's S2C. Keep p
 
 Each window identifies its session, direction and first-payload capture time when available. Its header puts the session/direction above the timestamp to keep both readable on narrow screens. Existing Text/Hex, JSON formatting, flag highlighting and ordinary payload-copy behavior are reused.
 
-The Python/requests and Bash/cURL export buttons, shown as `[copy .py]` and `[copy curl]` in the agreed mockup, appear only in C2S headers. S2C headers must not expose those export buttons. Preserve existing export validation and disabled-state explanations, including the restriction on multiple HTTP requests in one C2S stream.
+The per-window Python/requests and Bash/cURL export buttons, shown as `[copy .py]` and `[copy curl]` in the agreed mockup, appear only in C2S headers. S2C headers must not expose those export buttons. These individual actions retain their existing single-request validation and disabled-state explanations.
+
+### Whole-Chain Python Export (2026-10-08)
+
+The center of the chain card's `payload-toolbar` has a Python-logo button with a
+localized **Copy chain as Python (requests)** tooltip. It is exclusive to chain
+detail and available in Text mode. Preparation shows a spinner and session-count
+progress in the tooltip; success/failure uses the existing copy feedback.
+
+On click, fetch every member page using the selected `snapshot_id`, including
+sessions not yet loaded or visible in the card. Read C2S payloads one at a time
+and retain only generated script text; export does not expand the card's lazy
+windows. Closing the card aborts preparation. Membership/count changes caused by
+retention require reopening the chain; unsupported requests or failed payload
+reads report the session and, when known, request index. Never copy a partial
+script or silently skip a request.
+
+Split each C2S into complete HTTP/1.x requests using raw-byte header boundaries
+and Content-Length before applying the existing text/JSON display transforms
+per message. Multiple complete requests in one TCP session are supported here;
+the session still remains one C2S/S2C pair in the card. Supported input retains
+the origin-form, uncompressed UTF-8, no-body/Content-Length and header restrictions
+of individual exports; binary, chunked, Upgrade and incomplete messages fail the
+whole export.
+
+The generated Python 3 script uses one `requests.Session()`. It sends sessions
+in `(started_at, id)` order and requests in each C2S byte order, waiting for each
+response without replaying captured timing gaps. Each editable block identifies
+its session and request. Captured server IP/port and Host are preserved; displayed
+UTF-8 bodies follow Format JSON and Content-Length is recalculated. Timeout is
+10 seconds per request and automatic redirects are disabled. HTTP error statuses
+are printed and do not skip later captured requests; transport failures stop the
+script.
+
+Cookies from the first request initialize the jar for the captured Host (or
+destination host), at path `/`. Later captured Cookie headers are omitted so
+Set-Cookie updates, expiry and deletion from actual responses govern following
+requests. Initial cookie paths cannot be inferred from captured request headers.
+Response-dependent CSRF tokens, IDs and other values require manual editing;
+their extraction/substitution is outside this export.
 
 ```text
 Chain / Цепочка · web · 10.0.4.17 · 2 sessions · FLAG
@@ -147,7 +186,7 @@ Implementation includes analyzer metadata, SQLite migration, backend/API groupin
 
 Out of scope:
 
-- individual HTTP transaction extraction or request/response pairing inside one TCP session;
+- transaction-level browsing or request/response pairing inside one TCP session (frontend export may split C2S requests without changing the session model);
 - packet-by-packet chronology or interleaved fragment rendering;
 - Suricata EVE ingestion/correlation;
 - attack-success classification using HTTP status codes;
@@ -165,7 +204,8 @@ The agreed specification is preserved in this project document. Agent task state
 - Grouped filters retain the full available context; list/member pagination does not cut chain membership at page boundaries.
 - Legacy records, missing directional payloads and retention remain inspectable without invented metadata.
 - Turning grouping off retains existing individual-session browsing.
-- Each pair stays together in the card; export buttons appear only on C2S and retain existing supported-input rules.
+- Each pair stays together in the card; per-window export buttons appear only on C2S and retain existing supported-input rules.
+- The toolbar Python action exports every member and every supported C2S request in order, including offscreen/later-page sessions. Validate cookie updates/deletion, framing before display transforms, abort on close and no partial clipboard writes on failure.
 - With many pairs, the card scrolls between them. With long payloads, each fixed-size window scrolls internally. Existing window sizes do not shrink when more pairs load or grow with payload bytes.
 - Both scroll levels work without moving the background session list, including at boundaries and after viewport changes. Verify both C2S and S2C, Text/Hex and a narrow/mobile viewport.
 - The responsive right-side strip scrolls the outer chain while inner offsets stay unchanged; copy actions above it remain accessible on desktop and mobile. Its width is 26% of the window with a 100 px minimum and no right inset. At the chain boundary it must not scroll the background.

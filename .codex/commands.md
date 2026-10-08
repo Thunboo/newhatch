@@ -104,7 +104,9 @@ Host-only Rust/frontend/browser checks and user-run Docker commands are in
 `test/session_chains/README.md`. The browser configuration
 `test/session_chains/playwright.config.cjs` starts temporary Vite and includes
 auth/localization/feed regressions plus chain order/export/scroll/late-merge
-coverage. Results default to the OS temp directory; `NEWHATCH_TEST_RESULTS`
+coverage, plus whole-chain export and generated Python execution against a
+temporary loopback HTTP receiver. The complete suite requires Python 3/requests;
+`NEWHATCH_TEST_PYTHON` can choose a virtual-environment interpreter. Results default to the OS temp directory; `NEWHATCH_TEST_RESULTS`
 overrides it. No production data or `.env` is used.
 
 ## Request Export Tests

@@ -1,9 +1,13 @@
 import { AlertTriangle, Braces, Flag, ListFilter, RefreshCw, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { api } from "./api";
+import pythonLogoUrl from "./assets/python-logo.png";
+import { ChainExportError, loadChainPython } from "./chainExport";
 import { formatBytes, formatDateTime, formatTime, messageOf } from "./format";
 import { useI18n } from "./i18n";
 import { Stream } from "./Stream";
+import { ExportLogo, PayloadCopyButton } from "./PayloadCopyButton";
+import { replayProblemKeys } from "./requestExport";
 import type { PayloadMode } from "./Stream";
 import { TrafficFilters } from "./TrafficFilters";
 import type { TrafficFilterProps } from "./TrafficFilters";
@@ -138,6 +142,8 @@ function ChainDetail({ chain, onClose }: { chain: Chain; onClose: () => void }) 
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<PayloadMode>("text");
   const [formatJson, setFormatJson] = useState(false);
+  const [exportProgress, setExportProgress] = useState(0);
+  const [exportError, setExportError] = useState<string | null>(null);
   const panel = useRef<HTMLElement>(null);
   const scroll = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLDivElement>(null);
@@ -212,6 +218,23 @@ function ChainDetail({ chain, onClose }: { chain: Chain; onClose: () => void }) 
     return () => observer.disconnect();
   }, [cursor, loading, error, load]);
 
+  const exportPython = (signal: AbortSignal) => {
+    setExportError(null);
+    setExportProgress(0);
+    return loadChainPython(chain, formatJson, signal, setExportProgress);
+  };
+  const exportFailed = (caught: unknown) => {
+    if (caught instanceof ChainExportError) {
+      const reason = caught.problem === "changed" ? t("chains.exportChanged")
+        : caught.problem === "pagination" ? t("history.noProgress")
+        : caught.problem === "load" ? caught.detail ?? t("error.unexpected")
+        : t(replayProblemKeys[caught.problem]);
+      setExportError(caught.sessionId == null ? reason : caught.requestIndex == null
+        ? t("chains.exportSessionError", { id: caught.sessionId, reason })
+        : t("chains.exportRequestError", { id: caught.sessionId, index: caught.requestIndex, reason }));
+    } else setExportError(messageOf(caught, t("detail.copyFailed")));
+  };
+
   return <aside ref={panel} className="detail-panel chain-panel" aria-label={t("chains.detail")}>
     <header className="detail-header"><div><span className="eyebrow">{t("chains.title", { count: chain.session_count })}</span><h2>{chain.source_name} · {chain.client_ip}</h2></div>
       <div className="detail-close"><span className="close-hint"><kbd>Esc</kbd> {t("detail.closeHint")}</span><button className="icon-button" title={t("detail.close")} aria-label={t("detail.close")} onClick={onClose}><X size={18} /></button></div>
@@ -219,11 +242,15 @@ function ChainDetail({ chain, onClose }: { chain: Chain; onClose: () => void }) 
     <div className="detail-meta"><span><small>{t("chains.collector")}</small>{chain.collector_id ?? t("chains.unknown")}</span><span><small>{t("detail.started")}</small>{formatDateTime(chain.started_at, locale)}</span><span><small>{t("detail.traffic")}</small>{formatBytes(chain.bytes_c2s + chain.bytes_s2c)}</span><span><small>{t("chains.steps")}</small>{chain.session_count}</span></div>
     {chain.contains_flag && <div className="flag-banner"><Flag size={16} /><strong>{t("detail.flagMatches", { count: chain.flag_count })}</strong></div>}
     <div className="payload-toolbar"><label className={mode === "text" ? "json-toggle" : "json-toggle disabled"}><input type="checkbox" checked={formatJson} disabled={mode !== "text"} onChange={(event) => setFormatJson(event.target.checked)} />{t("detail.formatJson")}</label>
+      <PayloadCopyButton className="chain-export-action" label={t("chains.copyPython")} disabledReason={mode === "hex" ? t("detail.exportHex") : undefined} loadingLabel={t("chains.exportProgress", { count: exportProgress, total: chain.session_count })} getText={exportPython} onError={exportFailed}>
+        <ExportLogo src={pythonLogoUrl} fallback="python" kind="python" />
+      </PayloadCopyButton>
       <div className="chain-format-controls">
         <div className="segmented" role="group" aria-label={t("detail.payloadFormat")}><button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Braces size={14} />{t("detail.text")}</button><button className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")}><Settings2 size={14} />{t("detail.hex")}</button></div>
         <small className="chain-scroll-hint">{t("chains.scrollHere")}</small>
       </div>
     </div>
+    {exportError && <div className="error-strip chain-export-error" role="alert"><AlertTriangle size={16} />{exportError}</div>}
     <div ref={scroll} className="chain-scroll">
       {members.map((session) => <LazyPair key={session.id} session={session} root={scroll.current} mode={mode} formatJson={formatJson} />)}
       {error && <div className="error-strip"><AlertTriangle size={16} />{error}<button onClick={() => void load()}>{t("common.retry")}</button></div>}

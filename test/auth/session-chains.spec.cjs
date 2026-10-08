@@ -23,7 +23,7 @@ function chain(id = 41) {
 }
 
 async function routes(page) {
-  const state = { memberRequests: [], payloadRequests: [], chainRequests: [], rows: [chain()] };
+  const state = { memberRequests: [], payloadRequests: [], chainRequests: [], rows: [chain()], c2s: new Map(), waitPayload: null, memberSummary: null };
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const send = (value) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
@@ -38,16 +38,17 @@ async function routes(page) {
     if (url.pathname === "/api/chains/41/sessions") {
       state.memberRequests.push(url.searchParams);
       const older = url.searchParams.has("cursor");
-      return send({ chain: chain(), items: Array.from({ length: older ? 10 : 20 }, (_, i) => session((older ? 61 : 41) + i)), next_cursor: older ? null : "members-older" });
+      return send({ chain: state.memberSummary ?? chain(), items: Array.from({ length: older ? 10 : 20 }, (_, i) => session((older ? 61 : 41) + i)), next_cursor: older ? null : "members-older" });
     }
     const found = url.pathname.match(/^\/api\/sessions\/(\d+)\/(payload\/(c2s|s2c)|flag-matches)$/);
     if (!found) return route.fulfill({ status: 404, body: "{}" });
     const id = Number(found[1]);
     if (found[2] === "flag-matches") return send({ c2s: [], s2c: [] });
     state.payloadRequests.push({ id, direction: found[3] });
+    if (state.waitPayload) await state.waitPayload(id, found[3]);
     const body = Array.from({ length: 200 }, (_, i) => `line ${i}: contents for ${id}`).join("\n");
     const payload = found[3] === "c2s" ? `POST /${id} HTTP/1.1\r\nHost: test\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}` : `HTTP/1.1 200 OK\r\n\r\n${body}`;
-    return route.fulfill({ status: 200, contentType: "application/octet-stream", body: payload });
+    return route.fulfill({ status: 200, contentType: "application/octet-stream", body: found[3] === "c2s" ? state.c2s.get(id) ?? payload : payload });
   });
   return state;
 }
@@ -63,6 +64,7 @@ test("chain card keeps session pairs, C2S exports and two independent fixed-size
   await page.locator('[data-session-id="41"]').click();
   await expect(page.locator(".detail-panel")).toBeVisible();
   await expect(page.getByText("Scroll sessions here", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Copy chain as Python (requests)", exact: true })).toHaveCount(0);
   await page.keyboard.press("Escape");
   await toggle.check();
   await expect(page.getByText("1 loaded chains")).toBeVisible();
@@ -135,7 +137,112 @@ test("chain windows remain bounded and independently scrollable on mobile", asyn
   expect(await payload.evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
   expect(await page.locator(".chain-scroll").evaluate((node) => node.scrollHeight > node.clientHeight)).toBe(true);
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  const toolbar = await page.locator(".chain-panel .payload-toolbar").boundingBox();
+  const button = await page.getByRole("button", { name: "Copy chain as Python (requests)" }).boundingBox();
+  expect(button.x + button.width / 2).toBeCloseTo(toolbar.x + toolbar.width / 2, 1);
   await page.screenshot({ path: testInfo.outputPath("chain-mobile.png") });
+});
+
+test("chain Python export loads offscreen sessions and all requests within each C2S", async ({ page, context }, testInfo) => {
+  const state = await routes(page);
+  const body = '{"message":"\\u041f\\u0440\\u0438\\u0432\\u0435\\u0442","nested":"{\\"ok\\":true}"}';
+  state.c2s.set(41, `POST /login HTTP/1.1\r\nHost: test\r\nCookie: sid=initial\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}GET /next HTTP/1.1\r\nHost: test\r\nCookie: sid=captured-old\r\n\r\n`);
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  await expect(page.locator(".chain-pair")).toHaveCount(20);
+  expect(state.payloadRequests.some((request) => request.id === 70)).toBe(false);
+  await page.getByRole("checkbox", { name: "Format JSON" }).check();
+  const button = page.getByRole("button", { name: "Copy chain as Python (requests)", exact: true });
+  await page.getByRole("button", { name: "Hex", exact: true }).click();
+  await expect(button).toBeDisabled();
+  await page.getByRole("button", { name: "Text", exact: true }).click();
+  await button.click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("Session #70 · request 1/1");
+  const script = await page.evaluate(() => navigator.clipboard.readText());
+  expect(script.match(/response = session\.request\(/g)).toHaveLength(31);
+  expect(script).toContain("with requests.Session() as session:");
+  expect(script).toContain("Привет");
+  expect(script).toContain('  "nested": {');
+  expect(script).toContain('seed_cookies(session, url, "test", "sid=initial")');
+  expect(script).not.toContain("captured-old");
+  const headings = Array.from(script.matchAll(/# Session #(\d+) · request (\d+)\//g), (match) => [Number(match[1]), Number(match[2])]);
+  expect(headings).toEqual([[41, 1], [41, 2], ...Array.from({ length: 29 }, (_, i) => [42 + i, 1])]);
+  expect(state.memberRequests.every((params) => params.get("snapshot_id") === "100")).toBe(true);
+  expect(state.memberRequests.some((params) => params.get("cursor") === "members-older")).toBe(true);
+  // Exporting does not expand the card's lazy metadata/payload windows.
+  await expect(page.locator(".chain-pair")).toHaveCount(20);
+  await page.screenshot({ path: testInfo.outputPath("chain-export-desktop.png") });
+});
+
+test("chain export reports an unsupported offscreen request and never copies a partial script", async ({ page, context }) => {
+  const state = await routes(page);
+  state.c2s.set(70, "POST /last HTTP/1.1\r\nContent-Length: 20\r\n\r\nx");
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await page.evaluate(() => navigator.clipboard.writeText("keep clipboard"));
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  const button = page.getByRole("button", { name: "Copy chain as Python (requests)" });
+  await button.click();
+  await expect(page.getByRole("alert")).toHaveText("Session #70, request 1: The HTTP request is incomplete");
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("keep clipboard");
+  state.c2s.delete(70);
+  await button.click();
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("Session #70 · request 1/1");
+  await expect(page.getByRole("alert")).toHaveCount(0);
+});
+
+test("closing a chain aborts script preparation before clipboard changes", async ({ page, context }) => {
+  const state = await routes(page);
+  let release;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  state.waitPayload = (id, direction) => id === 70 && direction === "c2s" ? waiting : Promise.resolve();
+  await context.grantPermissions(["clipboard-read", "clipboard-write"]);
+  await page.goto("/");
+  await page.evaluate(() => navigator.clipboard.writeText("keep clipboard"));
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  const button = page.getByRole("button", { name: "Copy chain as Python (requests)" });
+  await button.click();
+  await expect(button).toHaveAttribute("title", "Preparing script: 29/30 sessions");
+  await expect(button).toBeDisabled();
+  const aborted = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/sessions/70/payload/c2s"));
+  await page.keyboard.press("Escape");
+  await aborted;
+  release();
+  await expect(page.locator(".chain-panel")).toHaveCount(0);
+  expect(await page.evaluate(() => navigator.clipboard.readText())).toBe("keep clipboard");
+});
+
+test("chain export detects retention changes and supports Russian mobile clipboard fallback", async ({ page }, testInfo) => {
+  const state = await routes(page);
+  await page.addInitScript(() => {
+    localStorage.setItem("newhatch_language", "ru");
+    window.copiedScripts = [];
+    Object.defineProperty(navigator, "clipboard", { configurable: true, value: undefined });
+    document.execCommand = (command) => {
+      if (command !== "copy") return false;
+      window.copiedScripts.push(document.querySelector("textarea").value);
+      return true;
+    };
+  });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Группировать в цепочки" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  state.memberSummary = { ...chain(), session_count: 29 };
+  const button = page.getByRole("button", { name: "Копировать цепочку как Python (requests)" });
+  await button.click();
+  await expect(page.getByRole("alert")).toContainText("Состав цепочки изменился");
+  expect(await page.evaluate(() => window.copiedScripts)).toHaveLength(0);
+  state.memberSummary = null;
+  await button.click();
+  await expect.poll(() => page.evaluate(() => window.copiedScripts.length)).toBe(1);
+  expect(await page.evaluate(() => window.copiedScripts[0])).toContain("Session #70 · request 1/1");
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.screenshot({ path: testInfo.outputPath("chain-export-mobile-ru.png") });
 });
 
 test("refresh replaces stale chain rows after a late session bridges them", async ({ page }) => {

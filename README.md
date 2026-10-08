@@ -45,7 +45,11 @@ C2S/S2C pairs: scroll the card between pairs or over the invisible strip on the
 right of a window (26% of its width, at least 100 px, flush with the right edge); scroll over the remaining payload area to inspect that
 request/response independently. Copy buttons stay available above the strip.
 A small "Scroll sessions here" hint below Text/Hex identifies the area in chain detail.
-cURL/Python export is available on C2S. Flag-only filtering keeps
+cURL/Python export is available on C2S. The center Python button in the chain
+toolbar copies all supported HTTP requests as one sequential script, including
+offscreen sessions and multiple requests in one C2S; cookies update from server
+responses. Unsupported input reports the session and prevents a partial export.
+Flag-only filtering keeps
 preceding sessions visible in the opened chain. Existing records without
 collector identity remain separate. See [session chains](docs/session-chains.md)
 for the exact rule, pagination and query limits.
