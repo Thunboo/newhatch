@@ -146,7 +146,7 @@ test("refresh replaces stale chain rows after a late session bridges them", asyn
   await expect(page.locator('[data-chain-id="71"]')).toHaveCount(0);
 });
 
-test("responsive right-side lanes scroll the chain while copy buttons and payload scrollbars remain accessible", async ({ page, context }) => {
+test("responsive lanes reach the right edge and scroll the chain while copy buttons remain accessible", async ({ page, context }) => {
   await context.grantPermissions(["clipboard-read", "clipboard-write"]);
   const state = await routes(page);
   for (const viewport of [{ width: 1280, height: 900 }, { width: 375, height: 812 }]) {
@@ -169,6 +169,7 @@ test("responsive right-side lanes scroll the chain while copy buttons and payloa
       const windowWidth = await stream.evaluate((node) => node.clientWidth);
       expect(lane.width).toBeCloseTo(Math.max(100, windowWidth * 0.26), 1);
       const bounds = await payload.boundingBox();
+      expect(lane.x + lane.width).toBeCloseTo(bounds.x + bounds.width, 1);
       await page.mouse.move(lane.x + lane.width / 2, bounds.y + 40);
       await page.mouse.wheel(0, 100);
       await expect.poll(() => scroll.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
@@ -176,10 +177,16 @@ test("responsive right-side lanes scroll the chain while copy buttons and payloa
       expect(await page.evaluate(() => scrollY)).toBe(background);
       await scroll.evaluate((node) => { node.scrollTop = 0; });
 
-      // The rightmost track remains hit-testable beneath no overlay.
+      // The strip also routes scrolling at the rightmost edge to the chain.
       const track = await payload.boundingBox();
-      expect(await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.closest(".chain-scroll-lane") === null,
-        { x: track.x + track.width - 4, y: track.y + 40 })).toBe(true);
+      const edge = { x: track.x + track.width - 4, y: track.y + 40 };
+      expect(await page.evaluate(({ x, y }) => !!document.elementFromPoint(x, y)?.closest(".chain-scroll-lane"), edge)).toBe(true);
+      await page.mouse.move(edge.x, edge.y);
+      await page.mouse.wheel(0, 100);
+      await expect.poll(() => scroll.evaluate((node) => node.scrollTop)).toBeGreaterThan(0);
+      expect(await payload.evaluate((node) => node.scrollTop)).toBe(inner);
+      expect(await page.evaluate(() => scrollY)).toBe(background);
+      await scroll.evaluate((node) => { node.scrollTop = 0; });
     }
     const c2s = streams.first();
     const python = c2s.getByRole("button", { name: "Copy as Python (requests)" });

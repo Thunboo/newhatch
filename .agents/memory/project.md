@@ -53,7 +53,7 @@
 - Sessions, Sources and Collectors views are operational.
 - Optional session chains use key `collector_id + client_ip + source_id` and adjacent start gaps <= 1 second. The off-by-default checkbox groups complete session pairs; filtered cards retain full context and order C2S before its S2C by session start/ID.
 - Chain cards scroll between fixed-size, independently scrollable payload windows. C2S alone exposes cURL/Python export. Payloads load near the viewport and release offscreen; late bridging sessions replace obsolete chain rows on refresh.
-- A transparent strip (`width: 26%; min-width: 100px`) over the right of chain windows routes native scrolling to the card. Copy actions are above it via z-index; a 20 px edge area preserves native payload scrollbars. Ordinary session cards have no overlay.
+- A transparent strip (`right: 0px; width: 26%; min-width: 100px`) reaches the right edge of chain windows and routes native scrolling to the card. Copy actions are above it via z-index; uncovered text retains independent payload scrolling. Ordinary session cards have no overlay.
 - Session feed merges by ID in `id DESC` order and counts unique loaded rows.
 - Newest-page polling runs every five seconds only near the live edge; it pauses while older traffic is inspected.
 - Scrolling upward triggers one anchored catch-up refresh. Older pages load automatically through an observer sentinel.
@@ -81,6 +81,7 @@
 - Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
 - Issue #13 passed 45 Rust tests (including budget interruption), strict workspace clippy, formatting, TypeScript checking, production Vite build and 7 local Chromium browser scenarios on 2026-10-08. Coverage includes legacy migration, exact window/key rules, snapshot/member/search pagination, late merging, C2S exports and desktop/mobile nested scroll. Live Linux capture remains target-host follow-up; no Docker was run by the agent.
 - Issue #13's responsive strip follow-up passed TypeScript/build and four chain browser scenarios on 2026-10-08, including 26%/100 px minimum sizing, outer-scroll routing on both directions, Python/raw copy above the overlay, native track hit testing, mobile layout and blocked background scrolling at boundaries.
+- The subsequent `right: 0px` change passed production build and the focused desktop/mobile scroll-and-copy scenario, including chain scrolling at the window's rightmost edge.
 - Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including execution of generated Bash/cURL and Python/requests snippets against nginx, unsupported-input handling, Unicode/JSON bodies, clipboard fallback and existing auth/session-feed regressions.
 
 - Frontend production image builds successfully.

@@ -77,7 +77,7 @@
 - Correlate whole TCP-session pairs by `collector_id + client_ip + source_id`, with adjacent capture-time start gaps <= 1 second; do not split HTTP exchanges for chain browsing.
 - Collect chain metadata on the analyzer; compute chains on demand with bounded read work and keep the collector lightweight.
 - Chain cards keep C2S before its S2C, C2S-only cURL/Python export and independently scrollable fixed-size payload windows inside a scrollable card.
-- The invisible strip (`width: 26%; min-width: 100px`) at the right of chain windows scrolls the card; keep copy buttons above the overlay and native payload scrollbar tracks accessible.
+- The invisible strip (`right: 0px; width: 26%; min-width: 100px`) reaches the right edge of chain windows and scrolls the card; keep copy buttons above the overlay and separate payload scrolling over uncovered text.
 
 ## Working Rules
 

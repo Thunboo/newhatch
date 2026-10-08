@@ -169,7 +169,7 @@ are loaded. Both scroll levels remain usable without scrolling the background li
 
 A transparent strip over the right side of each window uses 26% width, with a
 100 px minimum, for easier chain scrolling. Copy/export actions sit above it and remain clickable;
-the native payload scrollbar edge remains accessible. The rest of the payload
+the strip reaches the right edge with `right: 0px`. The rest of the payload
 body retains its own scrolling, and window dimensions are unchanged.
 
 A filtered chain is selected when one member satisfies all active filters; its

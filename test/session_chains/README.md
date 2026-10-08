@@ -49,7 +49,7 @@ of stale rows after a late bridge merges chains.
 
 The additional responsive strip scenario checks 26% width with a 100 px minimum and outer-scroll routing over C2S and S2C
 without moving payload offsets, Python/raw copy controls above the layer,
-accessible native scrollbar tracks and background isolation at the chain end
+right-edge scroll routing and background isolation at the chain end
 on both desktop and mobile viewports.
 
 On 2026-10-08, 45 Rust tests, strict clippy/fmt, TypeScript checking, Vite production
@@ -58,6 +58,9 @@ capture and the production Linux deployment were not exercised in that run.
 
 The strip follow-up passed TypeScript/build and all four chain browser scenarios
 on the same date; it adds no backend behavior.
+
+The later `right: 0px` adjustment passed production build and the focused
+desktop/mobile right-edge scroll/copy scenario.
 
 ## User-Run Docker Checks
 
