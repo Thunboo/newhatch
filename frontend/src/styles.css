@@ -239,7 +239,7 @@ button:disabled { cursor: default; opacity: .5; }
 .chain-pair { display: grid; grid-template-rows: var(--payload-window-height) var(--payload-window-height); gap: 12px; margin-bottom: 20px; }
 .chain-pair .stream { position: relative; }
 /* Preserve the native payload scrollbar at the right edge; copy actions sit above the lane. */
-.chain-scroll-lane { position: absolute; z-index: 1; top: 0; bottom: 0; right: 20px; width: 90px; touch-action: pan-y; }
+.chain-scroll-lane { position: absolute; z-index: 1; top: 0; bottom: 0; right: 20px; width: 26%; min-width: 100px; touch-action: pan-y; }
 .chain-panel > .detail-header, .chain-panel > .detail-meta, .chain-panel > .flag-banner, .chain-panel > .payload-toolbar { flex-shrink: 0; }
 .chain-pair .stream pre { overscroll-behavior: contain; touch-action: pan-y; }
 .chain-scroll .history-sentinel { min-height: 48px; }

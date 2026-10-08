@@ -30,7 +30,7 @@ Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is opt
 - Sessions merge uniquely by ID; loaded count is frontend row count.
 - Optional whole-session chains use `collector_id + client_ip + source_id`, adjacent start gaps <= 1 second, and an off-by-default checkbox. Pairs stay together in start/ID order, C2S before S2C; filters select a matching member but cards show full context.
 - Chain cards scroll between fixed-size payload windows with independent inner scrolling, C2S-only exports and viewport-local payload loading. Refresh replaces stale split rows after late merging. See `docs/session-chains.md`.
-- The right-side transparent 90 px strip scrolls the chain with native wheel/touch routing. Copy actions are raised above it, and a 20 px edge area leaves native payload scrollbars accessible. Individual session cards have no strip.
+- The right-side transparent strip (`width: 26%; min-width: 100px`) scrolls the chain with native wheel/touch routing. Copy actions are raised above it, and a 20 px edge area leaves native payload scrollbars accessible. Individual session cards have no strip.
 - Poll newest every five seconds only near the top.
 - Pause newest polling in history; upward motion performs one anchored catch-up.
 - Infinite cursor pagination loads older sessions automatically.
@@ -56,7 +56,7 @@ retention can still remove members. No collector aggregation or payload duplicat
 
 - Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
 - Issue #13: 45 Rust tests, strict clippy/fmt, TypeScript/Vite build and 7 local Chromium browser scenarios passed on 2026-10-08. Covers migration, correlation, pagination/search budgets, late merging and desktop/mobile nested scroll. Live Linux capture is target-host follow-up; agent ran no Docker.
-- The 90 px strip follow-up passed TypeScript/build and four chain browser scenarios, including copy controls above the layer and outer-scroll isolation on desktop/mobile.
+- The responsive strip follow-up passed TypeScript/build and four chain browser scenarios, including 26%/100 px minimum sizing, copy controls above the layer and outer-scroll isolation on desktop/mobile.
 - Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including real execution of generated Bash/cURL and Python/requests snippets through nginx and the existing auth/session-feed regressions.
 
 - Frontend production Docker build passes.

@@ -167,8 +167,8 @@ retains the current standalone dimensions for the viewport and its independent
 payload scroll. Windows must not grow with payload length or shrink as more pairs
 are loaded. Both scroll levels remain usable without scrolling the background list.
 
-A transparent 90 px strip over the right side of each window provides easier
-chain scrolling. Copy/export actions sit above the strip and remain clickable;
+A transparent strip over the right side of each window uses 26% width, with a
+100 px minimum, for easier chain scrolling. Copy/export actions sit above it and remain clickable;
 the native payload scrollbar edge remains accessible. The rest of the payload
 body retains its own scrolling, and window dimensions are unchanged.
 

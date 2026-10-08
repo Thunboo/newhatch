@@ -119,7 +119,7 @@ Chain / Цепочка · web · 10.0.4.17 · 2 sessions · FLAG
 - Each window's payload body keeps its own scrollable area, so a long request or response can be inspected without resizing the window or moving through the chain.
 - Window dimensions may adapt to viewport changes as the existing responsive layout does; "fixed" does not require one universal pixel size for every screen.
 - Both levels must remain usable with wheel/trackpad/touch input and their scrollbars. Scrolling over payload content moves that payload; scrolling the card outside the payload body navigates between windows.
-- A transparent 90 px strip overlays the right side of each C2S/S2C window, routing native scrolling to the chain body instead of the payload. The gaps between windows already scroll the same body. Window dimensions and payload rendering stay unchanged. A 20 px edge area remains free for the payload's native scrollbar.
+- A transparent strip with `width: 26%` and `min-width: 100px` overlays the right side of each C2S/S2C window, routing native scrolling to the chain body instead of the payload. The gaps between windows already scroll the same body. Window dimensions and payload rendering stay unchanged. A 20 px edge area remains free for the payload's native scrollbar.
 - Copy/export actions are positioned above the overlay with a higher z-index. They remain clickable; scrolling over their headers also moves the chain. The overlay is only present in grouped chain cards.
 - Detail-panel interactions must not scroll the background session list, including when an inner scroll area reaches its boundary.
 - Any optional collapse control may collapse a long window; an expanded window returns to the fixed size above rather than expanding to fit all content.
@@ -167,7 +167,7 @@ The agreed specification is preserved in this project document. Agent task state
 - Each pair stays together in the card; export buttons appear only on C2S and retain existing supported-input rules.
 - With many pairs, the card scrolls between them. With long payloads, each fixed-size window scrolls internally. Existing window sizes do not shrink when more pairs load or grow with payload bytes.
 - Both scroll levels work without moving the background session list, including at boundaries and after viewport changes. Verify both C2S and S2C, Text/Hex and a narrow/mobile viewport.
-- The 90 px right-side strip scrolls the outer chain while inner offsets stay unchanged; copy actions above it and native scrollbar tracks remain accessible on desktop and mobile. At the chain boundary it must not scroll the background.
+- The responsive right-side strip scrolls the outer chain while inner offsets stay unchanged; copy actions above it and native scrollbar tracks remain accessible on desktop and mobile. Its width is 26% of the window with a 100 px minimum. At the chain boundary it must not scroll the background.
 - Run relevant available Rust/frontend checks when implementing. Agents must never invoke Docker, Docker Compose, the Docker daemon or OrbStack; provide exact Docker-backed verification commands for the user to run when needed.
 
 ## 12. Implemented API And Work Limits

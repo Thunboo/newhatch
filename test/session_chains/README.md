@@ -47,7 +47,7 @@ progressive metadata/payload loading, fixed window heights, independent inner
 and outer scroll with no background movement, mobile layout, Escape and removal
 of stale rows after a late bridge merges chains.
 
-The additional 90 px strip scenario checks outer-scroll routing over C2S and S2C
+The additional responsive strip scenario checks 26% width with a 100 px minimum and outer-scroll routing over C2S and S2C
 without moving payload offsets, Python/raw copy controls above the layer,
 accessible native scrollbar tracks and background isolation at the chain end
 on both desktop and mobile viewports.
