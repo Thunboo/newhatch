@@ -241,6 +241,10 @@ button:disabled { cursor: default; opacity: .5; }
 /* The lane reaches the right edge; copy actions sit above it. */
 .chain-scroll-lane { position: absolute; z-index: 1; top: 0; bottom: 0; right: 0px; width: 26%; min-width: 100px; touch-action: pan-y; }
 .chain-panel > .detail-header, .chain-panel > .detail-meta, .chain-panel > .flag-banner, .chain-panel > .payload-toolbar { flex-shrink: 0; }
+.chain-panel .payload-toolbar { align-items: flex-start; }
+.chain-panel .json-toggle { min-height: 32px; }
+.chain-format-controls { display: flex; flex-direction: column; align-items: flex-end; gap: 3px; flex-shrink: 0; }
+.chain-scroll-hint { color: #707780; font-size: 10px; line-height: 1.3; }
 .chain-pair .stream pre { overscroll-behavior: contain; touch-action: pan-y; }
 .chain-scroll .history-sentinel { min-height: 48px; }
 .chain-pair .stream > header { min-height: 44px; }

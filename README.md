@@ -44,6 +44,7 @@ second apart. The option is off by default. Open a chain to inspect ordered
 C2S/S2C pairs: scroll the card between pairs or over the invisible strip on the
 right of a window (26% of its width, at least 100 px, flush with the right edge); scroll over the remaining payload area to inspect that
 request/response independently. Copy buttons stay available above the strip.
+A small "Scroll sessions here" hint below Text/Hex identifies the area in chain detail.
 cURL/Python export is available on C2S. Flag-only filtering keeps
 preceding sessions visible in the opened chain. Existing records without
 collector identity remain separate. See [session chains](docs/session-chains.md)

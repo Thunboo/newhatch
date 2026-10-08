@@ -219,7 +219,10 @@ function ChainDetail({ chain, onClose }: { chain: Chain; onClose: () => void }) 
     <div className="detail-meta"><span><small>{t("chains.collector")}</small>{chain.collector_id ?? t("chains.unknown")}</span><span><small>{t("detail.started")}</small>{formatDateTime(chain.started_at, locale)}</span><span><small>{t("detail.traffic")}</small>{formatBytes(chain.bytes_c2s + chain.bytes_s2c)}</span><span><small>{t("chains.steps")}</small>{chain.session_count}</span></div>
     {chain.contains_flag && <div className="flag-banner"><Flag size={16} /><strong>{t("detail.flagMatches", { count: chain.flag_count })}</strong></div>}
     <div className="payload-toolbar"><label className={mode === "text" ? "json-toggle" : "json-toggle disabled"}><input type="checkbox" checked={formatJson} disabled={mode !== "text"} onChange={(event) => setFormatJson(event.target.checked)} />{t("detail.formatJson")}</label>
-      <div className="segmented" role="group" aria-label={t("detail.payloadFormat")}><button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Braces size={14} />{t("detail.text")}</button><button className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")}><Settings2 size={14} />{t("detail.hex")}</button></div>
+      <div className="chain-format-controls">
+        <div className="segmented" role="group" aria-label={t("detail.payloadFormat")}><button className={mode === "text" ? "active" : ""} onClick={() => setMode("text")}><Braces size={14} />{t("detail.text")}</button><button className={mode === "hex" ? "active" : ""} onClick={() => setMode("hex")}><Settings2 size={14} />{t("detail.hex")}</button></div>
+        <small className="chain-scroll-hint">{t("chains.scrollHere")}</small>
+      </div>
     </div>
     <div ref={scroll} className="chain-scroll">
       {members.map((session) => <LazyPair key={session.id} session={session} root={scroll.current} mode={mode} formatJson={formatJson} />)}

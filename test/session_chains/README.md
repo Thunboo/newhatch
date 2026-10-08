@@ -47,6 +47,9 @@ progressive metadata/payload loading, fixed window heights, independent inner
 and outer scroll with no background movement, mobile layout, Escape and removal
 of stale rows after a late bridge merges chains.
 
+The chain-card scenario also verifies that the small scroll hint appears below
+Text/Hex in chain detail and is absent in ordinary session detail.
+
 The additional responsive strip scenario checks 26% width with a 100 px minimum and outer-scroll routing over C2S and S2C
 without moving payload offsets, Python/raw copy controls above the layer,
 right-edge scroll routing and background isolation at the chain end
@@ -56,11 +59,9 @@ On 2026-10-08, 45 Rust tests, strict clippy/fmt, TypeScript checking, Vite produ
 build and all seven local Chromium scenarios passed on macOS. Live AF_PACKET
 capture and the production Linux deployment were not exercised in that run.
 
-The strip follow-up passed TypeScript/build and all four chain browser scenarios
-on the same date; it adds no backend behavior.
-
-The later `right: 0px` adjustment passed production build and the focused
-desktop/mobile right-edge scroll/copy scenario.
+The current chain UI follow-ups passed TypeScript/build and all four chain browser
+scenarios on the same date, including right-edge scroll routing and chain-only
+hint visibility. They add no backend behavior.
 
 ## User-Run Docker Checks
 

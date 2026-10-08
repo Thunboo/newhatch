@@ -172,6 +172,9 @@ A transparent strip over the right side of each window uses 26% width, with a
 the strip reaches the right edge with `right: 0px`. The rest of the payload
 body retains its own scrolling, and window dimensions are unchanged.
 
+Only chain detail shows a small "Scroll sessions here" hint below Text/Hex
+("Прокручивайте сессии здесь" in Russian) to explain the right-side scroll area.
+
 A filtered chain is selected when one member satisfies all active filters; its
 card includes the other retained members as context. Chain and member pages pin
 a session-ID watermark. Refresh replaces old rows when a late session merges

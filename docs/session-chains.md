@@ -121,6 +121,7 @@ Chain / Цепочка · web · 10.0.4.17 · 2 sessions · FLAG
 - Both levels must remain usable with wheel/trackpad/touch input. Scrolling over uncovered payload content moves that payload; scrolling the card outside the payload body navigates between windows.
 - A transparent strip with `right: 0px`, `width: 26%` and `min-width: 100px` overlays the right side of each C2S/S2C window, routing native scrolling to the chain body instead of the payload. It reaches the window's right edge, including the payload scrollbar area; payload scrolling remains available over the uncovered text. The gaps between windows already scroll the same body. Window dimensions and payload rendering stay unchanged.
 - Copy/export actions are positioned above the overlay with a higher z-index. They remain clickable; scrolling over their headers also moves the chain. The overlay is only present in grouped chain cards.
+- A small "Scroll sessions here" hint below Text/Hex identifies the chain-scroll area. It appears only in chain detail; the Russian locale shows "Прокручивайте сессии здесь".
 - Detail-panel interactions must not scroll the background session list, including when an inner scroll area reaches its boundary.
 - Any optional collapse control may collapse a long window; an expanded window returns to the fixed size above rather than expanding to fit all content.
 - Load members and payloads progressively for large chains. Additional loaded members must not compress existing windows to fit the panel.

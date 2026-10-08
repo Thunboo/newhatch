@@ -60,6 +60,10 @@ test("chain card keeps session pairs, C2S exports and two independent fixed-size
   const toggle = page.getByRole("checkbox", { name: "Group into chains" });
   await expect(toggle).not.toBeChecked();
   await expect(page.locator('[data-session-id="41"]')).toHaveCount(1);
+  await page.locator('[data-session-id="41"]').click();
+  await expect(page.locator(".detail-panel")).toBeVisible();
+  await expect(page.getByText("Scroll sessions here", { exact: true })).toHaveCount(0);
+  await page.keyboard.press("Escape");
   await toggle.check();
   await expect(page.getByText("1 loaded chains")).toBeVisible();
   await page.getByRole("checkbox", { name: "Flags only" }).check();
@@ -67,6 +71,7 @@ test("chain card keeps session pairs, C2S exports and two independent fixed-size
   await page.screenshot({ path: testInfo.outputPath("chain-list.png") });
   await page.locator('[data-chain-id="41"]').click();
   await expect(page.getByRole("complementary", { name: "Chain details" })).toBeVisible();
+  await expect(page.getByText("Scroll sessions here", { exact: true })).toBeVisible();
   const scroll = page.locator(".chain-scroll");
   const pair = page.locator('.chain-pair[data-session-id="41"]');
   const c2s = pair.locator(".stream").nth(0);

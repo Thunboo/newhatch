@@ -22,6 +22,7 @@ const en = {
   "chains.more": "Load more sessions",
   "chains.membersLoaded": "{count} sessions shown",
   "chains.timeUnknown": "Time unknown",
+  "chains.scrollHere": "Scroll sessions here",
 
   "auth.checking": "Checking session...",
   "auth.unavailable": "Unable to connect.",
@@ -146,6 +147,7 @@ const ru: Record<TranslationKey, string> = {
   "chains.more": "Загрузить ещё сессии",
   "chains.membersLoaded": "Показано сессий: {count}",
   "chains.timeUnknown": "Время неизвестно",
+  "chains.scrollHere": "Прокручивайте сессии здесь",
 
   "auth.checking": "Проверка сессии...",
   "auth.unavailable": "Не удалось подключиться.",
