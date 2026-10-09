@@ -131,14 +131,24 @@ payloads, Upgrade streams and unsupported/repeated headers disable export with
 an explanatory tooltip. A TCP session marked incomplete may still contain a
 complete exportable request. Ordinary copy remains available.
 
-The destination is the captured server IP/port, while the original Host header
-is kept separately. Query arguments are decoded into readable values and passed
+By default, the destination is the captured server IP/port, while the original
+Host header is kept separately. Query arguments are decoded into readable values and passed
 as cURL query options or Python params, preserving repeated names. The path keeps
 its URL escaping. Request bodies are sent as the displayed UTF-8 text; HTTP
 clients recalculate Content-Length. Connection-specific headers and
 Accept-Encoding are omitted. Python uses requests.request with headers, params,
 data, an explicit timeout and redirects disabled. Bash exports require cURL
 7.87+ for --url-query; Python exports require Python 3 and requests.
+
+Python scripts accept one optional positional IP/FQDN argument to override connection hosts
+and any existing Host values, using each request's captured server port.
+Without an argument, the captured destination and Host are preserved; missing Host stays absent from
+generated explicit headers. Each actual replay response is printed with
+`print(response.text, flush=True)`. This applies to individual and whole-chain
+Python exports while retaining the existing replay/cookie behavior. Use
+`python3 replay.py` for captured destinations or `python3 replay.py <IP/FQDN>`
+to override them. See [Python replay](python-replay.md) for IPv6, argument
+validation and the complete Issue #20 contract.
 
 The nginx-backed regression suite is in
 [test/flag_test](../test/flag_test/README.md). It executes generated snippets

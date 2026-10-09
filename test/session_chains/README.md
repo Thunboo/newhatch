@@ -39,13 +39,14 @@ npm install --prefix "$CHAIN_TEST_TOOLS" --no-audit --no-fund @playwright/test@1
 "$CHAIN_TEST_TOOLS/node_modules/.bin/playwright" install chromium
 python3 -m venv "$CHAIN_TEST_TOOLS/python"
 "$CHAIN_TEST_TOOLS/python/bin/pip" install requests
-NEWHATCH_TEST_PYTHON="$CHAIN_TEST_TOOLS/python/bin/python3" NODE_PATH="$CHAIN_TEST_TOOLS/node_modules" "$CHAIN_TEST_TOOLS/node_modules/.bin/playwright" test --config=test/session_chains/playwright.config.cjs
+NEWHATCH_TEST_RESULTS="$CHAIN_TEST_TOOLS/results" NEWHATCH_TEST_PYTHON="$CHAIN_TEST_TOOLS/python/bin/python3" NODE_PATH="$CHAIN_TEST_TOOLS/node_modules" "$CHAIN_TEST_TOOLS/node_modules/.bin/playwright" test --config=test/session_chains/playwright.config.cjs
 ```
 
 The configuration starts and stops a temporary Vite server on port 4173 and runs
 the existing auth/localization/feed regressions plus eight chain UI scenarios
-and seven framing/Python replay scenarios.
-Screenshots/results default to the OS temporary directory. Optional overrides:
+and 24 framing/Python replay scenarios.
+The command sets a temporary results directory for all screenshots, including
+the shared auth/feed tests whose standalone fallback is `/results`. Overrides:
 `NEWHATCH_TEST_RESULTS`, `NEWHATCH_TEST_NODE`, `NEWHATCH_TEST_CHROMIUM`,
 `NEWHATCH_TEST_PYTHON`.
 
@@ -92,6 +93,29 @@ omission without initial cookies, for a single request, for first-only cookies,
 and when later cookie names or hosts differ. The first captured Cookie header
 still reaches the receiver, and Session continues to process response cookies
 without the helper. Reused-cookie initialization still passes all four Host cases.
+
+## Python Replay Destination And Flush (Issue #20)
+
+The [Python replay contract](../../docs/python-replay.md) is verified through
+executed individual and chain scripts: captured defaults, IPv4/FQDN/IPv6 argv,
+unchanged captured ports, original Host without argv and adaptive existing Host
+with argv, absent Host in explicit headers, query/body
+preservation and argument rejection before any request. Fixture FQDN resolution
+is redirected to loopback in the test process, with an assertion on the hostname
+passed to DNS. Actual IPv6 servers listen on `::1`.
+
+Cookie checks cover replacement/deletion with argv, no Host and mixed
+captured/absent Host, including runtime-dependent reuse and different captured
+Host values converging under argv across ports with IPv4/IPv6. Buffered stdout checks
+hold a later HTTP response open until the preceding flag is visible in the pipe;
+they run without Python's unbuffered mode. Transport failure stops later requests
+while preserving prior printed bodies; HTTP 500/302 bodies remain visible.
+
+After the Host clarification on 2026-10-10, TypeScript lint, Vite production
+build and all 36 unique local browser/replay cases passed. The full run passed
+35; the chain clipboard test passed a focused rerun after its expected seeding
+call was updated to use the effective Host. All runs used the explicit temporary
+results path above. No Docker was run and no production data was used.
 
 ## User-Run Docker Checks
 

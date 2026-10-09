@@ -49,6 +49,11 @@ cURL/Python export is available on C2S. The center Python button in the chain
 toolbar copies all supported HTTP requests as one sequential script, including
 offscreen sessions and multiple requests in one C2S; cookies update from server
 responses. Unsupported input reports the session and prevents a partial export.
+Run a saved Python script with `python3 replay.py` to use captured destinations,
+or `python3 replay.py <IP/FQDN>` to replace all connection hosts and any existing
+Host with the new destination, keeping captured server ports. Missing Host is
+not added to explicit headers. Every response body is printed with
+`flush=True`. See [Python replay](docs/python-replay.md) for the exact contract.
 Flag-only filtering keeps
 preceding sessions visible in the opened chain. Existing records without
 collector identity remain separate. See [session chains](docs/session-chains.md)

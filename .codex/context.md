@@ -40,6 +40,7 @@ Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is opt
 - Open detail highlights its row and closes with `Escape`.
 - Detail exposes C2S/S2C copy, decoded text/path display and optional body JSON formatting; Hex remains raw.
 - C2S cURL/Python logo buttons (with text fallbacks) copy Bash/cURL or Python/requests using the displayed body (Unicode and Format JSON preserved). Frontend only; one complete plain-text HTTP request. Unsupported input/Hex disables export with a reason. See `docs/mvp.md`; curl requires 7.87+.
+- Issue #20 Python exports accept one optional positional IP/FQDN to replace connection hosts and existing Host values using each captured server port. Without argv, preserve per-session destinations and Host; absent Host stays out of explicit headers. Print every actual response with `print(response.text, flush=True)`. Cookie scope follows effective Host or destination, unifying different captured hosts under argv; use runtime-conditional setup when reuse depends on argv. Contract: `docs/python-replay.md`.
 - Wheel over detail never scrolls the underlying list; wheel over exposed list does.
 - Desktop sidebar is fixed.
 - English/Russian UI language follows the browser until the sidebar switch above Sign out persists `newhatch_language`.
@@ -57,6 +58,7 @@ retention can still remove members. No collector aggregation or payload duplicat
 
 ## Current Verification
 
+- Issue #20's clarified Host behavior: TypeScript lint, Vite build and all 36 unique local browser/replay checks passed on 2026-10-10 (35 full-run cases plus the chain clipboard rerun after its seeding expectation was updated). IPv4/FQDN/IPv6 argv updates existing Host with captured ports; different Host cookie scopes converge across ports. Mixed/absent Host, invalid input, transport failure and live piped flags pass. Fixture FQDNs resolve locally and NEWHATCH_TEST_RESULTS was set; no Docker was run.
 - Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
 - Issue #13: 45 Rust tests, strict clippy/fmt, TypeScript/Vite build and 7 local Chromium browser scenarios passed on 2026-10-08. Covers migration, correlation, pagination/search budgets, late merging and desktop/mobile nested scroll. Live Linux capture is target-host follow-up; agent ran no Docker.
 - Current chain UI follow-ups passed TypeScript/build and four browser scenarios, including responsive strip sizing, right-edge outer-scroll isolation, copy controls, chain-only hint and desktop/mobile layout.

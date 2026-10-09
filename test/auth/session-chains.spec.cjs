@@ -165,7 +165,7 @@ test("chain Python export loads offscreen sessions and all requests within each 
   expect(script).toContain("with requests.Session() as session:");
   expect(script).toContain("Привет");
   expect(script).toContain('  "nested": {');
-  expect(script).toContain('seed_cookies(session, url, "test", "sid=initial")');
+  expect(script).toContain('seed_cookies(session, url, headers["Host"], "sid=initial")');
   expect(script).not.toContain("captured-old");
   const headings = Array.from(script.matchAll(/# Session #(\d+) · request (\d+)\//g), (match) => [Number(match[1]), Number(match[2])]);
   expect(headings).toEqual([[41, 1], [41, 2], ...Array.from({ length: 29 }, (_, i) => [42 + i, 1])]);

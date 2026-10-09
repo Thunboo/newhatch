@@ -79,6 +79,7 @@
 - Chain cards keep C2S before its S2C, C2S-only per-window cURL/Python export and independently scrollable fixed-size payload windows inside a scrollable card.
 - The chain toolbar's Python action exports all supported HTTP requests through existing APIs, including multi-request C2S streams, without splitting session browsing/persistence. Preserve ordered sequential replay, response-updated cookies, cancellation and complete-export error handling; see `docs/session-chains.md`.
 - Keep generated scripts compact: add cookie-seeding helper/imports only if an initial cookie name is reused later for the same host; otherwise send the first Cookie header directly. Response cookies remain handled by requests.Session.
+- Issue #20's Python replay contract is implemented; see `docs/python-replay.md`. One optional IP/FQDN argument replaces connection hosts and existing Host values using each captured server port; no argument preserves captured destinations and Host. Do not synthesize absent Host in explicit headers. Print each actual response with `print(response.text, flush=True)` without renaming `response`. Cookie scope follows effective Host or the effective destination without Host; guard cookie setup at runtime when reuse depends on argv.
 - The invisible strip (`right: 0px; width: 26%; min-width: 100px`) reaches the right edge of chain windows and scrolls the card; keep copy buttons above the overlay and separate payload scrolling over uncovered text.
 
 ## Working Rules

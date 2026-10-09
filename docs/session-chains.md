@@ -114,11 +114,18 @@ whole export.
 The generated Python 3 script uses one `requests.Session()`. It sends sessions
 in `(started_at, id)` order and requests in each C2S byte order, waiting for each
 response without replaying captured timing gaps. Each editable block identifies
-its session and request. Captured server IP/port and Host are preserved; displayed
+its session and request. By default, captured server IP/port and Host are preserved; displayed
 UTF-8 bodies follow Format JSON and Content-Length is recalculated. Timeout is
 10 seconds per request and automatic redirects are disabled. HTTP error statuses
 are printed and do not skip later captured requests; transport failures stop the
 script.
+
+Issue #20's [Python replay contract](python-replay.md) is implemented. With no
+argument, each member keeps its own captured server
+IP/port and Host; one optional IP/FQDN argument replaces every connection host
+and any existing Host value, using each captured server port. Missing Host is not synthesized in
+explicit headers. Each actual response body is printed with flush enabled;
+the ordering, Session cookies and complete-export rules below remain required.
 
 Include `seed_cookies`, its SimpleCookie/urlsplit imports and its explanatory
 comment only when a cookie name from the first request appears in a later
@@ -127,9 +134,12 @@ host comparison ignores case and port, and cookie values may change. The check
 includes later requests within the first TCP session as well as later members.
 If no initial cookie is reused, send the first Cookie header directly and omit
 the helper; this also keeps single-request and cookie-free scripts compact.
+Use the effective Host for cookie scope, or the effective destination when Host
+is absent. When the argument determines whether hosts match, guard cookie setup
+at runtime; otherwise retain the compact unconditional or omitted helper.
 
 When reuse is detected, cookies from the first request initialize the jar for
-the captured host at path `/`. Later captured Cookie headers are omitted so
+the effective host at path `/`. Later captured Cookie headers are omitted so
 Set-Cookie updates, expiry and deletion from actual responses govern following
 requests, including scripts without the helper. Initial cookie paths cannot be
 inferred from captured request headers.

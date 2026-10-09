@@ -107,7 +107,11 @@ auth/localization/feed regressions plus chain order/export/scroll/late-merge
 coverage, plus whole-chain export and generated Python execution against a
 temporary loopback HTTP receiver. The complete suite requires Python 3/requests;
 `NEWHATCH_TEST_PYTHON` can choose a virtual-environment interpreter. Results default to the OS temp directory; `NEWHATCH_TEST_RESULTS`
-overrides it. No production data or `.env` is used.
+overrides it. Set `NEWHATCH_TEST_RESULTS` when running the full suite so shared
+auth/feed screenshots also use that temporary directory. No production data or
+`.env` is used. Replay coverage includes Issue #20's optional IP/FQDN/IPv6 argv,
+adaptive existing Host, preserved server ports, cookie scope and flag output through a pipe before exit;
+see `docs/python-replay.md`.
 
 ## Request Export Tests
 
