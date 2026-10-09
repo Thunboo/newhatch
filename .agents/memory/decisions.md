@@ -64,6 +64,14 @@ Canonical details live in `docs/agent-decisions.md`. This file is the compact wo
 - Form membership before content filters; one member must match all filters and the card retains other context. Snapshot cursors exclude late insertions until refresh, which replaces stale split rows. Legacy NULL collectors stay singletons; retention is unchanged.
 - Chain SQL uses at most two concurrent readers with progress interruption (2 seconds/50 million steps); pages cap at 200, member default 20, payload scan max 2,000 candidates with continuation within a chain. Do not move grouping into packet workers.
 
+## Python Replay Export (Issue #20)
+
+- Approved on 2026-10-09 and implemented on 2026-10-10. Canonical contract: `docs/python-replay.md`.
+- Individual and chain scripts accept one optional positional IP/FQDN for every connection host. Preserve captured ports; no argument keeps each member's own captured destination.
+- As clarified on 2026-10-10, preserve captured Host without argv; an override replaces its value with the new host and captured server port. Do not synthesize missing Host or destination-related explicit headers; normal HTTP-client transport behavior remains enabled.
+- Keep `response` and print every actual replay body with `print(response.text, flush=True)`, including HTTP error bodies. Preserve sequential Session replay, response-updated cookies, conditional helper generation, timeouts, disabled redirects, cancellation and complete-export errors.
+- Use effective Host for cookie scope or the effective connection host without Host. An override unifies cookie hosts even when captured Host values or ports differ. If reuse depends on argv, guard cookie setup at runtime; omit helpers when reuse cannot occur.
+
 ## Retention Choice
 
 - Retain a configured count of rotated payload segments.

@@ -16,6 +16,7 @@
 - `docs/storage.md`: SQLite plus append-only segments.
 - `docs/authentication.md`: ingress and login model.
 - `docs/session-chains.md`: Issue #13 agreed contract, API and query limits.
+- `docs/python-replay.md`: implemented Issue #20 Python replay contract and verification.
 - `.agents/tasks/backlog.md`: deferred work.
 
 ## Current Architecture
@@ -64,7 +65,8 @@
 - Detail closes with its close button or `Escape`.
 - Detail shows an `Esc to close` hint next to the close button.
 - Text payload view decodes JSON/Unicode escapes and percent-encoded URL components; session-header HTTP paths use the same visual decoding.
-- C2S has cURL/Python logo buttons with text fallbacks before ordinary copy for frontend-only Bash/cURL and Python/requests export. Use the displayed text body and Format JSON setting; retain readable Unicode. Validate one complete plain-text HTTP request against raw framing, recalculate Content-Length and omit connection headers. Hex/unsupported input disables export with a localized reason. Curl requires 7.87+; scripts target the captured server and preserve Host.
+- C2S has cURL/Python logo buttons with text fallbacks before ordinary copy for frontend-only Bash/cURL and Python/requests export. Use the displayed text body and Format JSON setting; retain readable Unicode. Validate one complete plain-text HTTP request against raw framing, recalculate Content-Length and omit connection headers. Hex/unsupported input disables export with a localized reason. Curl requires 7.87+; captured destinations and Host are preserved by default.
+- Issue #20 Python exports accept one optional positional IP/FQDN to replace all connection hosts and existing Host values using each captured server port. Without argv, preserve each session's destination and captured Host; absent Host stays out of explicit headers. Print each actual response with `print(response.text, flush=True)`. Cookie scope follows effective Host or destination, unifying different captured hosts under argv; conditional helper setup accounts for this. Contract: `docs/python-replay.md`.
 - Each C2S/S2C panel has one-click copy. Optional frontend-only JSON formatting keeps JSON compact when disabled and pretty-prints bodies plus bounded nested JSON strings when enabled; Hex remains raw.
 - Wheel input over detail cannot scroll the underlying list; wheel input over the exposed list still can.
 - Desktop sidebar is fixed. In remote mode it shows analyzer and aggregate collector status lights; local mode omits the collector light.
@@ -81,6 +83,7 @@
 
 ## Verification
 
+- Issue #20's clarified Host behavior passed TypeScript lint, Vite production build and all 36 unique local browser/replay checks on 2026-10-10: 35 in the full run plus the chain clipboard test rerun after updating its seeding expectation. Real IPv4/IPv6 and locally resolved FQDN requests verify adaptive existing Host with preserved ports, invalid argv, fresh/deleted cookies and flushed flags. Different captured hosts converge under argv across ports; mixed/absent Host also works. Temporary NEWHATCH_TEST_RESULTS was set; no Docker was run.
 - Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
 - Issue #13 passed 45 Rust tests (including budget interruption), strict workspace clippy, formatting, TypeScript checking, production Vite build and 7 local Chromium browser scenarios on 2026-10-08. Coverage includes legacy migration, exact window/key rules, snapshot/member/search pagination, late merging, C2S exports and desktop/mobile nested scroll. Live Linux capture remains target-host follow-up; no Docker was run by the agent.
 - Issue #13's current UI follow-ups passed TypeScript/build and four chain browser scenarios on 2026-10-08: responsive strip sizing, right-edge outer-scroll routing, copy controls above the overlay, chain-only hint, mobile layout and blocked background scrolling at boundaries.

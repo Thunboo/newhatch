@@ -82,6 +82,16 @@ When saving or refreshing context:
 - Mirrors: `AGENTS.md`, `.agents/memory/project.md`, `.agents/memory/decisions.md`, `.codex/context.md`.
 - Task state: `.agents/tasks/active.md`, `.agents/tasks/done.md`; the completed standalone task was moved into the project contract.
 
+### Python Replay Export (Issue #20)
+
+- Approved specification and implementation status: `docs/python-replay.md`.
+- UX/export references: `docs/mvp.md`, `docs/session-chains.md`; operator usage: `README.md`.
+- Product status: `PROJECT.md`.
+- Fixed contract: `docs/agent-decisions.md`, `AGENTS.md`.
+- Mirrors: `.agents/memory/project.md`, `.agents/memory/decisions.md`, `.codex/context.md`.
+- Verification/runbooks: `test/session_chains/README.md`, `.codex/commands.md`.
+- Task state: `.agents/tasks/backlog.md`, `.agents/tasks/active.md`, `.agents/tasks/done.md`, according to the lifecycle above.
+
 ### Runtime Configuration
 
 - Runtime defaults: `.env.example`, `compose.yaml`, analyzer/collector config code.

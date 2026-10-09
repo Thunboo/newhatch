@@ -286,3 +286,22 @@ Capture timestamps label windows without interleaving overlapping sessions.
 Late persistence is reflected on refresh; snapshot cursors keep ongoing pages
 stable. See [session chains](session-chains.md) for the agreed specification,
 API and query budgets.
+
+## Python Replay Export (2026-10-09, Issue #20)
+
+Approved on 2026-10-09 and implemented on 2026-10-10: [Python replay](python-replay.md).
+Individual and whole-chain Python scripts accept one optional positional IP/FQDN
+to replace connection hosts, retaining each request's captured port. Without an
+argument, preserve each session's own captured destination and Host value.
+As clarified by the user on 2026-10-10, an argument also replaces any existing
+Host with the supplied host and captured server port, including IP-valued Host.
+If missing, do not insert Host or other destination-related explicit headers. Normal HTTP-client
+transport headers are not suppressed.
+
+Print every actual replay response with `print(response.text, flush=True)` and
+keep the variable name `response`. Retain ordered sequential chain replay,
+response-updated cookies, conditional cookie helpers, existing request support,
+timeouts, disabled redirects, cancellation and complete-export errors. Cookie
+scope follows effective Host or the effective destination without Host; use a
+runtime cookie-setup condition when host reuse depends on argv. This is a
+frontend-only change with no session/storage/collector architecture change.

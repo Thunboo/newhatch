@@ -236,6 +236,12 @@ The split deployment has been validated across the user's two-host VPN/FQDN setu
 
 ## Frontend notes
 
+Python exports support [Issue #20's replay contract](docs/python-replay.md):
+an optional IP/FQDN argument replaces connection hosts and existing Host values
+while preserving each captured server port. Without an argument, captured
+destinations and Host values are preserved. Missing Host is not added to explicit
+headers, and each actual response is printed with flush enabled.
+
 While the Sessions view is at the live edge, the frontend checks for new sessions every five seconds. Polling pauses while older traffic is being inspected and resumes near the top; see [`LIVE_REFRESH_INTERVAL_MS` and the feed polling effect](frontend/src/App.tsx).
 
 ## Security compliance
