@@ -39,6 +39,9 @@ A test-profile nginx fixture provides flag-capture traffic on port 18080.
 
 ## Remaining work
 
+The planned atomic HTTP session model for #28 is specified in
+[Atomic HTTP Sessions](docs/http-sessions.md).
+
 PACKET_MMAP requires measurement before adoption. WebSocket frame decoding,
 Suricata enrichment, crash-tail reconciliation, IPv6 extension headers and
 collector transport authentication/encryption remain incomplete. VLAN behavior,

@@ -40,6 +40,7 @@ These documents are authoritative; do not replace their agreed rules with a new 
 | Subject | Contract |
 | --- | --- |
 | Capture, reassembly, split transport and Suricata | [Architecture](architecture.md) |
+| Planned atomic HTTP session model (#28) | [Atomic HTTP Sessions](http-sessions.md) |
 | Segment format, writer ordering and retention | [Storage](storage.md) |
 | Single-user login and two independent access checks | [Authentication](authentication.md) |
 | UI, payload rendering and individual HTTP export | [MVP UX](mvp.md) |

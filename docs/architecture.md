@@ -55,6 +55,9 @@ HTTP/1.x metadata includes method, host, path, status and content type.
 HTTP Upgrade/101 detects websocket, but frame decoding is not implemented.
 Parsing failure retains raw_tcp visibility and original reconstructed bytes.
 
+The agreed replacement for HTTP session granularity and preprocessing is in
+[Atomic HTTP Sessions (#28)](http-sessions.md); implementation is pending.
+
 ## Remote Collector Boundary
 
 Local mode captures inside analyzer (ANALYZER=local). In split mode:

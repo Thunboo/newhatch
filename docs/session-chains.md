@@ -7,6 +7,9 @@ HTTP status is not correlation evidence.
 
 ## Correlation
 
+The TCP-step granularity below describes the current implementation. The planned
+HTTP-step replacement is specified in [Atomic HTTP Sessions (#28)](http-sessions.md).
+
 One step is one complete reconstructed TCP session with its existing C2S/S2C pair.
 Persistent connections containing multiple HTTP exchanges remain one step.
 Do not split browsing/persistence into transactions or interleave directional turns.
