@@ -60,6 +60,14 @@ progressive metadata/payload loading, fixed window heights, independent inner
 and outer scroll with no background movement, mobile layout, Escape and removal
 of stale rows after a late bridge merges chains.
 
+Payload display checks in `test/auth/frontend.spec.cjs` and
+`test/auth/session-chains.spec.cjs` verify readable embedded Unicode with
+Format JSON off/on, preserved string fields in compact mode and expanded
+objects/arrays in formatted mode. Coverage includes standalone and HTTP bodies
+with CRLF/LF separators, C2S/S2C session and chain windows, Cyrillic, surrogate
+pairs, literal backslashes/quotes/control escapes, percent decoding, malformed
+input, the four-level embedded-JSON limit and byte-identical Hex round trips.
+
 `test/auth/session-filtering.spec.cjs` exercises both list modes: draft input,
 Enter/Add, duplicates, pending chip removal, Refresh, blank submissions including
 an in-flight request, Source/Protocol/Flags-only application, polling eligibility,

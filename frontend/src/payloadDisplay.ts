@@ -49,9 +49,11 @@ function serializeJsonText(text: string, pretty: boolean, expandEmbeddedJson: bo
 function normalizeJsonValue(value: unknown, depth: number, expandEmbeddedJson: boolean): unknown {
   if (typeof value === "string") {
     const decoded = decodePercentEncoding(value);
-    if (!expandEmbeddedJson || depth >= MAX_EMBEDDED_JSON_DEPTH || !looksLikeJson(decoded)) return decoded;
+    if (depth >= MAX_EMBEDDED_JSON_DEPTH || !looksLikeJson(decoded)) return decoded;
     try {
-      return normalizeJsonValue(JSON.parse(decoded), depth + 1, expandEmbeddedJson);
+      const normalized = normalizeJsonValue(JSON.parse(decoded), depth + 1, expandEmbeddedJson);
+      // Decode embedded Unicode in both modes; compact view keeps string fields.
+      return expandEmbeddedJson ? normalized : JSON.stringify(normalized);
     } catch {
       return decoded;
     }

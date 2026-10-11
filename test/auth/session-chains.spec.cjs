@@ -23,7 +23,7 @@ function chain(id = 41) {
 }
 
 async function routes(page) {
-  const state = { memberRequests: [], payloadRequests: [], chainRequests: [], rows: [chain()], c2s: new Map(), waitPayload: null, memberSummary: null };
+  const state = { memberRequests: [], payloadRequests: [], chainRequests: [], rows: [chain()], c2s: new Map(), s2c: new Map(), waitPayload: null, memberSummary: null };
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const send = (value) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
@@ -49,10 +49,36 @@ async function routes(page) {
     if (state.waitPayload) await state.waitPayload(id, found[3]);
     const body = Array.from({ length: 200 }, (_, i) => `line ${i}: contents for ${id}`).join("\n");
     const payload = found[3] === "c2s" ? `POST /${id} HTTP/1.1\r\nHost: test\r\nContent-Type: text/plain\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}` : `HTTP/1.1 200 OK\r\n\r\n${body}`;
-    return route.fulfill({ status: 200, contentType: "application/octet-stream", body: found[3] === "c2s" ? state.c2s.get(id) ?? payload : payload });
+    return route.fulfill({ status: 200, contentType: "application/octet-stream", body: state[found[3]].get(id) ?? payload });
   });
   return state;
 }
+
+test("chain detail shows embedded Unicode by default in C2S and S2C", async ({ page }) => {
+  const state = await routes(page);
+  const body = JSON.stringify({ nested: String.raw`{"message":"\u041f\u0440\u0438\u0432\u0435\u0442","emoji":"\ud83e\udd80"}` });
+  state.c2s.set(41, `POST /unicode HTTP/1.1\r\nHost: test\r\nContent-Length: ${Buffer.byteLength(body)}\r\n\r\n${body}`);
+  state.s2c.set(41, `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n${body}`);
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  const toggle = page.getByRole("checkbox", { name: "Format JSON" });
+  const streams = page.locator('.chain-pair[data-session-id="41"] .stream pre');
+  await expect(toggle).not.toBeChecked();
+  await expect(streams).toHaveCount(2);
+  for (const stream of [streams.first(), streams.last()]) {
+    await expect(stream).toContainText("Привет");
+    await expect(stream).toContainText("🦀");
+    await expect(stream).not.toContainText(String.raw`\u041f`);
+    const visible = await stream.textContent();
+    expect(typeof JSON.parse(visible.slice(visible.indexOf("\r\n\r\n") + 4)).nested).toBe("string");
+  }
+  const compact = await streams.allTextContents();
+  await toggle.check();
+  for (const stream of [streams.first(), streams.last()]) await expect(stream).toContainText('"message": "Привет"');
+  await toggle.uncheck();
+  await expect.poll(() => streams.allTextContents()).toEqual(compact);
+});
 
 test("chain card keeps session pairs, C2S exports and two independent fixed-size scroll levels", async ({ page, context }, testInfo) => {
   const state = await routes(page);

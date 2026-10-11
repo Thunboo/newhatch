@@ -55,7 +55,10 @@ scroll the background list, including at boundaries; exposed list space can scro
 Show C2S and S2C, each with ordinary copy. Text decodes UTF-8, JSON escapes and
 percent-encoded URL components; HTTP path labels use the same readable decoding.
 Format JSON off keeps HTTP/standalone JSON compact; on pretty-prints and expands
-JSON object/array string fields to bounded depth. Hex and stored bytes remain raw.
+JSON object/array string fields. Embedded JSON strings decode Unicode in both
+modes, up to four embedded levels; compact mode keeps them as strings, while
+Format JSON expands them into objects/arrays. Escaped literal backslashes remain
+literal, and malformed embedded JSON stays a string. Hex and stored bytes remain raw.
 Protocol parsing must never remove raw visibility. Session values are raw_tcp,
 http and websocket; only WebSocket Upgrade classification is currently implemented.
 
