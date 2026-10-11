@@ -1,111 +1,44 @@
 # AGENTS.md
 
-Базовые правила для Codex и других AI-агентов в этом проекте.
+Правила работы с newhatch / «Нюхач».
 
-## Project Snapshot
+## Контекст
 
-- Internal name: `newhatch`; UI/display name: `Нюхач`.
-- Продукт: lightweight high-performance A/D CTF traffic analyzer.
-- Цель: дать Packmate-like workflow и UI при меньшем расходе CPU/RAM на vulnbox.
-- Нормальный режим: live capture с интерфейса, без ручного создания PCAP.
-- Основная сущность: reconstructed bidirectional TCP session.
-- Язык общения с пользователем: русский, если пользователь явно не просит иначе.
-- Документация проекта сейчас ведется на английском.
+Общаться с пользователем по-русски, коротко и по делу; проектную документацию вести на английском.
+Перед существенными изменениями прочитать PROJECT.md и docs/agent-decisions.md.
+Остальные документы открывать только по области текущей задачи:
 
-## Canonical Context
+| Область | Источник |
+| --- | --- |
+| Запуск, .env, local/split deployment | README.md и .env.example |
+| Capture, reassembly, concurrency, collector, Suricata | docs/architecture.md |
+| SQLite, segments, retention, recovery | docs/storage.md |
+| UI, live feed, payload display, individual HTTP export | docs/mvp.md |
+| Correlation, chain cards, chain API/export preparation | docs/session-chains.md |
+| Python replay, destination override, response output, cookies | docs/python-replay.md |
+| Search chips, application lifecycle, payload list API/limits | docs/session-filtering-v2.md |
+| Login, nginx ingress, sessions, team access | docs/authentication.md |
+| Code map | crates/analyzer/LOGIC.md |
+| Нерешённые вопросы | .agents/memory/open-questions.md |
+| Незавершённые задачи и проверки на целевом хосте | .agents/tasks/backlog.md |
+| Короткий контекст и команды разработки | .codex/context.md и .codex/commands.md |
 
-Перед существенными изменениями всегда читать:
+## Работа
 
-1. `PROJECT.md` - product goal, stack, constraints and current implementation status.
-2. `docs/agent-decisions.md` - фиксированные решения и запреты.
+- Сохранять фиксированные решения из docs/agent-decisions.md; менять их только по явному решению пользователя.
+- Не выдумывать ответы на нерешённые вопросы. Уточнять только то, что нужно для текущей задачи; иначе оставлять TODO/TBD.
+- Держать изменения в рамках задачи, не откатывать пользовательские правки.
+- Если задача предполагает изменения, выполнять её, а не останавливаться на предложении плана.
+- Проверять изменённое поведение подходящими доступными проверками; сообщать о существенных пробелах проверки.
+- Никогда не запускать Docker, Docker Compose, не обращаться к Docker daemon и не запускать, останавливать или перенастраивать OrbStack: это может оборвать VPN и сессию. Если нужна Docker-проверка, дать точные команды пользователю и дождаться его результата.
 
-Остальные документы открывать по области задачи:
+## Документация
 
-- `README.md` - запуск, настройка и local/split deployment.
-- `docs/architecture.md` - capture, pipeline, concurrency, reassembly, protocol and Suricata model.
-- `docs/storage.md` - SQLite, append-only segments, retention and recovery.
-- `docs/mvp.md` - frontend UX, screens, filters and user-visible behavior.
-- `docs/session-filtering-v2.md` - implemented Issues #25/#22 chip filtering contract: literal AND `payload` list, duplicate chips allowed, 10 terms/128 Unicode characters, count limit defined once in `payload_search.rs` and supplied to frontend; Enter/Add, Refresh and metadata changes apply edits, unchanged blank submissions do nothing, polling never applies pending edits. The Refresh notice hides when application starts and returns on current application failure; Enter/Add must not flash it during loading.
-- `docs/authentication.md` - login, sessions, nginx ingress and team access.
-
-Служебные файлы:
-
-- `.agents/memory/project.md` - короткая память по проекту.
-- `.agents/memory/decisions.md` - сжатый журнал решений.
-- `.agents/memory/glossary.md` - терминология.
-- `.agents/memory/open-questions.md` - вопросы, которые требуют уточнения перед реализацией.
-- `.agents/memory/documentation-sync.md` - карта намеренных повторений и файлов, которые нужно синхронизировать.
-- `.agents/tasks/backlog.md` - следующие задачи.
-- `.codex/context.md` - быстрый контекст для новых сессий.
-- `.codex/commands.md` - команды разработки и проверок.
-
-## Fixed Technical Direction
-
-Использовать:
-
-- Rust, Tokio.
-- Linux `AF_PACKET`.
-- `PACKET_MMAP` / RX ring where useful.
-- kernel BPF capture filters.
-- Suricata as parallel enrichment.
-- SQLite for metadata and indexes only.
-- custom append-only segment files for reconstructed payloads.
-- TypeScript frontend.
-- Docker Compose.
-
-Не вводить в MVP без явного решения пользователя:
-
-- PostgreSQL, TimescaleDB, ClickHouse, Elasticsearch, Redis.
-- Prometheus/Grafana, Kubernetes, HA/database replication.
-- permanent PCAP storage or raw packet persistence.
-- database row per captured packet.
-- generic SIEM/enterprise IDS product scope.
-
-## Architecture Rules
-
-- Reject irrelevant traffic in the kernel before userspace.
-- Do not capture all traffic and filter it later in Rust.
-- Keep Suricata out of the Rust analyzer hot path.
-- Rust analyzer is the source of truth for reconstructed sessions.
-- Persist sessions, not packets.
-- Store payload bytes in append-only segment files, not SQLite.
-- Store direct payload location as `segment_id`, `segment_offset`, `record_length`.
-- Run flag detection on reconstructed streams, not raw packets.
-- For server replies containing flags, preserve enough metadata/pointers to inspect the triggering client/player payload.
-- Keep ingest queues bounded and backpressure explicit.
-- Prefer observable drops and bounded memory over unbounded buffering.
-- Keep MVP protocol support to `raw_tcp`, `http`, `websocket`.
-- Correlate whole TCP-session pairs by `collector_id + client_ip + source_id`, with adjacent capture-time start gaps <= 1 second; do not split HTTP exchanges for chain browsing.
-- Collect chain metadata on the analyzer; compute chains on demand with bounded read work and keep the collector lightweight.
-- Chain cards keep C2S before its S2C, C2S-only per-window cURL/Python export and independently scrollable fixed-size payload windows inside a scrollable card.
-- The chain toolbar's Python action exports all supported HTTP requests through existing APIs, including multi-request C2S streams, without splitting session browsing/persistence. Preserve ordered sequential replay, response-updated cookies, cancellation and complete-export error handling; see `docs/session-chains.md`.
-- Keep generated scripts compact: add cookie-seeding helper/imports only if an initial cookie name is reused later for the same host; otherwise send the first Cookie header directly. Response cookies remain handled by requests.Session.
-- Issue #20's Python replay contract is implemented; see `docs/python-replay.md`. One optional IP/FQDN argument replaces connection hosts and existing Host values using each captured server port; no argument preserves captured destinations and Host. Do not synthesize absent Host in explicit headers. Print each actual response with `print(response.text, flush=True)` without renaming `response`. Cookie scope follows effective Host or the effective destination without Host; guard cookie setup at runtime when reuse depends on argv.
-- The invisible strip (`right: 0px; width: 26%; min-width: 100px`) reaches the right edge of chain windows and scrolls the card; keep copy buttons above the overlay and separate payload scrolling over uncovered text.
-
-## Working Rules
-
-- Read local context before changing files.
-- Treat `docs/agent-decisions.md` as fixed unless the user explicitly changes direction.
-- Do not silently replace fixed stack decisions.
-- Use TODO/TBD for unresolved implementation details instead of inventing incompatible architecture.
-- Keep changes scoped to the current task.
-- Do not revert user changes unless explicitly requested.
-- Update docs or agent memory when behavior, architecture, or project decisions change.
-- Treat files outside `.agents/` and `.codex/` as player/developer-facing documentation; treat `.agents/` and `.codex/` as agent memory and compressed context.
-- When updating or saving context, use `.agents/memory/documentation-sync.md` and synchronize every affected mirror. Resolve discrepancies immediately or record an explicit open question.
-- Run relevant checks when the codebase has commands for them.
-- Never run `docker`, `docker compose`, access the Docker daemon, or start/stop/reconfigure OrbStack. These actions can break the user's VPN tunnel and disconnect the session. When Docker-backed verification is needed, give the exact commands to the user and wait for the user to run them and provide the result.
-
-## Current Unknowns
-
-The first implementation choices are recorded in `docs/agent-decisions.md`. The synchronized full list lives in `.agents/memory/open-questions.md`; high-level unknowns include:
-
-- exact WebSocket frame parser/representation.
-- exact Suricata correlation mechanism.
-- production policy for extremely long-lived TCP sessions.
-- recovery and reconciliation behavior for truncated segment tails.
-- handling policy for VLAN traffic, IPv6 extension headers and large reassembly gaps.
-- exact representation for linking flag-containing replies to triggering client/player requests.
-- collector PSK format, replay protection and whether transport encryption is required.
-- target subsystem for the tentative `rows >= 5000 OR query time >= 100 ms` threshold.
+- У каждой темы один подробный источник из таблицы выше. При изменении поведения обновлять его; в обзорах оставлять короткую ссылку.
+- Не копировать контракты функций в PROJECT.md, AGENTS.md и служебные файлы. Исключение — короткие предупреждения, нужные для безопасного запуска или работы.
+- Сначала исправлять существующий текст; добавлять новый раздел только для новой самостоятельной темы.
+- .codex/context.md держать коротким (до 250 слов): ориентация и ссылки, без пересказа спецификаций.
+- .agents/ хранит только нерешённые вопросы и незавершённые задачи. После выполнения удалять задачу из списка; историю ведет пользователь в GitHub issues.
+- Не сохранять журналы завершённых работ, старые результаты тестов, промежуточные планы, даты согласований и названия завершённых веток.
+- В test/*/README.md хранить команды, охват и ограничения проверок, а не историю запусков.
+- При перемещении или удалении документа обновлять ссылки и проверять их, включая ссылки на разделы.

@@ -1,368 +1,124 @@
 # Architecture
 
-## High-Level Architecture
+The analyzer is the source of reconstructed TCP sessions. Suricata captures
+independently as optional enrichment; neither its JSON/log output nor its
+availability controls Rust ingest.
 
 ```mermaid
 flowchart TD
-    NIC["Network Interface"]
-    BPF["Kernel BPF Filter<br/>configured monitored ports only"]
-
-    NIC --> BPF
-
-    BPF --> RUST["Rust Analyzer<br/>AF_PACKET / PACKET_MMAP"]
-    BPF --> SURI["Suricata"]
-
-    RUST --> FLOW["TCP Flow Tracking"]
-    FLOW --> REASM["TCP Reassembly"]
-    REASM --> PARSE["HTTP / WebSocket Parsing"]
-    REASM --> FLAG["Streaming Flag Detection"]
-
-    PARSE --> SESSION["Session Finalization"]
-    FLAG --> SESSION
-
-    SESSION --> SEG["Append-Only Segment Storage"]
-    SESSION --> SQLITE["SQLite Metadata Index"]
-
-    SURI --> CORR["Suricata Event Correlation"]
-    CORR --> SQLITE
-
-    SQLITE --> API["Rust Backend API"]
-    SEG --> API
-
-    API --> UI["TypeScript Frontend"]
+    NIC[Configured live interface] --> BPF[Kernel BPF: enabled source ports]
+    BPF --> CAP[Cooked AF_PACKET capture/classification]
+    CAP --> Q[Bounded queues and collector-isolated flow sharding]
+    Q --> REASM[Worker-local bidirectional reassembly]
+    REASM --> ANALYSIS[Flag scan and protocol metadata]
+    ANALYSIS --> STORE[Single writer: segments plus SQLite metadata]
+    STORE --> API[Authenticated API]
+    API --> UI[React/TypeScript UI]
+    NIC --> SURI[Optional passive Suricata with separate BPF]
+    SURI -. planned EVE correlation .-> STORE
 ```
 
-## Core Principle
-
-Suricata and the Rust analyzer are parallel consumers of the relevant traffic.
-
-Suricata must **not** sit in front of the Rust analyzer:
-
-```text
-BAD:
-
-NIC
- -> Suricata
- -> JSON
- -> Rust analyzer
-```
-
-That would add unnecessary serialization, parsing, I/O, and coupling.
-
-Preferred architecture:
-
-```text
-                 +-> Rust analyzer -> sessions
-NIC -> filter ---+
-                 +-> Suricata -----> alerts/enrichment
-```
-
-The Rust analyzer is the source of truth for reconstructed traffic sessions.
-
-Suricata is an optional/parallel enrichment and IDS source.
-
-## Capture Layer
-
-### Requirements
-
-- Linux only for the first implementation.
-- Capture from a live interface.
-- Use `AF_PACKET`.
-- Prefer `PACKET_MMAP` / RX ring based capture to reduce syscall overhead.
-- Capture filter must be installed in the kernel.
-- Traffic outside configured monitored ports should not enter the application hot path.
-
-### Source Configuration
-
-A "source" is a user-visible monitored service definition, similar to Packmate.
-
-Minimum fields:
-
-```text
-id
-name
-port
-enabled
-```
-
-Example:
-
-```text
-web-service
-port 8080
-
-flag-service
-port 9000
-```
-
-The effective BPF filter can be generated from enabled sources.
-
-Example:
-
-```text
-tcp and (port 8080 or port 9000)
-```
-
-The exact implementation may use classic BPF/eBPF or library abstractions, but the filtering decision must happen before userspace packet processing.
-
-### Current Capture Status
-
-The implemented analyzer opens a nonblocking `AF_PACKET/SOCK_DGRAM` socket, binds it to `CAPTURE_INTERFACE`, enables kernel receive timestamps and attaches a generated classic BPF program with `SO_ATTACH_FILTER`. Cooked packet mode strips interface-specific link-layer headers, so the parser receives the same L3 IP layout from Ethernet, WireGuard/TUN, loopback and Docker bridge interfaces. Source changes rebuild the socket and filter. Capture pauses when there are no enabled sources.
-
-`PACKET_MMAP` is not implemented yet; the current path uses `recvmsg`. The parser supports IPv4/TCP or IPv6/TCP without extension headers. IP fragments and IPv6 extension-header walking remain deferred. Link-layer VLAN parsing is unnecessary in cooked mode, but VLAN deployment behavior still needs target-host validation.
-
-## Concurrency Model
-
-The packet-processing hot path should avoid a global mutex.
-
-Preferred conceptual design:
-
-```text
-NIC RX
-  |
-  v
-capture
-  |
-  v
-flow hash
-  |
-  +--> worker 0 -> local flow table
-  +--> worker 1 -> local flow table
-  +--> worker 2 -> local flow table
-  +--> worker N -> local flow table
-```
-
-Packets belonging to one flow/session should consistently be handled by the same worker.
-
-Possible flow key:
-
-```text
-src_ip
-src_port
-dst_ip
-dst_port
-protocol
-```
-
-Direction normalization should allow the same bidirectional TCP connection to resolve to one internal session identity.
-
-The current implementation hashes normalized client/server endpoints into worker-local `HashMap` flow tables. Each worker has a bounded packet channel and a configurable active-flow limit.
-
-### Backpressure
-
-All inter-task channels on the ingest path must be bounded.
-
-The application must prefer:
-
-- observable drops
-- explicit queue saturation
-- bounded memory usage
-
-over unbounded memory growth.
-
-## TCP Reassembly
-
-The analyzer must reconstruct two logical byte streams:
-
-```text
-client -> server
-server -> client
-```
-
-Reassembly must account for at least:
-
-- TCP sequence numbers
-- out-of-order segments
-- duplicate/retransmitted data
-- connection close
-- idle timeout
-- partial/incomplete sessions
-
-The session storage format should represent reconstructed bytes, not original packets.
-
-The current assembler uses a bounded byte vector plus a `BTreeMap` for pending out-of-order ranges. It trims retransmitted overlap, finalizes on RST, both-direction FIN, or idle timeout, and marks timed-out, truncated or not-fully-closed sessions as incomplete. Behavior under very large gaps and long-lived connections still needs production policy and testing.
-
-## Flag Detection
-
-Flag scanning occurs on reconstructed stream data.
-
-Do not search each raw packet independently.
-
-Example failure mode of packet-level scanning:
-
-```text
-packet 1:  FLAG{ABC
-packet 2:  DEF123}
-```
-
-A packet-level search misses the flag.
-
-A stream-level search sees:
-
-```text
-FLAG{ABCDEF123}
-```
-
-Flag scanning should be streaming where practical.
-
-Global configuration:
-
-```text
-FLAG_REGEX=<regex>
-```
-
-Per-session metadata:
-
-```text
-contains_flag: bool
-flag_direction: none | c2s | s2c | both
-flag_count: integer
-```
-
-The implementation performs incremental scans with a 4 KiB overlap and repeats an exact full-stream scan when the session is finalized. The per-direction stream size is bounded by `MAX_STREAM_BYTES`.
-
-## Protocol Parsing
-
-MVP:
-
-### HTTP/1.x
-
-Extract enough metadata for Packmate-like browsing:
-
-- method
-- host if available
-- URI/path
-- status code
-- content type if available
-- request/response direction
-- request/response boundaries where possible
-
-### WebSocket
-
-Support:
-
-- WebSocket upgrade detection
-- frame extraction
-- direction
-- text/binary distinction where practical
-- payload presentation in the session UI
-
-Current status: HTTP Upgrade/101 traffic is classified as `websocket`, but WebSocket frames are not decoded yet.
-
-### Raw TCP
-
-If a session does not parse as HTTP/WebSocket, it must still remain available as a raw reconstructed TCP session.
-
-## Suricata Integration
-
-Suricata should receive the same monitored traffic independently.
-
-Purpose:
-
-- IDS alerts
-- signatures
-- protocol/security enrichment
-- future triage features
-
-Do not make Suricata output required for basic session capture.
-
-If Suricata stops, the Rust analyzer should continue collecting sessions.
-
-If the Rust analyzer stops, Suricata may continue independently.
-
-### Correlation
-
-Correlation mechanism is not fully fixed yet.
-
-Preferred options to evaluate:
-
-1. Community ID
-2. normalized 5-tuple + timestamp window
-3. another stable flow identifier if available
-
-Do not invent a tight coupling before implementation evidence justifies it.
-
-Store Suricata correlation as metadata, not inside payload segment records unless needed for recovery.
-
-### Current Suricata Status
-
-The Compose service runs Suricata passively on the configured interface and writes logs under `data/suricata`. It cannot block traffic in this mode. `SURICATA_BPF_FILTER` is currently a separate static expression and is not rebuilt from UI Sources. EVE ingestion, alert details and session correlation are not implemented; the SQLite/UI `suricata_alerts` field is a reserved placeholder and remains zero.
-
-## API and UI Boundary
-
-Authentication is enforced before data handlers. nginx and analyzer share Linux host networking: nginx checks real clients against loopback plus `AUTH_ALLOWED_SUBNETS` and proxies to `127.0.0.1:3000`. Analyzer middleware checks the actual loopback peer and a server-side session. Public minimal health and local-only login are explicit exceptions. The frontend mounts its operational views only after authentication, has no data volume, and nginx explicitly rejects storage/config artifact paths rather than routing them to the SPA. See `docs/authentication.md` for the complete boundary and deployment caveats.
-
-The Axum API exposes source CRUD, cursor-based session listing, individual session metadata, directional payload retrieval and flag-match ranges. Session listing supports metadata filters for source, flag presence, protocol, client/server IP and port, and start time. Pages are capped at 200 rows. Payload search is a byte-substring scan over at most 2,000 metadata-prefiltered candidates per request.
-
-The React UI currently exposes source, protocol, flag-only and payload filters for sessions. Sources can be searched and sorted locally by name or TCP port. The UI is branded `Нюхач`; `newhatch` remains the internal repository/service name.
-
-Optional session-chain browsing groups complete sessions by
-`collector_id + client_ip + source_id`, with adjacent start gaps <= one second.
-The analyzer records collector identity and first non-empty payload capture times
-while reassembling; collectors have no additional aggregation work or transport
-fields. Authenticated `/api/chains` and `/api/chains/{id}/sessions` compute groups
-on demand from stored metadata, independently of filters/pages. Bounded blocking
-readers and SQLite progress interruption isolate query work from packet workers.
-The UI keeps each C2S/S2C pair together in session-start order, uses nested fixed
-payload scrolling and loads payloads near the viewport. See
-[session chains](session-chains.md) for the full contract and limits.
+## Capture and Sources
+
+A Source is id/name/TCP port/enabled state. Enabled ports generate classic BPF
+installed with SO_ATTACH_FILTER before userspace. Source changes rebuild the
+socket/filter; no enabled Sources pauses capture.
+
+The Linux path uses a nonblocking AF_PACKET/SOCK_DGRAM socket bound to
+CAPTURE_INTERFACE, registered with Tokio, and recvmsg with kernel receive timestamps.
+Cooked mode strips link headers, giving the same L3 layout for Ethernet,
+WireGuard/TUN, loopback and Docker bridges.
+Current parsing accepts IPv4/TCP and IPv6/TCP without extension headers.
+IP fragments and extension-header walking are deferred. Cooked mode needs no
+link-layer VLAN parser, but VLAN deployment behavior needs target-host validation.
+PACKET_MMAP/RX rings are not implemented; measure the socket path before adopting them.
+
+## Concurrency and reassembly
+
+Normalize client/server endpoints so both directions hash to the same worker.
+Remote flows also include CollectorId: equal endpoint tuples from different
+collectors must not merge. Each worker has a local HashMap, bounded packet channel
+and configurable active-flow limit. Avoid global hot-path locks and unbounded
+queues; saturation drops new packets and exposes counters.
+
+Each direction has a bounded byte vector and BTreeMap of out-of-order ranges.
+Trim retransmitted overlap, reconstruct sequence order and finalize on RST,
+both-direction FIN or idle timeout. Timed-out, truncated or not-fully-closed
+sessions are incomplete. MAX_STREAM_BYTES bounds each direction; very large gaps
+and long-lived-flow policy remain unresolved.
+
+Incremental FLAG_REGEX scans use a 4 KiB overlap; finalization repeats an exact
+full-stream scan. Store contains_flag, flag_direction (none/c2s/s2c/both) and
+flag_count. Never scan packets independently to decide session flags.
+
+HTTP/1.x metadata includes method, host, path, status and content type.
+HTTP Upgrade/101 detects websocket, but frame decoding is not implemented.
+Parsing failure retains raw_tcp visibility and original reconstructed bytes.
 
 ## Remote Collector Boundary
 
-Capture can run locally in analyzer (`ANALYZER=local`, the default) or in the standalone diskless collector with `ANALYZER=remote` on the receiving analyzer. The remote boundary is immediately after packet classification:
+Local mode captures inside analyzer (ANALYZER=local). In split mode:
 
 ```text
-collector AF_PACKET/BPF -> ClassifiedPacket -> framed protobuf stream
--> analyzer ingress -> CollectorId + FlowKey sharding -> FlowWorker
+collector AF_PACKET/BPF -> ClassifiedPacket -> length-prefixed protobuf
+-> analyzer ingress -> CollectorId + FlowKey -> flow worker
 ```
 
-The collector owns cooked AF_PACKET capture, TCP parsing/classification, an in-memory Source snapshot, a bounded packet queue, reconnect/backoff and transport counters. Analyzer retains reassembly, flag/protocol detection, SQLite, segment files, API/auth and frontend. Analyzer pushes the complete active Source snapshot after handshake and every Source revision; collector then rebuilds its kernel BPF filter.
+crates/protocol owns shared types and the versioned transport.
+Collectors are diskless: capture/classification, an in-memory Source snapshot,
+bounded queue, reconnect/backoff and counters. Analyzer owns every heavy concern:
+reassembly, flag/protocol analysis, storage, API/auth and chain queries.
+After handshake and each Source revision, analyzer pushes all active Sources;
+collector rebuilds BPF.
 
-The initial trusted-network admission contract is endpoint based. Collector connects to `ANALYZER_CONNSTR`; analyzer listens on `LISTEN_CONNSTR`. Both accept IP or FQDN endpoints with a port. Collector DNS is resolved again on reconnect. A non-empty `ALLOWED_COLLECTORS` list permits exact source IPs plus IPs resolved from configured FQDNs at analyzer startup, while an empty list accepts any host. Analyzer must restart to pick up allowlist DNS changes. The stream is neither encrypted nor application-authenticated. Per-collector PSK authentication is deferred. Flow tables include `CollectorId` so identical endpoint tuples from different collectors cannot merge. Collector `QUEUE_CAPACITY` bounds the in-memory classified-packet buffer (8192 by default); new packets are dropped and counted when it is full.
+Collector connects to ANALYZER_CONNSTR; remote analyzer listens on LISTEN_CONNSTR.
+IP/FQDN endpoints include ports; literal IPv6 is bracketed. Collector resolves DNS
+again on reconnect. Nonempty ALLOWED_COLLECTORS permits exact IPs and addresses
+resolved from FQDNs at analyzer startup; empty admits any host. DNS allowlist
+changes require analyzer restart. Transport has no application authentication
+or encryption yet; PSK hardening is deferred.
 
-## Timestamp Model
+Collector QUEUE_CAPACITY defaults to 8192 classified packets. A full queue drops
+and counts new packets rather than growing memory.
+Deployment commands/configuration are in [README](../README.md).
 
-Do not use "time when application logic happened" as the primary packet time.
+## Timestamps
 
-Use receive/capture timestamps provided by the packet capture mechanism.
+Store Unix microseconds using kernel capture time, falling back to system time
+when unavailable. started_at/ended_at are minimum/maximum observed packet times,
+including out-of-order arrival. first_payload_c2s_at/first_payload_s2c_at are
+minimum capture times of observed nonempty directional packets, including
+retransmissions; empty directions and legacy data remain NULL.
+These fields add neither per-packet persistence nor HTTP transaction splitting.
 
-Session timestamps:
+## Storage, API and UI
 
-```text
-started_at = first observed packet timestamp
-ended_at   = last observed packet timestamp
-```
+A bounded completed-session channel feeds one storage writer.
+[Storage](storage.md) defines append/sync/SQLite ordering, retention and record format.
+Writer failure must be visible. API disconnects, slow readers, absent frontend
+and absent Suricata must not impose control on packet workers.
 
-Use a compact integer representation in storage, preferably Unix nanoseconds or microseconds.
+Axum provides Sources, session metadata, directional payloads, flag ranges,
+collectors and bounded search. Session pages cap at 200 and payload search at
+2,000 metadata-prefiltered candidates per request. Metadata supports source,
+protocol, flag presence, endpoint IP/port and started_after.
+[Authentication](authentication.md) defines the independent nginx/analyzer checks;
+[filtering](session-filtering-v2.md) defines payload lists and limits.
+[Chain queries](session-chains.md#api-and-work-limits) run on demand in bounded
+blocking readers, outside packet workers.
+User-visible behavior belongs to [MVP UX](mvp.md).
 
-The current implementation stores Unix microseconds. It uses the kernel receive timestamp when available and falls back to the current system time.
+## Suricata
 
-`started_at`/`ended_at` use the minimum/maximum observed capture timestamps,
-including packets received out of order by the analyzer. Directional
-`first_payload_c2s_at`/`first_payload_s2c_at` store the minimum capture timestamp
-of an observed non-empty payload packet, including retransmissions. Empty
-directions and legacy records have NULL times. These signatures do not introduce
-per-packet persistence or split a session into application exchanges.
+Compose runs a passive sensor on the configured interface, writing data/suricata.
+It cannot block traffic. SURICATA_BPF_FILTER is static and independent from UI
+Sources; operators align it manually. EVE ingestion, alert details and session
+correlation are not implemented; suricata_alerts remains a reserved zero field.
 
-## Failure Isolation
+Potential correlation choices are Community ID or normalized 5-tuple plus time;
+no choice is fixed. Store enrichment as metadata, not payload records.
+Inline drop is a separate deployment decision because false positives can break
+checkers/SLA. The analyzer must function without Suricata.
 
-The Rust analyzer should continue to function if:
-
-- frontend is unavailable
-- API client disconnects
-- Suricata is unavailable
-- SQLite readers are slow
-
-The storage writer is critical and must fail loudly if it cannot persist new session records.
-
-## Out of Scope
-
-Do not design for:
-
-- Kubernetes orchestration
-- multi-node clustering
-- HA databases
-- distributed ingestion
-- distributed storage
-- enterprise SIEM integrations
-- multi-tenant authentication
+Fixed scope is in [decisions](agent-decisions.md); unresolved policies are in
+[open questions](../.agents/memory/open-questions.md).

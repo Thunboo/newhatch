@@ -1,25 +1,21 @@
-# Backlog
+# Unfinished Work
 
-Only unfinished tasks that are not currently being implemented belong here.
+Track only pending work here. Remove completed entries; history belongs in
+GitHub issues. Clarify related design choices in
+[open questions](../memory/open-questions.md) when implementing.
 
-## Architecture Decisions To Finalize
+## Implementation
 
-- [ ] Choose WebSocket parser crate.
-- [ ] Define how flag-containing S2C replies link to triggering C2S/client payload.
-- [ ] Clarify the tentative auto-removal threshold (`rows >= 5000 OR query time >= 100 ms`): determine whether it governs retention cleanup, query/search budgeting, write batching or another subsystem.
-- [ ] Evaluate Suricata correlation strategy.
+- [ ] Decode WebSocket frames after HTTP Upgrade classification.
+- [ ] Ingest/correlate Suricata alerts and synchronize its capture filter.
+- [ ] Add per-collector PSK authentication; resolve replay protection, rotation and encryption requirements before implementing.
+- [ ] Implement segment-tail recovery and SQLite/file reconciliation.
+- [ ] Measure the socket capture path before considering PACKET_MMAP/RX rings; validate IPv6 extensions and VLAN handling.
+- [ ] Define how flag-bearing S2C data links to the triggering client/request.
+- [ ] Low priority: restrict local storage to a dedicated analyzer UID/GID, data directory 0700 and SQLite/WAL/SHM/segment files 0600; review .env permissions and minimum capture capabilities. Add relevant permission/runtime checks. This is separate from HTTP authorization.
+- [ ] Optional: investigate capture-time ordering in session browsing under high RPS, accounting for worker finalization order, stable pagination and live updates without global ingest serialization.
+- [ ] Future refinement: evaluate HTTP transaction browsing and cookie/token/user/object correlation beyond whole-session chains. Account for NAT, parallel traffic, connection reuse and encrypted HTTPS; this is not required by the existing chain contract.
 
-## Collector Transport Hardening
+## Target-host validation
 
-- [ ] Add per-collector pre-shared-key authentication to the collector/analyzer handshake. The initial split trusts `ANALYZER_CONNSTR` on the collector and optional IP/FQDN filtering through `ALLOWED_COLLECTORS` on the analyzer; it does not provide application-layer authentication or encryption.
-
-## Low-Priority Security Hardening
-
-- [ ] Harden local storage against unprivileged host users: run analyzer as a dedicated non-root UID/GID, restrict the data directory to `0700` and SQLite/WAL/SHM/segment files to `0600`, review `.env` permissions, retain only capture capabilities required by `AF_PACKET`, and add Unix-permission/container-runtime regression tests. This is separate from the HTTP authorization boundary covered by GitHub issue #7.
-
-## MVP Implementation Milestones
-
-- [ ] WebSocket frame extraction after the implemented HTTP Upgrade classification.
-- [ ] Future HTTP action-chain refinement beyond Issue #13: evaluate individual request/response transaction extraction inside persistent connections and additional correlation evidence such as cookies, tokens, usernames and object IDs. This is not a prerequisite for the agreed whole-session chains. Account for NAT, parallel attacks, connection reuse and the inability to inspect encrypted HTTPS without decryption.
-- [ ] Suricata alert ingestion/correlation as optional enrichment.
-- [ ] Optional: investigate chronological ordering in the web traffic view under high RPS. Parallel flow workers may finalize and persist sessions out of capture-time order; define the intended ordering by packet/session capture timestamps and make API pagination plus UI updates stable without adding expensive global serialization to the ingest hot path.
+- [ ] Validate final competition-network local/split capture and chain browsing on the actual Linux/vulnbox topology, including genuine team-client ingress addresses. Commands and coverage are in test/collector_split, test/auth and test/session_chains.

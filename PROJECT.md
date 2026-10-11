@@ -1,262 +1,49 @@
-# `newhatch` - High-Performance A/D Traffic Analyzer
-
-## Project Goal
-
-Build a lightweight, high-performance traffic analysis tool for Attack/Defence CTF competitions.
-
-The tool should provide a workflow and UI comparable to Packmate, while using fewer resources on a typical vulnbox and remaining responsive during a full game.
-
-The primary design priorities are:
-
-1. High packet/session processing throughput.
-2. Low CPU and RAM overhead on the vulnbox.
-3. Do not process traffic that the user did not explicitly choose to monitor.
-4. Keep the UI responsive during long Attack/Defence games.
-5. Make stolen-flag traffic immediately visible.
-6. Keep the architecture simple enough to run with Docker Compose.
-7. Avoid production-enterprise infrastructure that is unnecessary for a CTF tool.
-
-This is **not** intended to become a general-purpose enterprise IDS platform.
-
-## Core Stack
-
-- Rust
-  - packet ingest
-  - TCP flow tracking
-  - TCP reassembly
-  - session assembly
-  - HTTP/WebSocket parsing
-  - flag detection
-  - backend API
-- Tokio
-- Linux `AF_PACKET`
-- `PACKET_MMAP` / RX ring where appropriate
-- kernel BPF capture filters
-- Suricata
-  - runs in parallel with the Rust analyzer
-  - IDS / enrichment / alert source
-  - must not be in the Rust analyzer hot path
-- SQLite
-  - metadata and indexes only
-- Custom append-only segment files
-  - reconstructed session payloads
-- TypeScript frontend
-- Docker Compose
-
-## Why Suricata
-
-Suricata runs in parallel with the Rust analyzer as an optional IDS layer. The analyzer remains the source of reconstructed TCP sessions and flag-leak evidence; Suricata adds attack signatures, protocol/security alerts and triage context.
-
-In Attack/Defence, that context can help identify an exploit and prepare a narrow temporary blocking rule while the service is patched. The current Compose configuration is passive and does not block traffic. Inline `drop` would require separate deployment work and carefully reviewed rules to avoid false positives that break checkers and SLA. EVE ingestion and session correlation are not implemented yet.
-
-## Explicitly Not Used
-
-The current version must not introduce:
-
-- PostgreSQL
-- TimescaleDB
-- ClickHouse
-- Elasticsearch
-- Prometheus
-- Kubernetes
-- permanent PCAP storage
-- raw packet persistence
-- a database row per captured packet
-
-Since it may lower the performance of a typical A/D vulnbox
-
-## Capture Model
-
-The player configures which service ports should be monitored.
-
-Example:
-
-```text
-service-a -> 8080
-service-b -> 9000
-```
-
-The capture filter must be applied **before packets enter the application**.
-
-Conceptually:
-
-```text
-NIC
- |
- | kernel BPF:
- | tcp and (port 8080 or port 9000)
- |
- v
-AF_PACKET
- |
- v
-Rust analyzer
-```
-
-Traffic outside configured monitored ports should not be copied into the analyzer and should consume as little application CPU/RAM as possible.
-
-## User-Level Data Model
-
-The primary entity visible to the user is a reconstructed bidirectional TCP session:
-
-```text
-SESSION
-  ├── metadata
-  ├── client -> server reconstructed bytes
-  └── server -> client reconstructed bytes
-```
-
-The MVP should not persist individual raw packets.
-
-## MVP Protocol Support
-
-Required:
-
-- generic TCP session tracking
-- HTTP/1.x
-- WebSocket
-
-Out of scope for the first MVP:
-
-- broad generic DPI
-- DNS analysis
-- UDP session model
-- HTTP/2
-- QUIC
-- arbitrary protocol plugins
-
-The architecture should allow future protocol support without redesigning the storage format.
-
-## Flag Detection
-
-A single environment variable defines the flag regex for the entire installation:
-
-```text
-FLAG_REGEX=<regex>
-```
-
-The regex is applied after TCP reassembly, not independently to each packet.
-
-This avoids missing a flag that is split across multiple TCP segments.
-
-The analyzer should detect flags while reconstructed stream data becomes available, rather than waiting for the TCP connection to close when practical.
-
-For every session, store at least:
-
-```text
-contains_flag
-flag_direction
-flag_count
-```
-
-Possible directions:
-
-```text
-none
-c2s
-s2c
-both
-```
-
-The frontend must:
-
-- visibly highlight sessions containing flags
-- provide a filter equivalent to "show only stolen-flag traffic"
-
-## Runtime Model
-
-Target usage:
-
-```text
-docker compose up -d
-```
-
-The user should primarily need to:
-
-1. choose the network interface
-2. configure monitored sources/services and ports
-3. provide `FLAG_REGEX`
-4. configure login credentials and allowed team subnets
-5. start the stack and sign in
-
-The user should not need to manually capture PCAP files.
-
-## Expected Environment
-
-Design for a typical Attack/Defence game rather than a large enterprise sensor.
-
-Working sizing assumption:
-
-- 1 Gbit network
-- approximately 8 hours of gameplay
-- approximately 20 teams
-- approximately 5 players per team
-- a vulnbox with constrained CPU/RAM
-
-These values are not strict capacity guarantees. They exist to guide architecture decisions toward low overhead and predictable memory use.
-
-## Important Design Principle
-
-Performance must be achieved primarily by:
-
-- rejecting irrelevant traffic in the kernel
-- keeping packet processing in Rust
-- avoiding unnecessary allocations and copies
-- bounded queues and explicit backpressure
-- keeping active flow state bounded
-- sequential append-only writes
-- storing metadata separately from payload
-- avoiding heavyweight external databases
-
-Do not assume that rewriting something in Rust alone guarantees higher performance.
-
-## Current Implementation
-
-The first executable vertical slice includes:
-
-- Linux cooked `AF_PACKET` live capture with a classic kernel BPF port filter, including L3 WireGuard/TUN interfaces
-- bounded packet queues and consistently sharded flow workers
-- bidirectional TCP stream reconstruction with basic out-of-order and retransmit handling
-- flag detection over reconstructed streams
-- HTTP metadata and WebSocket upgrade classification
-- SQLite metadata plus versioned append-only payload segments
-- source CRUD, bounded session browsing, payload retrieval and payload search APIs
-- a TypeScript/React UI for sources, filters, session browsing and text/hex payload inspection
-- optional session chains keyed by collector/client/source with adjacent start gaps up to one second, full-context cards, fixed-size nested payload scrolling and bounded on-demand queries; see [session chains](docs/session-chains.md)
-- frontend-only Bash/cURL and Python/requests export of a single HTTP request using the displayed text body, plus whole-chain Python export of all supported C2S requests with response-updated cookies; see `docs/mvp.md` for supported input and limitations
-- `Нюхач` UI branding plus local source search and sorting by name or port
-- English/Russian frontend localization with browser-language default and a persisted sidebar switch
-- Docker Compose services for analyzer, frontend and parallel passive Suricata capture
-- an opt-in nginx flag-capture fixture on TCP port 18080
-- single-user authentication through project-prefixed `NEWHATCH_USERNAME`/`NEWHATCH_PASSWORD`, with startup Argon2id hashing, bounded server-side sessions, loopback-only API, nginx team-CIDR access control and explicit denial of storage/config artifact paths; see `docs/authentication.md`
-- optional split capture: a diskless `newhatch-collector` forwards versioned protobuf `ClassifiedPacket` messages to analyzer over a persistent bounded connection
-- optional analyzer-side peer-IP admission, analyzer-pushed Source snapshots, collector-aware flow isolation, reconnect/drop counters and a Collectors UI view
-
-The split deployment has been validated across the user's two-host VPN/FQDN setup after rebuilding the collector from current sources; final validation on the actual competition network remains operational follow-up. The next capture milestone is `PACKET_MMAP`/RX ring support after the socket path is measured. WebSocket frame decoding, Suricata event correlation, segment tail recovery, IPv6 extension headers and target-host VLAN validation remain incomplete.
-
-## Frontend notes
-
-Python exports support [Issue #20's replay contract](docs/python-replay.md):
-an optional IP/FQDN argument replaces connection hosts and existing Host values
-while preserving each captured server port. Without an argument, captured
-destinations and Host values are preserved. Missing Host is not added to explicit
-headers, and each actual response is printed with flush enabled.
-
-While the Sessions view is at the live edge, the frontend checks for new sessions every five seconds. Polling pauses while older traffic is being inspected and resumes near the top; see [`LIVE_REFRESH_INTERVAL_MS` and the feed polling effect](frontend/src/App.tsx).
-
-[Session filtering v2](docs/session-filtering-v2.md), implemented on 2026-10-11
-for Issues #25/#22, provides literal AND search chips with separate
-editable/applied sets. Enter/Add and Refresh apply the entire edited set;
-chip removal alone waits for application and polling retains the applied set.
-The Refresh notice hides immediately when applying edits and returns if that
-application fails; Enter/Add never flashes it during loading.
-The `payload` search parameter is a JSON-encoded list; duplicates are allowed. Limits are
-10 terms and 128 Unicode characters per term, with the count limit controlled by
-one backend value and supplied to frontend. Blank Enter/Add only applies pending
-changes; Source, Protocol and Flags-only changes also apply pending removals.
-
-## Security compliance
-
-The analyzer hashes the password with Argon2id during startup. See [authentication details](docs/authentication.md).
-
-nginx and analyzer use Linux host networking; API port 3000 is loopback-only. Team access requires both an allowed client subnet and valid credentials. The frontend has no data volume, and nginx explicitly rejects paths resembling dotfiles, SQLite databases or stored payload segments. Sessions expire after 24 hours by default and are invalidated on analyzer restart. Missing credentials stop startup. See [authentication and deployment details](docs/authentication.md), including HTTPS, cookie settings and configuration changes.
+# newhatch / Нюхач
+
+A lightweight live-traffic analyzer for Attack/Defence CTF competitions.
+It aims for Packmate-like browsing with low CPU/RAM use on a constrained vulnbox.
+The primary entity is a reconstructed bidirectional TCP session; normal operation
+captures a configured interface without requiring manual PCAP files.
+
+## Product direction
+
+Players configure monitored service ports, inspect C2S/S2C traffic, search
+payloads and identify flag-bearing sessions. Irrelevant traffic is rejected in
+the kernel. Bounded ingest, worker-local state and sequential storage take
+priority over extra infrastructure.
+
+The sizing assumption is a 1 Gbit network, roughly eight hours of gameplay,
+20 teams and five players per team. These are design inputs, not capacity guarantees.
+The project is not a generic SIEM or enterprise IDS.
+
+Fixed stack and scope: [decisions](docs/agent-decisions.md).
+Startup and deployment: [README](README.md).
+
+## Current implementation
+
+| Area | Status and detailed contract |
+| --- | --- |
+| Capture | Linux cooked AF_PACKET, classic kernel BPF, capture timestamps, bounded queues and worker-local TCP reassembly; [architecture](docs/architecture.md) |
+| Protocols and flags | Raw TCP, HTTP/1.x metadata, WebSocket Upgrade classification and reconstructed-stream flag detection |
+| Persistence | SQLite metadata, versioned append-only payload segments and count-based retention; [storage](docs/storage.md) |
+| UI | React/TypeScript, source CRUD/search/sorting, live session browsing, text/hex, JSON formatting, flag highlighting and EN/RU localization; [UX](docs/mvp.md) |
+| Filtering | Literal AND chips for sessions and chains, separate edited/applied sets and backend-supplied limits; [filtering](docs/session-filtering-v2.md) |
+| Chains | Optional whole-session correlation, bounded queries, full-context cards and lazy payload loading; [chains](docs/session-chains.md) |
+| Export | Individual cURL/Python HTTP export and whole-chain Python replay; [Python contract](docs/python-replay.md) |
+| Access | Single-user authentication, loopback analyzer API and nginx team-CIDR ingress; [authentication](docs/authentication.md) |
+| Split capture | Diskless collector, framed protobuf transport, analyzer-pushed Sources, collector-isolated flows and status counters; [architecture](docs/architecture.md#remote-collector-boundary) |
+| Suricata | Optional passive parallel sensor; EVE ingestion, correlation and filter synchronization are not implemented |
+
+Docker Compose packages analyzer, frontend and optional Suricata/collector services.
+A test-profile nginx fixture provides flag-capture traffic on port 18080.
+
+## Remaining work
+
+PACKET_MMAP requires measurement before adoption. WebSocket frame decoding,
+Suricata enrichment, crash-tail reconciliation, IPv6 extension headers and
+collector transport authentication/encryption remain incomplete. VLAN behavior,
+long-lived/reassembly-gap policy and competition-host deployment need validation.
+
+See [open questions](.agents/memory/open-questions.md) and
+[unfinished work](.agents/tasks/backlog.md). Detailed verification commands live
+in test/*/README.md; agents must follow AGENTS.md's Docker restriction.

@@ -22,7 +22,7 @@ directions, collector identity, additive legacy migration, payload-pointer
 preservation, exact one-second boundaries, sliding adjacency, all key components,
 equal-time ordering, filtered full context, list/member pagination, late merging,
 retention, continuation after 2,000 payload candidates and SQL interruption.
-Authentication integration tests cover both new routes and invalid cursors/filters.
+Authentication integration tests cover both chain routes and invalid cursors/filters.
 Payload filtering checks cover shared limits, 128/129 Unicode code points,
 duplicate terms, literal case-sensitive AND across both directions, rejection of
 cross-direction boundary matches and terms split across chain members. The API
@@ -48,8 +48,7 @@ NEWHATCH_TEST_RESULTS="$CHAIN_TEST_TOOLS/results" NEWHATCH_TEST_PYTHON="$CHAIN_T
 ```
 
 The configuration starts and stops a temporary Vite server on port 4173 and runs
-the existing auth/localization/feed regressions, eight chain UI scenarios,
-11 session-filtering scenarios and 24 framing/Python replay scenarios.
+auth/localization/feed, chain UI, session filtering and framing/Python replay checks.
 The command sets a temporary results directory for all screenshots, including
 the shared auth/feed tests whose standalone fallback is `/results`. Overrides:
 `NEWHATCH_TEST_RESULTS`, `NEWHATCH_TEST_NODE`, `NEWHATCH_TEST_CHROMIUM`,
@@ -70,9 +69,6 @@ changes; Russian mobile layout and pending copy are checked too. Delayed
 responses and DOM mutation tracking verify that Enter/Add never briefly renders
 the Refresh notice; current failures restore it and obsolete failures do not.
 
-On 2026-10-12, all 11 filtering browser scenarios, TypeScript checking and the
-Vite production build passed for the notice lifecycle fix.
-
 The chain-card scenario also verifies that the small scroll hint appears below
 Text/Hex in chain detail and is absent in ordinary session detail.
 
@@ -80,14 +76,6 @@ The additional responsive strip scenario checks 26% width with a 100 px minimum 
 without moving payload offsets, Python/raw copy controls above the layer,
 right-edge scroll routing and background isolation at the chain end
 on both desktop and mobile viewports.
-
-On 2026-10-08, 45 Rust tests, strict clippy/fmt, TypeScript checking, Vite production
-build and all seven local Chromium scenarios passed on macOS. Live AF_PACKET
-capture and the production Linux deployment were not exercised in that run.
-
-The current chain UI follow-ups passed TypeScript/build and all four chain browser
-scenarios on the same date, including right-edge scroll routing and chain-only
-hint visibility. They add no backend behavior.
 
 Whole-chain export coverage includes all 30 paginated members without scrolling,
 multiple requests inside one C2S, Unicode/JSON display transforms, contextual
@@ -100,16 +88,13 @@ checking request order, byte-accurate Unicode bodies, cookie replacement/deletio
 and initial cookies under DNS, single-label, IPv4 and IPv6 Host headers. HTTP 500
 does not skip later requests and 302 does not introduce an uncaptured redirect.
 Framing tests reject incomplete, binary, chunked, compressed, Upgrade and invalid
-header inputs with the failing request index. TypeScript/build and all 18 unique
-local browser/replay scenarios passed on 2026-10-08; the final targeted rerun also
-checked IPv6 Host and readable button feedback. No Docker was run by the agent.
+header inputs with the failing request index.
 
-The conditional-helper follow-up passed TypeScript/build and nine focused
-browser/replay scenarios on the same date. Executed scripts verify helper/import
+Conditional-helper checks verify helper/import
 omission without initial cookies, for a single request, for first-only cookies,
 and when later cookie names or hosts differ. The first captured Cookie header
 still reaches the receiver, and Session continues to process response cookies
-without the helper. Reused-cookie initialization still passes all four Host cases.
+without the helper. Reused-cookie initialization covers DNS, single-label, IPv4 and IPv6 Host cases.
 
 ## Python Replay Destination And Flush (Issue #20)
 
@@ -128,20 +113,7 @@ hold a later HTTP response open until the preceding flag is visible in the pipe;
 they run without Python's unbuffered mode. Transport failure stops later requests
 while preserving prior printed bodies; HTTP 500/302 bodies remain visible.
 
-After the Host clarification on 2026-10-10, TypeScript lint, Vite production
-build and all 36 unique local browser/replay cases passed. The full run passed
-35; the chain clipboard test passed a focused rerun after its expected seeding
-call was updated to use the effective Host. All runs used the explicit temporary
-results path above. No Docker was run and no production data was used.
-
 ## User-Run Docker Checks
-
-On 2026-10-11, session filtering v2 passed 49 Rust tests, strict workspace
-clippy/fmt, TypeScript/Vite build, eight Python ingress/config checks and all 45
-unique local Chromium/replay scenarios. The final nine filtering cases were
-rerun after pending-notice fixes, including return to the previous terms after
-failed loading. The Russian mobile screenshot was inspected. No Docker or
-production traffic was used.
 
 Agents must not invoke Docker or OrbStack. If verification is performed through
 the existing isolated images, the user can run these exact commands:

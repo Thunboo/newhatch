@@ -1,26 +1,16 @@
 # Open Questions
 
-Clarify these only when implementing the related area.
+Clarify these when implementing the related area. Unfinished work is in
+[backlog](../tasks/backlog.md); do not duplicate the questions there.
 
-## Product And Data
-
-- What exact identity should link a flag-bearing S2C response to the triggering player/request?
-- Should HTTP/WebSocket detail expose explicit request/response boundaries and navigation?
-- What subsystem does the tentative auto-removal threshold (`rows >= 5000 OR query time >= 100 ms`) govern: retention cleanup, query/search budgeting, write batching or something else?
-
-## Capture And Reassembly
-
-- Which WebSocket frame parser/representation should be used?
-- What is the production policy for extremely long-lived flows and large TCP gaps?
-- How should VLAN traffic and IPv6 extension headers be handled?
-- What RX-ring size and `PACKET_MMAP` strategy are justified by benchmarks?
-
-## Storage And Enrichment
-
-- How should truncated segment tails and SQLite/file reconciliation recover after a crash?
-- What Suricata correlation key and live filter synchronization mechanism should be used?
-- Is immediate disk reclamation ever required beyond normal whole-segment retention?
-
-## Transport Hardening
-
-- Define collector PSK format, rotation, replay protection and whether encryption is required.
+| Area | Unresolved choice |
+| --- | --- |
+| Flags | Identity/ranges linking flag-bearing S2C replies to triggering player/C2S requests |
+| Protocols | WebSocket parser and frame representation; explicit HTTP/WebSocket request/response boundaries in detail |
+| Reassembly | Production policy for very long-lived flows and large TCP gaps |
+| Capture | VLAN behavior, IPv6 extension headers, benchmark-justified PACKET_MMAP strategy and RX-ring size |
+| Recovery | Truncated segment tails and SQLite/file reconciliation |
+| Suricata | Correlation key and live Source/filter synchronization |
+| Retention | Whether immediate disk reclamation is needed beyond whole-segment retention |
+| Collector security | PSK format/rotation, replay protection and need for encryption |
+| Unassigned note | What subsystem the tentative threshold rows >= 5000 OR query time >= 100 ms governs: retention, query/search budgets, batching or something else. It is not the current writer's 500-session batch limit. |

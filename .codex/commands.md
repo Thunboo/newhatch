@@ -1,38 +1,27 @@
-# Commands
+# Development Commands
 
-Run commands from the repository root unless a section says otherwise.
+Run from the repository root unless stated otherwise.
+Agents must not run Docker/Docker Compose, access its daemon or control OrbStack;
+Docker commands below are for the user to execute.
 
-## Configuration
+## Configuration and runtime
 
-```bash
-cp .env.example .env
-```
+Copy .env.example to .env and configure credentials, team CIDRs, capture interface,
+flag regex and Suricata's independent filter. Maintained defaults are in
+.env.example; local/split deployment and lifecycle commands are in
+[README](../README.md). Capture requires Linux.
 
-At minimum, configure `NEWHATCH_USERNAME`, `NEWHATCH_PASSWORD`, `AUTH_ALLOWED_SUBNETS`, `CAPTURE_INTERFACE`, `FLAG_REGEX` and `SURICATA_BPF_FILTER`. See `docs/authentication.md`. The analyzer capture path requires Linux.
-
-## Rust Analyzer
-
-Cargo does not need to be installed on the host. Run formatting and workspace tests in the same Rust version used by the analyzer image:
-
-```bash
-docker run --rm -v "${PWD}:/workspace" -w /workspace rust:1.85-bookworm cargo fmt --check
-docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --workspace
-docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo clippy --workspace --all-targets --all-features -- -D warnings
-```
-
-If Cargo is available locally, the equivalent host commands are:
+## Host checks
 
 ```bash
 cargo fmt --check
 cargo test --workspace
 cargo clippy --workspace --all-targets --all-features -- -D warnings
+python3 -m unittest discover -s test/auth -p 'test_*.py' -v
 ```
 
-For an auto-formatting pass, run `cargo fmt` without `--check`. Agents must only present the Docker commands for the user to run; they must not execute them.
-
-## Frontend
-
-Run these from `frontend/`:
+Use cargo fmt without --check to format.
+Frontend commands run from frontend/:
 
 ```bash
 npm ci
@@ -41,146 +30,33 @@ npm run build
 npm run dev
 ```
 
-Vite development mode proxies `/api` to `http://127.0.0.1:3000`.
+Vite binds loopback and proxies /api to 127.0.0.1:3000.
 
-## Docker Compose
+## Rust checks without host Cargo — user only
 
-> Agent safety rule: do not execute Docker/Docker Compose commands or control OrbStack. Present the required commands to the user for manual execution because daemon operations can disrupt the VPN tunnel.
-
-Validate configuration:
+Use the Rust image version from the analyzer Dockerfile:
 
 ```bash
-docker compose config --quiet
-docker compose --profile test config --quiet
+docker run --rm -v "${PWD}:/workspace" -w /workspace rust:1.85-bookworm cargo fmt --check
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --workspace
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo clippy --workspace --all-targets --all-features -- -D warnings
 ```
 
-Start the core analyzer and UI without Suricata:
+## Focused suites
 
-```bash
-docker compose up -d --build analyzer frontend
-```
+| Area | Runbook |
+| --- | --- |
+| Auth, nginx/Compose configuration, real ingress, browser auth/feed | [test/auth](../test/auth/README.md) |
+| Chains, filters, scroll, export and actual Python replay | [test/session_chains](../test/session_chains/README.md) |
+| nginx flag fixture and individual HTTP export | [test/flag_test](../test/flag_test/README.md) |
+| Collector/analyzer split | [test/collector_split](../test/collector_split/README.md) |
 
-Start the complete default stack, including passive Suricata:
+The host browser runbook starts a temporary Vite server and mocked APIs;
+replay uses a temporary loopback HTTP receiver. The full replay suite needs
+Python 3 with requests. Set NEWHATCH_TEST_RESULTS to a temporary directory for
+shared screenshots; NEWHATCH_TEST_NODE, NEWHATCH_TEST_CHROMIUM and
+NEWHATCH_TEST_PYTHON select runtimes. To run only filter cases, append
+session-filtering.spec.cjs to the runbook's Playwright command.
 
-```bash
-docker compose up -d --build
-```
-
-Useful runtime checks:
-
-```bash
-docker compose ps
-docker compose logs -f analyzer
-curl http://localhost:8080/api/health
-```
-
-The UI is published at `http://localhost:8080` by default.
-
-## Flag Capture Fixture
-
-```bash
-docker compose --profile test up -d test-flag
-curl "http://localhost:18080/flag?player=team01&payload=demo-exploit"
-docker compose --profile test stop test-flag
-```
-
-Add an enabled Source for TCP port `18080` before sending the request. See `test/flag_test/README.md`.
-
-## Authentication Tests
-
-```bash
-docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --test auth
-python3 -m unittest discover -s test/auth -p 'test_*.py' -v
-python3 test/auth/run_e2e.py
-docker build -f test/auth/frontend.Dockerfile -t newhatch-auth-ui-test .
-docker run --rm --shm-size=256m -v /tmp/newhatch-auth-ui:/results newhatch-auth-ui-test
-```
-
-The network suite builds an isolated stack and removes its own resources. See `test/auth/README.md`.
-
-## Session Chain Tests
-
-Host-only Rust/frontend/browser checks and user-run Docker commands are in
-`test/session_chains/README.md`. The browser configuration
-`test/session_chains/playwright.config.cjs` starts temporary Vite and includes
-auth/localization/feed regressions, session-filtering chip/application/race/limit
-checks and chain order/export/scroll/late-merge
-coverage, plus whole-chain export and generated Python execution against a
-temporary loopback HTTP receiver. The complete suite requires Python 3/requests;
-`NEWHATCH_TEST_PYTHON` can choose a virtual-environment interpreter. Results default to the OS temp directory; `NEWHATCH_TEST_RESULTS`
-overrides it. Set `NEWHATCH_TEST_RESULTS` when running the full suite so shared
-auth/feed screenshots also use that temporary directory. No production data or
-`.env` is used. Replay coverage includes Issue #20's optional IP/FQDN/IPv6 argv,
-adaptive existing Host, preserved server ports, cookie scope and flag output through a pipe before exit;
-see `docs/python-replay.md`.
-
-To run only the new filtering browser coverage, append
-`session-filtering.spec.cjs` to the Playwright test command in that runbook.
-The 11 scenarios include transient-notice checks during delayed Enter/Add
-requests in both modes, current failure/retry and stale failures. The implemented
-API and shared backend limits are in `docs/session-filtering-v2.md`.
-
-## Request Export Tests
-
-Agent restriction still applies: these commands must be run by the user.
-From the repository root:
-
-```bash
-docker build -f test/flag_test/replay.Dockerfile -t newhatch-replay-test .
-docker run --rm --shm-size=256m newhatch-replay-test
-```
-
-The image runs frontend lint/build, then Playwright against the existing nginx
-flag fixture plus a test-only request receiver behind nginx. The tests execute
-generated Bash/cURL and Python/requests snippets and include the existing auth
-and session-feed browser checks. No host ports or production data volumes are
-used. See test/flag_test/README.md. The user reported all 20 Playwright tests
-passing on 2026-09-29.
-
-## Main Environment Variables
-
-```text
-CAPTURE_INTERFACE=eth0
-ANALYZER=local
-LISTEN_ADDR=127.0.0.1:3000
-NEWHATCH_USERNAME=<required>
-NEWHATCH_PASSWORD=<required>
-AUTH_ALLOWED_SUBNETS=<team CIDRs; empty = loopback only>
-SESSION_EXPIRACY=86400s
-AUTH_COOKIE_SECURE=false
-DATA_DIR=/data
-FLAG_REGEX=FLAG\{[^}\r\n]+\}
-SEGMENT_DURATION=30m
-SEGMENT_RETENTION_COUNT=3
-FLOW_WORKERS=<available CPUs clamped to 1..8>
-PACKET_QUEUE_CAPACITY=8192
-STORAGE_QUEUE_CAPACITY=2048
-FLOW_IDLE_TIMEOUT=30s
-MAX_ACTIVE_FLOWS_PER_WORKER=16384
-MAX_STREAM_BYTES=4MiB
-FRONTEND_PORT=8080
-SURICATA_BPF_FILTER=tcp and (port 8080)
-RUST_LOG=newhatch=info
-```
-
-Remote analyzer:
-
-```text
-ANALYZER=remote
-LISTEN_CONNSTR=0.0.0.0:39090
-ALLOWED_COLLECTORS=<comma-separated IPs/FQDNs; empty accepts any host>
-```
-
-Standalone collector:
-
-```text
-CAPTURE_INTERFACE=eth0
-COLLECTOR_ID=vulnbox-1
-ANALYZER_CONNSTR=<analyzer IP/FQDN:port>
-QUEUE_CAPACITY=8192
-RUST_LOG=newhatch=info
-```
-
-The root `README.md` is the operator runbook for choosing local or split deployment. `.env.example` contains the maintained defaults.
-
-Suricata's filter is currently independent from Sources and must be kept aligned manually.
+Choose checks for the changed behavior. Keep runnable commands and coverage in
+these runbooks; do not append dated pass reports or duplicate environment defaults.

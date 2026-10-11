@@ -38,37 +38,16 @@ Open `http://localhost:8080`, sign in, then add monitored services on the Source
 
 The UI supports English and Russian. Without a saved preference it follows the browser language; after sign-in, use the language button immediately above Sign out to persist a choice.
 
-On Sessions, Enter or **Add to filter** adds a literal payload substring as a chip
-and applies all displayed chips with AND. Each term must match the same TCP
-session, in either direction. Duplicate chips are allowed, with up to 10 terms
-of 128 Unicode characters each. Removing a chip shows a pending-change notice;
-**Refresh**, Enter/Add or changing Source/Protocol/Flags-only applies the edited
-set. The notice hides as application starts, without flashing during Enter/Add;
-a failed application restores it. Refresh ignores unfinished input. Blank Enter does nothing when no chip
-edits are pending. Automatic polling keeps the applied set and pauses during
-payload search. The same controls work with chains; see
-[session filtering](docs/session-filtering-v2.md).
+On Sessions, Enter / **Add to filter** adds a search chip and applies the displayed
+set. Removing a chip waits for **Refresh** or the next application action.
+**Group into chains** opens related whole-session traffic with full context;
+scroll between pairs using the card or the right side of a payload window.
+See [filtering](docs/session-filtering-v2.md) and [chain browsing](docs/session-chains.md).
 
-On Sessions, **Group into chains** combines complete TCP sessions from the same
-collector, client IP and service when adjacent session starts are at most one
-second apart. The option is off by default. Open a chain to inspect ordered
-C2S/S2C pairs: scroll the card between pairs or over the invisible strip on the
-right of a window (26% of its width, at least 100 px, flush with the right edge); scroll over the remaining payload area to inspect that
-request/response independently. Copy buttons stay available above the strip.
-A small "Scroll sessions here" hint below Text/Hex identifies the area in chain detail.
-cURL/Python export is available on C2S. The center Python button in the chain
-toolbar copies all supported HTTP requests as one sequential script, including
-offscreen sessions and multiple requests in one C2S; cookies update from server
-responses. Unsupported input reports the session and prevents a partial export.
-Run a saved Python script with `python3 replay.py` to use captured destinations,
-or `python3 replay.py <IP/FQDN>` to replace all connection hosts and any existing
-Host with the new destination, keeping captured server ports. Missing Host is
-not added to explicit headers. Every response body is printed with
-`flush=True`. See [Python replay](docs/python-replay.md) for the exact contract.
-Flag-only filtering keeps
-preceding sessions visible in the opened chain. Existing records without
-collector identity remain separate. See [session chains](docs/session-chains.md)
-for the exact rule, pagination and query limits.
+C2S windows offer cURL/Python export; the chain-toolbar Python action exports all
+supported requests. Run `python3 replay.py` for captured destinations or
+`python3 replay.py <IP/FQDN>` to replace hosts while preserving ports.
+See [Python replay](docs/python-replay.md) for Host, response output and cookies.
 
 ## Split Collector Deployment
 
@@ -115,6 +94,8 @@ docker compose --profile collector up -d --build collector
 ## Useful Checks
 
 ```bash
+docker compose config --quiet
+docker compose --profile test config --quiet
 docker compose ps
 docker compose logs -f analyzer
 curl http://localhost:8080/api/health

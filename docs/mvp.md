@@ -1,430 +1,117 @@
 # MVP Scope and UX
 
-## Product Goal
+Players configure service ports, browse reconstructed TCP sessions, inspect both
+directions, search payloads and locate flags. CAPTURE_INTERFACE is configured
+through .env; there is no UI interface selector. Manual PCAP creation is not
+part of normal operation.
 
-The MVP should feel familiar to a Packmate user.
+The repository/service name is newhatch; browser/sidebar branding is «Нюхач» with
+frontend/src/assets/logo.png. Screens remain operational and Packmate-like.
 
-The player should be able to:
+## Localization and navigation
 
-1. start the stack
-2. select a network interface
-3. define monitored sources/services by port
-4. browse captured sessions
-5. inspect reconstructed client/server traffic
-6. search payloads
-7. immediately identify sessions containing flags
-8. filter to only stolen-flag traffic
+EN/RU dictionaries select Russian when any browser language starts with ru,
+otherwise English. A sidebar switch above Sign out persists newhatch_language,
+updates document lang and locale-aware dates/numbers. No credentials enter storage.
 
-The player should not need to manually create PCAP files.
+Desktop sidebar is fixed; remote mode shows analyzer and aggregate collector
+status lights, while local mode omits the collector light. Sources, Sessions and
+Collectors views are available. Authentication states and expired-login behavior
+are defined in [authentication](authentication.md).
 
-The internal project/service name is `newhatch`. The current browser title and sidebar branding use the display name `Нюхач` and the bundled `frontend/src/assets/logo.png` asset.
+## Sources and collectors
 
-## Localization
+Sources support name/TCP-port creation, enable/disable, deletion and local
+search/sort by name or port. Ports are unique; recreating a deleted port restores
+its soft-deleted Source. Enabled-port changes replace analyzer/collector BPF.
+Suricata's separate filter is not synchronized.
 
-The frontend has English and Russian UI dictionaries. With no saved preference it selects Russian when any browser language starts with `ru`, otherwise English. The language button is in the sidebar immediately above Sign out; an explicit choice is stored as the non-sensitive `newhatch_language` browser preference. Switching language also updates the document `lang` attribute and locale-aware date/number formatting.
+Collectors exposes remote connection/drop/reconnect counters. Capture remains
+independent of the selected browsing screen. Local/split setup is in [README](../README.md).
 
-## Primary Screens
+## Session List
 
-### 1. Sources / Services
+Show time, source, endpoints, protocol, byte totals, flags and alert count.
+Merge unique sessions by ID in descending ID order; loaded count is the number
+of unique frontend rows. Capture-time ordering under high RPS remains an open
+follow-up because workers may finalize in a different order.
 
-Packmate-like source management.
+Newest-page polling runs every five seconds at the live edge, pauses in history
+or during active payload search, and resumes near the top. Upward movement
+performs one anchored catch-up refresh. An observer sentinel loads older cursor
+pages. Requests/results remain bounded; stale generations cannot replace a new feed.
 
-Minimum UI actions:
+Flag-bearing rows are visually prominent and Flags-only narrows results.
+Metadata already supplies contains_flag, flag_direction and flag_count; the UI
+must not rescan every payload to decide row flags. Detail highlights matched ranges.
+Suricata alert count is a placeholder until backend enrichment is implemented.
 
-- add source
-- name source
-- assign monitored TCP port
-- enable/disable source
-- delete source
-- search sources by name or TCP port
-- sort sources by name or TCP port
+## Session Detail
 
-Example:
+Opening detail gives its row a black inner outline. Close with the button or
+Escape; show “Esc to close” beside the button. Wheel input over detail cannot
+scroll the background list, including at boundaries; exposed list space can scroll.
 
-```text
-Name            Port    Enabled
---------------------------------
-web             8080    yes
-auth            9000    yes
-legacy          31337   no
-```
+Show C2S and S2C, each with ordinary copy. Text decodes UTF-8, JSON escapes and
+percent-encoded URL components; HTTP path labels use the same readable decoding.
+Format JSON off keeps HTTP/standalone JSON compact; on pretty-prints and expands
+JSON object/array string fields to bounded depth. Hex and stored bytes remain raw.
+Protocol parsing must never remove raw visibility. Session values are raw_tcp,
+http and websocket; only WebSocket Upgrade classification is currently implemented.
 
-Changes to enabled monitored ports should update the capture filter.
+## Individual HTTP Export
 
-Current status: source CRUD, enable/disable, delete, local search/sorting and live analyzer BPF replacement are implemented. TCP ports are unique. Suricata's separate filter is not synchronized yet.
+C2S headers place cURL and Python logo actions before ordinary copy, with localized
+tooltips and cUrl/python text fallback when assets fail. Export is frontend-only
+and uses displayed UTF-8 text plus Format JSON; captured bytes validate framing.
 
-## 2. Session List
+Accept one complete, uncompressed UTF-8 HTTP/1.x request with origin-form target
+and no body or Content-Length framing. Hex, partial/multiple requests,
+binary/compressed/chunked bodies, Upgrade and unsupported/repeated headers disable
+export with a reason. An incomplete TCP session may still hold one complete
+exportable request. Ordinary copy remains available.
 
-Primary table should show recent reconstructed sessions.
+Use captured server IP/port by default and keep Host separately.
+Decode query arguments into readable cURL options/Python params while preserving
+repeated names; retain path escaping. Send displayed UTF-8 bodies with recalculated
+Content-Length. Omit connection-specific headers and Accept-Encoding.
+cURL requires 7.87+ for --url-query; Python requires Python 3 and requests.
+Timeouts, redirects, destination overrides and response printing are defined in
+[Python replay](python-replay.md). Runnable execution checks are in
+[test/flag_test](../test/flag_test/README.md).
 
-Suggested columns:
+## Session Chains
 
-```text
-time
-source
-src
-dst
-protocol
-size
-flag indicator
-Suricata alert indicator
-```
-
-Example:
-
-```text
-12:03:21  web   10.0.4.17:51321 -> :8080  HTTP       1.2 KB
-12:03:22  web   10.0.7.13:54018 -> :8080  HTTP       8.9 KB  FLAG
-12:03:22  auth  10.0.8.91:60112 -> :9000  WebSocket  421 B
-```
-
-Sessions with stolen flags must be visually prominent.
-
-## 3. Session Detail
-
-The detail view should expose both reconstructed directions.
-
-Conceptually:
-
-```text
-CLIENT -> SERVER
-
-GET /api/object/123 HTTP/1.1
-Host: service
-...
-
-----------------------------
-
-SERVER -> CLIENT
-
-HTTP/1.1 200 OK
-Content-Type: application/json
-...
-
-{"flag":"..."}
-```
-
-Required representations:
-
-- human-readable text
-- raw bytes / hex-oriented fallback
-
-The current detail panel decodes UTF-8, JSON escape sequences and percent-encoded
-URL components for the text representation. Each direction has its own copy
-button. With `Format JSON` disabled, an HTTP body (or a standalone JSON payload)
-is kept compact on one line. Enabling the frontend-only control pretty-prints
-that JSON and expands JSON objects or arrays stored in string fields to a bounded
-nesting depth. Hex view and stored payload bytes stay unchanged.
-
-The C2S header also provides **Copy as Bash (cURL)** and **Copy as Python
-(requests)** immediately before ordinary copy. Bundled cURL and Python logos
-identify the actions, with `cUrl` and `python` text fallbacks if an image cannot
-load; EN/RU hover text names the action. These exports are implemented entirely
-in the frontend. They use the currently displayed text body, including the
-Format JSON choice, and retain readable Unicode rather than byte escapes or
-base64. Captured bytes are used only to validate HTTP framing.
-
-The per-window exporter accepts one complete, uncompressed UTF-8 HTTP/1.x request
-with an origin-form target and either no body or Content-Length framing. Hex mode,
-partial requests, multiple requests in one stream, binary/compressed/chunked
-payloads, Upgrade streams and unsupported/repeated headers disable export with
-an explanatory tooltip. A TCP session marked incomplete may still contain a
-complete exportable request. Ordinary copy remains available.
-
-By default, the destination is the captured server IP/port, while the original
-Host header is kept separately. Query arguments are decoded into readable values and passed
-as cURL query options or Python params, preserving repeated names. The path keeps
-its URL escaping. Request bodies are sent as the displayed UTF-8 text; HTTP
-clients recalculate Content-Length. Connection-specific headers and
-Accept-Encoding are omitted. Python uses requests.request with headers, params,
-data, an explicit timeout and redirects disabled. Bash exports require cURL
-7.87+ for --url-query; Python exports require Python 3 and requests.
-
-Python scripts accept one optional positional IP/FQDN argument to override connection hosts
-and any existing Host values, using each request's captured server port.
-Without an argument, the captured destination and Host are preserved; missing Host stays absent from
-generated explicit headers. Each actual replay response is printed with
-`print(response.text, flush=True)`. This applies to individual and whole-chain
-Python exports while retaining the existing replay/cookie behavior. Use
-`python3 replay.py` for captured destinations or `python3 replay.py <IP/FQDN>`
-to override them. See [Python replay](python-replay.md) for IPv6, argument
-validation and the complete Issue #20 contract.
-
-The nginx-backed regression suite is in
-[test/flag_test](../test/flag_test/README.md). It executes generated snippets
-against the existing /flag fixture and a separate test-only nginx proxy that
-allows assertions on received headers, query values and body bytes.
-
-HTTP and WebSocket parsing should improve readability without destroying access to raw reconstructed bytes.
-
-## Session Chains (Issue #13)
-
-Implemented behavior and the agreed specification are documented in
+“Group into chains” switches to related whole-session pairs; it is off by default.
+The card retains full filtered context, orders C2S before S2C and provides fixed
+payload windows within outer scrolling, lazy payload loading, C2S-only individual
+export and a whole-chain Python action. Correlation, the right-side scroll strip,
+snapshots, complete-export preparation and query budgets are defined once in
 [session chains](session-chains.md).
-
-An off-by-default checkbox switches between individual sessions and chains of
-complete TCP-session C2S/S2C pairs. The key is `collector_id + client_ip + source_id`;
-adjacent session starts at most 1 second apart continue a chain. Multiple HTTP
-exchanges in one TCP session remain one pair. Chain membership is computed on
-demand from stored metadata, independently of result-page boundaries. The analyzer
-collects collector identity and the first payload capture timestamp per direction;
-the collector gains no additional aggregation work.
-
-The chain card orders pairs by session start, with C2S immediately before its S2C.
-Existing payload rendering and C2S-only per-window cURL/Python export behavior are reused.
-The card scrolls vertically between pairs, while every expanded C2S/S2C window
-retains the current standalone dimensions for the viewport and its independent
-payload scroll. Windows must not grow with payload length or shrink as more pairs
-are loaded. Both scroll levels remain usable without scrolling the background list.
-
-A transparent strip over the right side of each window uses 26% width, with a
-100 px minimum, for easier chain scrolling. Copy/export actions sit above it and remain clickable;
-the strip reaches the right edge with `right: 0px`. The rest of the payload
-body retains its own scrolling, and window dimensions are unchanged.
-
-Only chain detail shows a small "Scroll sessions here" hint below Text/Hex
-("Прокручивайте сессии здесь" in Russian) to explain the right-side scroll area.
-
-The center toolbar Python button copies the entire selected chain as one
-Python/requests script in Text mode, including offscreen and later-page members.
-Unlike per-window exports, it splits multiple complete HTTP/1.x requests in a
-C2S by raw byte framing, then applies readable text/Format JSON per message.
-Requests run sequentially in session-start/ID and within-stream order with
-10-second timeouts and redirects disabled. One requests.Session uses captured
-first-request cookies as initial values and then follows response Set-Cookie.
-The seed_cookies helper and its imports appear only when an initial cookie name
-is reused later for the same host; otherwise the first Cookie is sent as a
-normal header. Later captured Cookie headers cannot overwrite fresh cookies. Dynamic CSRF
-tokens/IDs require manual edits. Preparation is cancellable on close and shows
-progress; unsupported/incomplete input reports the session/request and prevents
-copying a partial script. See the complete [export contract](session-chains.md#whole-chain-python-export-2026-10-08).
-
-A filtered chain is selected when one member satisfies all active filters; its
-card includes the other retained members as context. Chain and member pages pin
-a session-ID watermark. Refresh replaces old rows when a late session merges
-chains. Legacy records without collector identity stay singleton chains with
-unknown directional times. Members and payloads load progressively; payload
-bytes are released outside the visible area. The backend caps concurrent reads
-and interrupts expensive SQL; use narrower filters when it returns 503.
-
-## Session Protocol Values
-
-MVP values:
-
-```text
-raw_tcp
-http
-websocket
-```
-
-A session must still be inspectable if application parsing fails.
-
-## Flag UX
-
-Global configuration:
-
-```text
-FLAG_REGEX=<regex>
-```
-
-Required session metadata:
-
-```text
-contains_flag
-flag_direction
-flag_count
-```
-
-Required UI:
-
-- highlighted row when `contains_flag = true`
-- clear flag marker
-- filter:
-  - `Show only traffic containing flags`
-- session detail should make matched flag occurrences easy to locate
-
-Do not make the UI depend on rescanning all payloads just to determine whether a row contains a flag. That information must already exist in SQLite metadata.
 
 ## Search and Filtering
 
-Required MVP filters:
+UI exposes Source, Protocol, Flags-only and accumulated literal AND payload chips.
+[Session filtering](session-filtering-v2.md) owns matching, edited/applied state,
+Enter/Add/Refresh/polling behavior, notices, backend limits and the array API.
 
-- source/service
-- recent time range
-- source IP
-- destination IP
-- source port
-- destination port
-- protocol
-- contains flag
-- literal payload substrings combined with AND
+Endpoint IP/port and started_after are API-only; there is no upper/end-time bound.
+Session pages cap at 200 and a payload request scans at most 2,000 prefiltered
+candidates. Keep cursor pagination and bounded rendering.
 
-Payload search flow:
+## Runtime and scope
 
-```text
-metadata filters in SQLite
-       |
-       v
-candidate sessions
-       |
-       v
-Rust payload scan
-       |
-       v
-matching sessions
-```
+.env.example owns runtime defaults; [README](../README.md) owns local/split
+deployment. Source ports are managed through UI/API, not a second static list.
+Compose packages analyzer/frontend, optional passive Suricata and collector,
+plus an opt-in test-flag fixture on port 18080. Payloads/SQLite belong only to analyzer.
+Use minimum capture capabilities rather than generic privileged containers.
 
-The UI should not request or render unbounded result sets.
+The performance direction is responsive sustained traffic, bounded memory,
+little or no userspace work for unmonitored ports and low vulnbox resource use.
+A formal Packmate/Tulip comparison suite is outside MVP, but future measurement
+must remain possible.
 
-Pagination or cursor-based loading is required.
-
-Current API coverage includes every metadata filter listed above except an upper/end-time bound; it provides `started_after` for the recent-time constraint. The current UI exposes source, protocol, contains-flag and payload filters. Endpoint IP/port and time controls remain API-only. Session API pages are capped at 200 rows, and one payload-search request scans at most 2,000 metadata-prefiltered candidates.
-
-[Session filtering v2](session-filtering-v2.md)
-combines literal payload-search chips with AND. Enter/Add and Refresh apply the
-entire edited list; removing a chip alone shows a pending-change notice, while
-scheduled polling retains the applied snapshot. This covers Issues #25 and #22
-for ordinary sessions and chains.
-
-The `payload` query value is a JSON-encoded list with duplicate chips allowed, at most
-10 terms and 128 Unicode characters per term. The count limit is defined once on
-backend and supplied to frontend. Blank Enter/Add applies only pending changes;
-unchanged blank submissions send no request. Source, Protocol and Flags-only
-changes also apply pending removals.
-
-Every term must occur in the same session's C2S or S2C stream. A matching chain
-needs one member satisfying all terms and metadata filters; opening it preserves
-all members as context. Search stays case-sensitive against stored bytes, before
-UI decoding/formatting. Refresh ignores draft input text. Starting application
-of edited chips immediately hides the pending notice; it does not flash during
-Enter/Add loading. A current application failure restores it, while successful
-loading clears the failure state. Stale responses cannot replace a newer feed.
-`GET /api/payload-search/limits` supplies both limits to the UI.
-
-## Suricata UX
-
-Suricata is enrichment, not a prerequisite.
-
-Minimum MVP integration target:
-
-- indicate if a session has one or more correlated alerts
-- expose alert count
-- optionally show alert names/signatures in session detail
-
-If full correlation is not stable enough for the first coding milestone, the core analyzer must remain usable without it.
-
-Current status: `suricata_alerts` exists in session metadata and the UI can display a non-zero count, but no EVE ingestion or correlation path populates it. The Compose service is passive and cannot block traffic.
-
-## Configuration
-
-Expected environment/configuration values include:
-
-```text
-ANALYZER=local|remote
-CAPTURE_INTERFACE=<interface>
-LISTEN_ADDR=127.0.0.1:3000
-NEWHATCH_USERNAME=<installation user>
-NEWHATCH_PASSWORD=<installation password>
-SESSION_EXPIRACY=86400s
-AUTH_ALLOWED_SUBNETS=<comma-separated team CIDRs; empty means loopback-only>
-AUTH_COOKIE_SECURE=false
-FLAG_REGEX=<regex>
-SEGMENT_DURATION=30m
-SEGMENT_RETENTION_COUNT=3
-DATA_DIR=/data
-FLOW_WORKERS=<available CPUs clamped to 1..8>
-PACKET_QUEUE_CAPACITY=8192
-STORAGE_QUEUE_CAPACITY=2048
-FLOW_IDLE_TIMEOUT=30s
-MAX_ACTIVE_FLOWS_PER_WORKER=16384
-MAX_STREAM_BYTES=4MiB
-FRONTEND_PORT=8080
-SURICATA_BPF_FILTER=<separate passive IDS filter>
-```
-
-Remote analyzer additionally uses:
-
-```text
-LISTEN_CONNSTR=0.0.0.0:39090
-ALLOWED_COLLECTORS=<comma-separated IPs/FQDNs; empty accepts any host>
-```
-
-Standalone collector uses:
-
-```text
-CAPTURE_INTERFACE=<interface>
-COLLECTOR_ID=vulnbox-1
-ANALYZER_CONNSTR=<analyzer IP/FQDN:port>
-QUEUE_CAPACITY=8192
-RUST_LOG=newhatch=info
-```
-
-See the root `README.md` for local and split deployment workflows and `.env.example` for the maintained defaults.
-
-Source/service port configuration may live in SQLite and be edited from the UI/API.
-
-Current status: `CAPTURE_INTERFACE` is configured through the environment. There is no interface selector in the UI yet.
-
-If early boot requires at least one source, a simple bootstrap mechanism may be added without replacing runtime source management.
-
-## Docker Compose
-
-Expected services:
-
-```text
-analyzer
-frontend
-suricata
-collector (optional split-deployment profile)
-```
-
-An opt-in `test-flag` service is available under the `test` Compose profile. It exposes `GET /flag` on TCP port `18080` for local end-to-end capture checks and is not part of normal runtime.
-
-SQLite and segment files are local files mounted into the analyzer container.
-
-Do not create separate containers for infrastructure that can remain embedded/local.
-
-Example conceptual volumes:
-
-```text
-./data:/data
-./suricata:/etc/suricata
-```
-
-Exact compose networking/capabilities must be designed around packet capture requirements.
-
-## Linux Capabilities
-
-The analyzer and Suricata may require elevated packet capture capabilities.
-
-Prefer the minimum required capability set rather than generic privileged containers where practical.
-
-The exact Docker capability configuration should be validated during implementation.
-
-## Performance Acceptance Direction
-
-No formal benchmark suite is required in MVP.
-
-However, all design/code decisions should be compatible with the intended outcome:
-
-- no worse than Packmate in practical Attack/Defence usage
-- lower or comparable resource use
-- responsive UI during sustained traffic
-- bounded memory behavior
-- no application work for unmonitored ports
-
-Benchmarking Packmate/Tulip against this tool is explicitly outside MVP, but should remain possible later.
-
-## Out of MVP
-
-- performance comparison framework
-- generic plugin system
-- arbitrary UDP protocol reconstruction
-- historical PCAP export
-- per-collector Source assignment and management
-- fleet-scale collector orchestration
-- Kubernetes
-- Prometheus/Grafana integration
-- database replication
-- RBAC, registration and external identity providers (single-user login was explicitly added; see `authentication.md`)
-- SQLite compaction/vacuum automation
+Prohibited infrastructure, protocol expansion, PCAP retention, enterprise scope,
+RBAC and automatic SQLite VACUUM are listed in [fixed decisions](agent-decisions.md).
+Per-collector Source assignment and fleet orchestration are outside MVP.

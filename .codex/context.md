@@ -1,95 +1,24 @@
-# Codex Quick Context
+# Quick Context
 
-## Product
+newhatch / «Нюхач» is a lightweight live A/D CTF traffic analyzer.
+Start with AGENTS.md, PROJECT.md and docs/agent-decisions.md, then read only
+the focused document relevant to the task.
 
-`newhatch` / `Нюхач` is a lightweight live A/D CTF traffic analyzer. Read `PROJECT.md`, `README.md`, `docs/agent-decisions.md`, then the relevant focused doc before architectural work.
+The current pipeline is enabled Sources → kernel BPF → cooked AF_PACKET →
+bounded classified packets → collector-isolated worker reassembly →
+flag/protocol analysis → SQLite metadata plus payload segments → authenticated API/UI.
 
-## Pipeline
+Local and split capture, source management, session/chain browsing, literal
+AND filter chips, EN/RU UI and HTTP cURL/Python export are implemented.
+Detailed behavior belongs to docs/, not this file.
 
-```text
-enabled source ports -> kernel BPF -> cooked AF_PACKET capture
--> bounded classified packets -> worker-local TCP reassembly
--> flag/protocol analysis -> SQLite metadata + segment payload files
--> authenticated API -> React UI
-```
+Open areas include WebSocket frames, Suricata EVE correlation, crash recovery,
+collector PSK/encryption, IPv6 extensions, capture benchmarking and target-host
+validation. See .agents/memory/open-questions.md and .agents/tasks/backlog.md.
 
-Persist sessions, not packets. Keep payload bytes out of SQLite. Suricata is optional parallel enrichment and is not integrated yet.
+Development commands: .codex/commands.md. Test-specific commands and coverage:
+test/*/README.md. Follow the Docker/VPN restriction in AGENTS.md.
 
-## Runtime
-
-- Agent restriction: never run Docker/Docker Compose or control OrbStack; give Docker commands to the user for manual execution because daemon operations can interrupt the VPN tunnel.
-- Local: `ANALYZER=local`.
-- Split analyzer: `ANALYZER=remote`, `LISTEN_CONNSTR=HOST:PORT`, optional `ALLOWED_COLLECTORS`.
-- Collector: `ANALYZER_CONNSTR=HOST:PORT`, `QUEUE_CAPACITY=8192` default.
-- IP/FQDN endpoints are supported; bracket literal IPv6. Empty collector allowlist accepts any host. No PSK yet.
-- Auth: `NEWHATCH_USERNAME`, `NEWHATCH_PASSWORD`, `SESSION_EXPIRACY`, `AUTH_ALLOWED_SUBNETS`, `AUTH_COOKIE_SECURE`.
-- Frontend has no `/data` mount; nginx explicitly rejects dotfile, database and segment artifact paths.
-
-## Current UI Invariants
-
-- Sessions merge uniquely by ID; loaded count is frontend row count.
-- Optional whole-session chains use `collector_id + client_ip + source_id`, adjacent start gaps <= 1 second, and an off-by-default checkbox. Pairs stay together in start/ID order, C2S before S2C; filters select a matching member but cards show full context.
-- Chain cards scroll between fixed-size payload windows with independent inner scrolling, C2S-only per-window exports and viewport-local payload loading. Refresh replaces stale split rows after late merging. See `docs/session-chains.md`.
-- Center-toolbar Python export fetches all snapshot members/C2S on demand, splits supported HTTP requests by raw framing and produces sequential requests.Session replay with response-updated cookies. Initial cookies come from the first request; later captured Cookie headers are omitted. Unsupported input prevents partial copy, close aborts preparation, and dynamic tokens require manual edits. Multiple requests still share one pair in UI.
-- Emit seed_cookies/imports only if an initial cookie name is reused later for the same host; otherwise send the first Cookie header directly. Session processes response cookies either way.
-- The right-side transparent strip (`right: 0px; width: 26%; min-width: 100px`) reaches the window edge and scrolls the chain with native wheel/touch routing. Copy actions are raised above it; uncovered text retains independent payload scrolling. Individual session cards have no strip.
-- Small localized "Scroll sessions here" text sits below Text/Hex only in chain detail.
-- Poll newest every five seconds only near the top.
-- Pause newest polling in history; upward motion performs one anchored catch-up.
-- Infinite cursor pagination loads older sessions automatically.
-- Open detail highlights its row and closes with `Escape`.
-- Detail exposes C2S/S2C copy, decoded text/path display and optional body JSON formatting; Hex remains raw.
-- C2S cURL/Python logo buttons (with text fallbacks) copy Bash/cURL or Python/requests using the displayed body (Unicode and Format JSON preserved). Frontend only; one complete plain-text HTTP request. Unsupported input/Hex disables export with a reason. See `docs/mvp.md`; curl requires 7.87+.
-- Issue #20 Python exports accept one optional positional IP/FQDN to replace connection hosts and existing Host values using each captured server port. Without argv, preserve per-session destinations and Host; absent Host stays out of explicit headers. Print every actual response with `print(response.text, flush=True)`. Cookie scope follows effective Host or destination, unifying different captured hosts under argv; use runtime-conditional setup when reuse depends on argv. Contract: `docs/python-replay.md`.
-- Wheel over detail never scrolls the underlying list; wheel over exposed list does.
-- Desktop sidebar is fixed.
-- English/Russian UI language follows the browser until the sidebar switch above Sign out persists `newhatch_language`.
-- Remote mode shows analyzer and collector status lights; local mode has no collector light.
-
-## Important Storage Behavior
-
-Retention is by rotated segment count. Rotation and expiration are checked only when appending a completed session, so downtime does not independently age-delete sessions.
-
-Analyzer stores collector and directional first-payload capture times; legacy
-NULL collector rows stay singletons. Chains are read on demand, with at most two
-readers and interruptible SQL (2 seconds/50 million steps), 200-row pages and
-resumable 2,000-candidate payload scans. Cursors pin insertions until refresh;
-retention can still remove members. No collector aggregation or payload duplication.
-
-## Current Verification
-
-- 2026-10-12 notice lifecycle fix: TypeScript/Vite build and all 11 filtering browser scenarios passed. Delayed requests plus DOM mutation tracking verify no Enter/Add flash in either mode, current failure/retry and obsolete failures.
-- Issues #25/#22 on main: 49 Rust tests, strict clippy/fmt, TypeScript/Vite build, 8 Python ingress/config checks and all 45 unique local Chromium/replay scenarios passed on 2026-10-11, with the final nine filtering cases rerun after notice fixes. No Docker or production traffic used.
-
-- Issue #20's clarified Host behavior: TypeScript lint, Vite build and all 36 unique local browser/replay checks passed on 2026-10-10 (35 full-run cases plus the chain clipboard rerun after its seeding expectation was updated). IPv4/FQDN/IPv6 argv updates existing Host with captured ports; different Host cookie scopes converge across ports. Mixed/absent Host, invalid input, transport failure and live piped flags pass. Fixture FQDNs resolve locally and NEWHATCH_TEST_RESULTS was set; no Docker was run.
-- Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
-- Issue #13: 45 Rust tests, strict clippy/fmt, TypeScript/Vite build and 7 local Chromium browser scenarios passed on 2026-10-08. Covers migration, correlation, pagination/search budgets, late merging and desktop/mobile nested scroll. Live Linux capture is target-host follow-up; agent ran no Docker.
-- Current chain UI follow-ups passed TypeScript/build and four browser scenarios, including responsive strip sizing, right-edge outer-scroll isolation, copy controls, chain-only hint and desktop/mobile layout.
-- Whole-chain Python export passed TypeScript/build and 18 unique local browser/replay tests (17-test full run plus final targeted rerun adding IPv6 Host). Real Python execution checks ordered requests, Unicode, initial/fresh/deleted cookies, explicit redirects and HTTP 500 continuation. UI checks include offscreen/later-page members, no partial copy, retry, retention, abort and Russian mobile fallback.
-- Conditional cookie-helper follow-up passed TypeScript/build and nine focused browser/replay scenarios, including scripts with no initial cookies, only one request, first-only cookies, different cookie names/hosts and continued automatic response-cookie handling.
-- Issue #12's Docker regression image passed all 20 Playwright tests on 2026-09-29, including real execution of generated Bash/cURL and Python/requests snippets through nginx and the existing auth/session-feed regressions.
-
-- Frontend production Docker build passes.
-- Rust auth integration, nginx/Compose unit checks and isolated IPv4/IPv6 Docker auth e2e pass, including sensitive artifact denial and rejected mutation side effects.
-- Previous Playwright run: four scenarios passed, including English/Russian browser defaults and persistence plus current session-feed and detail interactions.
-- Real split deployment over VPN/FQDN works after rebuilding the collector from current sources.
-
-## Session Filtering v2
-
-Issues #25/#22 are implemented; the durable contract is in
-`docs/session-filtering-v2.md`: literal AND payload chips, editable/applied sets,
-Enter/Add and Refresh apply the whole edited list including pending removals,
-X alone shows a notice, and polling never applies edits. Applying edits hides
-the notice immediately without an Enter/Add flash during loading; current
-application failure restores it, success clears the failure state and obsolete
-failures are ignored. Chains require all
-terms in one member. `payload` is a JSON-encoded list, duplicates are allowed, limits are
-10 terms/128 Unicode characters; count limit comes from one backend value exposed
-to frontend. Blank Enter/Add applies only pending changes without duplicate
-in-flight requests; Source/Protocol/Flags-only changes also apply pending removals.
-Limits and matching live in `payload_search.rs`; `/api/payload-search/limits`
-supplies the frontend. The earlier edge questions are resolved.
-
-## Next Work
-
-Use `.agents/tasks/backlog.md`. Major deferred areas: collector PSK, WebSocket frames, Suricata correlation, segment crash recovery, `PACKET_MMAP`, VLAN/IPv6 extensions and S2C-to-C2S flag linkage.
+Update this context in place only when orientation changes. Keep it below
+250 words. Completion history belongs in GitHub issues; do not append reports,
+feature specifications or historical test results here.

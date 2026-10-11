@@ -1,333 +1,60 @@
-# Agent Decisions and Constraints
-
-This file contains project decisions that the coding agent should treat as fixed unless the user explicitly changes them.
-
-`PROJECT.md` is the product brief and implementation summary. `README.md` is the short operator runbook.
-
-## Fixed Technology Decisions
-
-Use:
-
-```text
-Rust
-Tokio
-AF_PACKET
-PACKET_MMAP where useful
-kernel BPF filtering
-Suricata
-SQLite
-custom append-only segment storage
-TypeScript frontend
-Docker Compose
-```
-
-Do not replace these with a different stack without explicit user approval.
-
-## Fixed Architectural Decisions
-
-### 1. Live Capture Only for MVP
-
-Primary operation is live interface capture.
-
-The normal user workflow is:
-
-```text
-choose interface
-configure monitored sources/ports
-start analyzer
-```
-
-Do not make manual PCAP creation part of the normal workflow.
-
-Offline PCAP ingestion is not an MVP requirement.
-
-### 2. Filter Before Userspace
-
-Only explicitly monitored service ports should enter the Rust analyzer.
-
-Use a kernel capture filter.
-
-Do not capture all traffic and filter it later in Rust.
-
-### 3. Session-Oriented Persistence
-
-Persist reconstructed sessions.
-
-Do not persist every packet.
-
-Primary model:
-
-```text
-SESSION
-  ├── metadata
-  ├── reconstructed C2S bytes
-  └── reconstructed S2C bytes
-```
-
-### 4. Flag Scan After Reassembly
-
-Flag detection must run on reconstructed stream data.
-
-Do not scan raw packets independently.
-
-One global regex per installation:
-
-```text
-FLAG_REGEX
-```
-
-### 5. SQLite Is Metadata Only
-
-SQLite stores:
-
-- session metadata
-- indexes
-- segment location
-- source configuration
-- flag metadata
-- Suricata correlation metadata
-
-SQLite must not become the main payload store.
-
-### 6. Payload Storage Is Append-Only
-
-Use rotating append-only segment files.
-
-Default conceptual policy:
-
-```text
-SEGMENT_DURATION=30m
-SEGMENT_RETENTION_COUNT=3
-```
-
-Store direct byte location:
-
-```text
-segment_id
-segment_offset
-record_length
-```
-
-### 7. No PostgreSQL
-
-Do not introduce PostgreSQL for MVP.
-
-Do not add TimescaleDB, ClickHouse, Elasticsearch, Redis, or another external database unless the user explicitly revisits storage architecture.
-
-### 8. No Raw PCAP Retention
-
-Do not persist full packet captures in MVP.
-
-After TCP reassembly has incorporated packet data, raw packet persistence is unnecessary.
-
-### 9. No SQLite Vacuum Work in MVP
-
-Retention deletes metadata for expired segments.
-
-Automatic SQLite compaction/vacuum is out of scope.
-
-### 10. Suricata Is Parallel Enrichment
-
-Do not put Suricata in the Rust analyzer hot path.
-
-Preferred model:
-
-```text
-monitored traffic
-   +--> Rust analyzer
-   +--> Suricata
-```
-
-The analyzer must still function if Suricata is unavailable.
-
-The current Compose service is a passive IDS sensor. It does not block traffic. Inline `drop` behavior is a future, separate deployment decision because false positives can break checkers and SLA during an A/D game.
-
-### 11. Packmate-Like UX
-
-The UI should be conceptually similar to Packmate:
-
-- sources grouped/configured by port
-- session list
-- bidirectional reconstructed traffic inspection
-- payload search
-- clear stolen-flag visibility
-- filter to only traffic containing flags
-
-Do not redesign the product into a generic SIEM dashboard.
-
-### 12. Protocol Scope
-
-MVP:
-
-```text
-raw TCP
-HTTP/1.x
-WebSocket
-```
-
-Do not expand into a generic DPI framework before the core pipeline works.
-
-## Performance Priorities
-
-In order:
-
-1. low resource use on vulnbox
-2. high ingest/reassembly speed
-3. bounded memory
-4. responsive browsing/filtering
-5. no unnecessary work for unmonitored traffic
-6. correctness of reconstructed streams
-7. extensibility
-
-A more complex architecture is not automatically better.
-
-Prefer simple local mechanisms when they satisfy the workload.
-
-## Expected Agent Behavior
-
-Before generating production code, the agent should:
-
-1. inspect `PROJECT.md`, this decision file and only the task-relevant focused docs routed by `AGENTS.md`
-2. keep terminology consistent with these files
-3. avoid silently changing fixed decisions
-4. identify unresolved details as TODO/TBD instead of inventing incompatible architecture
-5. keep the MVP scope narrow
-6. favor measurable/simple hot-path designs
-7. avoid adding infrastructure dependencies "for future scalability"
-
-## Known Unresolved Details
-
-The following may still require implementation-time decisions:
-
-- exact WebSocket parser
-- exact Suricata correlation mechanism
-- exact handling of extremely long-lived TCP sessions
-- exact behavior under packet loss or reassembly gaps
-- exact request/reply payload-range linkage for flag-containing server responses
-- crash-tail repair and SQLite reconciliation
-- VLAN and IPv6 extension-header handling
-- measured `PACKET_MMAP`/RX-ring sizing and adoption
-- collector PSK format, replay protection and whether transport encryption is required
-- target subsystem for the tentative `rows >= 5000 OR query time >= 100 ms` threshold
-
-These are not permission to replace the agreed architecture.
-
-The agent should select the simplest implementation compatible with the fixed decisions and clearly document choices.
-
-## Initial Implementation Choices
-
-The first executable slice currently uses:
-
-- direct `libc` calls for Linux `AF_PACKET`, `SO_ATTACH_FILTER` and kernel receive timestamps
-- a nonblocking packet socket registered with Tokio; `PACKET_MMAP` is the next measured capture optimization
-- a rebuilt capture socket when enabled source ports change
-- deterministic flow hashing into worker-local `HashMap` flow tables
-- a per-direction `BTreeMap` for bounded out-of-order TCP payloads
-- `rusqlite` with bundled SQLite and WAL mode
-- `httparse` for HTTP/1.x request/response metadata
-- React, TypeScript, Vite and npm for the frontend
-- host networking for analyzer and frontend nginx, plus `NET_RAW`/`NET_ADMIN` for analyzer capture; analyzer HTTP binds loopback
-- a 30-second configurable flow idle timeout and a configurable per-direction stream byte limit
-- unique source ports with soft deletion/restoration
-- cursor-based session pages capped at 200 rows
-- payload substring search capped at 2,000 metadata-prefiltered candidates per request
-- cooked L3 `AF_PACKET/SOCK_DGRAM` capture for consistent IPv4/IPv6 parsing across Ethernet, WireGuard/TUN, loopback and Docker bridge interfaces; IPv6 extension headers and target-host VLAN behavior remain deferred
-- WebSocket upgrade classification without frame decoding
-- a passive Suricata container with a separately configured static BPF filter; EVE ingestion and session correlation are not implemented
-- an opt-in nginx flag-capture fixture on TCP port 18080
-- UI display name `Нюхач`, local Sources search/sorting, and `frontend/src/assets/logo.png` as the bundled logo asset
-
-These are implementation decisions, not changes to the fixed architecture. Current limitations are summarized in `PROJECT.md`, `docs/architecture.md` and `.agents/tasks/active.md`.
-
-## Single-User Authentication (2026-09-07)
-
-The user explicitly extended the MVP to include environment-configured `NEWHATCH_USERNAME`/`NEWHATCH_PASSWORD`, startup Argon2id hashing, `tower-sessions` cookies and a bounded ephemeral server-side store. `SESSION_EXPIRACY` uses duration values such as `86400s`. No roles, registration or identity provider are introduced. nginx enforces loopback plus explicit `AUTH_ALLOWED_SUBNETS` CIDRs against actual TCP peers; the analyzer separately enforces loopback transport and authenticated sessions. Never grant trust based on forwarded headers or blanket Docker/private ranges. Health is public and minimal. The frontend must not mount analyzer data, and nginx denies storage/config artifact paths instead of serving the SPA fallback. Full configuration, expiration, cookie, origin and deployment policy is in `docs/authentication.md`.
-
-## Collector / Analyzer Split (2026-09-07)
-
-The remote split is after `ClassifiedPacket`. `crates/protocol` owns shared packet/source/domain types and a versioned length-prefixed protobuf protocol. The lightweight collector owns cooked AF_PACKET capture, BPF, classification, bounded memory, reconnect and counters; analyzer owns worker selection and every heavy processing/persistence concern. Analyzer pushes global active Source snapshots to all connected collectors. Flow identity is `CollectorId + FlowKey`.
-
-Runtime roles are selected by the service being launched. Analyzer uses `ANALYZER=local|remote` (default `local`); collector uses `ANALYZER_CONNSTR`. Connection strings support IPs or FQDNs with ports; collector DNS is resolved again on reconnect. A remote analyzer listens on `LISTEN_CONNSTR`. A non-empty `ALLOWED_COLLECTORS` restricts exact IPs and IPs resolved from FQDNs at startup, while an empty value accepts any host. The transport has no PSK or encryption; PSK authentication is backlog hardening. Collector `QUEUE_CAPACITY` defaults to 8192 packets and bounds memory by dropping and counting new packets when full.
-
-## Session Chains (2026-10-08, Issue #13)
-
-The user approved whole-session correlation by `collector_id + client_ip + source_id`.
-Adjacent capture-time session starts at most one second apart continue a chain;
-this is a sliding rule with no total-duration limit. Different services or
-collectors never merge. HTTP status is not part of correlation. Multiple exchanges
-inside one TCP session remain one existing C2S/S2C pair.
-
-Analyzer workers preserve collector identity and earliest non-empty payload
-capture times per direction. Collectors retain their current lightweight work.
-Chains are computed on demand from persisted metadata with bounded read work;
-no duplicated payloads, packet rows or live chain state are introduced. Legacy
-rows without collector identity remain singletons. Existing retention applies.
-
-Grouping is an off-by-default display checkbox. Chain filters select on one
-matching member but opening the card shows all available context. Pair order is
-session start then ID, C2S before its S2C. The card scrolls between fixed-size
-independently scrollable payload windows; per-window cURL/Python exports appear only on C2S.
-A user-approved invisible strip (`right: 0px; width: 26%; min-width: 100px`) on the right of each chain window scrolls
-the outer card all the way to the window edge. Copy actions have a higher z-index;
-payload scrolling remains available over the uncovered text and window dimensions stay fixed.
-
-The user also approved a center-toolbar Python action exporting all supported
-HTTP/1.x requests from every snapshot member, including multiple requests inside
-one C2S. This is frontend-only request extraction for export, not a change to
-session persistence or browsing. Load pages/payloads on demand with cancellation,
-fail the complete export on unsupported input, and preserve session-start/ID and
-within-C2S order. Use one requests.Session with initial first-request cookies and
-response Set-Cookie updates; omit later captured Cookie headers. Dynamic tokens
-remain editable rather than automatically extracted. See `docs/session-chains.md`.
-Only emit the cookie-seeding helper/imports when an initial cookie name is reused
-later for the same host. Otherwise preserve the first Cookie header directly;
-requests.Session still handles actual response cookies without the helper.
-Capture timestamps label windows without interleaving overlapping sessions.
-Late persistence is reflected on refresh; snapshot cursors keep ongoing pages
-stable. See [session chains](session-chains.md) for the agreed specification,
-API and query budgets.
-
-## Python Replay Export (2026-10-09, Issue #20)
-
-Approved on 2026-10-09 and implemented on 2026-10-10: [Python replay](python-replay.md).
-Individual and whole-chain Python scripts accept one optional positional IP/FQDN
-to replace connection hosts, retaining each request's captured port. Without an
-argument, preserve each session's own captured destination and Host value.
-As clarified by the user on 2026-10-10, an argument also replaces any existing
-Host with the supplied host and captured server port, including IP-valued Host.
-If missing, do not insert Host or other destination-related explicit headers. Normal HTTP-client
-transport headers are not suppressed.
-
-Print every actual replay response with `print(response.text, flush=True)` and
-keep the variable name `response`. Retain ordered sequential chain replay,
-response-updated cookies, conditional cookie helpers, existing request support,
-timeouts, disabled redirects, cancellation and complete-export errors. Cookie
-scope follows effective Host or the effective destination without Host; use a
-runtime cookie-setup condition when host reuse depends on argv. This is a
-frontend-only change with no session/storage/collector architecture change.
-
-## Session Filtering v2 (2026-10-11, Issues #25 and #22)
-
-The user approved and authorized [session filtering v2](session-filtering-v2.md),
-now implemented. Removable chips below the input are literal payload substrings,
-combined with AND within one reconstructed bidirectional session. A chain must
-have one member satisfying every term and metadata filter; its card retains full
-context. Keep editable and applied chip lists separate. Enter/Add adds a term and
-immediately applies the whole edited set, including pending removals; Refresh
-also applies the whole set. Removing a chip alone shows a pending-change notice.
-Starting application of edited chips hides it immediately, with no Enter/Add
-flash during loading; a current application failure restores it. Successful
-loading clears the failure state; obsolete failures cannot restore the notice
-(UI lifecycle clarified by the user on 2026-10-12).
-Scheduled polling uses the applied snapshot and never commits edits. Source,
-Protocol and Flags-only changes also apply pending chip removals. Blank Enter/Add
-adds nothing and applies only pending changes; unchanged or duplicate in-flight
-blank submissions must not cause additional API requests. The `payload` search
-parameter is a JSON-encoded list; duplicates remain separate chips. Allow 10 terms and
-128 Unicode characters per term. The count limit has one backend source of truth
-shared by both search paths and exposed to frontend, so increasing one backend
-value raises the limit without a second UI edit. Preserve bounded analyzer-side
-payload search and existing capture/storage/chain rules. The previously listed
-filtering API/limit/UI edge questions were resolved by the user on 2026-10-11.
-`payload_search.rs` owns both limits and matching; authenticated
-`GET /api/payload-search/limits` supplies the values to the UI.
+# Fixed Decisions and Constraints
+
+Treat these decisions as fixed unless the user explicitly changes them.
+PROJECT.md describes the product; focused documents own implementation contracts.
+
+## Stack and scope
+
+Use Rust/Tokio, Linux AF_PACKET, kernel BPF, SQLite metadata/indexes,
+custom append-only payload segments, a TypeScript frontend and Docker Compose.
+Evaluate PACKET_MMAP/RX rings when measurements justify them.
+Suricata is optional parallel enrichment.
+
+MVP protocols are raw_tcp, HTTP/1.x and WebSocket. Keep a Packmate-like workflow:
+sources, reconstructed sessions, bidirectional inspection, search and flag visibility.
+
+Without an explicit product decision, do not introduce:
+- PostgreSQL, TimescaleDB, ClickHouse, Elasticsearch, Redis or other external databases.
+- Prometheus/Grafana, Kubernetes, HA/database replication or fleet orchestration.
+- Permanent PCAP/raw-packet persistence or a database row per packet.
+- Generic SIEM/DPI/plugin scope, UDP sessions, HTTP/2 or QUIC.
+- RBAC, registration, external identity providers or automatic SQLite VACUUM.
+
+## Architecture invariants
+
+- Normal operation is live interface capture; manual/offline PCAP ingestion is not an MVP requirement.
+- Reject unmonitored traffic in the kernel before userspace. Do not capture everything and filter it later in Rust.
+- The analyzer owns reconstructed sessions. Suricata must stay outside its hot path and remain optional.
+- Persist sessions, not packets. SQLite holds metadata; C2S/S2C bytes stay in append-only segments addressed by segment_id, segment_offset and record_length.
+- Detect flags on reconstructed streams with one installation-wide FLAG_REGEX. Preserve enough context to inspect the client traffic associated with flag-bearing replies; exact linkage remains unresolved.
+- Bound queues, flow state and read work. Prefer observable drops and explicit backpressure over unbounded buffering.
+- Keep collectors diskless and lightweight. Analyzer owns reassembly, enrichment, persistence and chain correlation; isolate flow identity by collector.
+- Use capture timestamps rather than processing/insertion time for traffic chronology.
+- A storage failure must be visible; slow readers, absent frontend or absent Suricata must not control ingest.
+- Prefer simple local mechanisms and measured changes over speculative infrastructure.
+
+## Feature contracts
+
+These documents are authoritative; do not replace their agreed rules with a new design during unrelated work:
+
+| Subject | Contract |
+| --- | --- |
+| Capture, reassembly, split transport and Suricata | [Architecture](architecture.md) |
+| Segment format, writer ordering and retention | [Storage](storage.md) |
+| Single-user login and two independent access checks | [Authentication](authentication.md) |
+| UI, payload rendering and individual HTTP export | [MVP UX](mvp.md) |
+| Whole-session correlation, card behavior, snapshots and chain export preparation | [Session chains](session-chains.md) |
+| Python destination/Host override, actual response output and cookies | [Python replay](python-replay.md) |
+| Literal AND chips, edited/applied state, limits and stale-response handling | [Session filtering](session-filtering-v2.md) |
+
+Resource priorities are low vulnbox overhead, high ingest/reassembly throughput,
+bounded memory, responsive browsing, no work for unmonitored traffic, correct
+streams and extensibility. Do not silently change the stack to resolve a limitation.
+
+## Unresolved decisions
+
+The single list is [open questions](../.agents/memory/open-questions.md).
+Clarify an item when work reaches that area; an unresolved detail is not permission
+to replace the fixed architecture. Implementation work is tracked in
+[backlog](../.agents/tasks/backlog.md). Agent workflow and documentation rules live
+in AGENTS.md.

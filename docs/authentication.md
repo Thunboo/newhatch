@@ -1,6 +1,6 @@
 # Authentication and Team Access
 
-One installation-level user is configured through the environment. This is a limited, user-approved addition to the MVP, not an account-management or RBAC system.
+One installation-level user is configured through the environment. There is no account-management or RBAC system.
 
 ## Configuration
 
@@ -24,7 +24,7 @@ SESSION_EXPIRACY=86400s
 
 Set your own password and team CIDRs. Example allowlist: `192.168.1.0/24,fd42:1234::/64`. The analyzer hashes `NEWHATCH_PASSWORD` with Argon2id and a random salt during startup; only that generated hash remains in its authentication state. The configured password is still an environment secret, so restrict access to `.env` and Docker inspection. The project-specific credential names avoid collisions with host variables such as Windows `USERNAME`.
 
-Existing installations must rename any legacy `USERNAME` and `PASSWORD` entries before recreating the analyzer container. The analyzer intentionally does not fall back to the unprefixed names.
+Only `NEWHATCH_USERNAME` and `NEWHATCH_PASSWORD` are recognized; unprefixed names are not accepted.
 
 The analyzer rejects missing or empty credentials and invalid expiration values. nginx rejects invalid CIDRs, including non-canonical network addresses such as `192.168.1.100/24`; use `192.168.1.0/24` instead. Changing `.env` requires container recreation, not just `docker compose restart`.
 
@@ -40,10 +40,8 @@ Production Compose uses Linux host networking for both nginx and analyzer. nginx
 
 The frontend container has no `/data` volume. nginx explicitly returns 404 for dotfiles, `data`/`segments` paths and SQLite/database/segment filename extensions. These rules are defense in depth against a future image or mount mistake; SQLite and reconstructed payload segments remain analyzer-only files and are never web resources.
 
-nginx uses 32 KiB large request-line/header buffers so URL-encoded Unicode
-payload-filter lists fit the supported search limits. The JSON body limit remains
-4 KiB. See [session filtering](session-filtering-v2.md) for the authenticated
-limits endpoint and list validation.
+The JSON body limit is 4 KiB. Search-list request-line buffers and validation
+are described in [session filtering](session-filtering-v2.md).
 
 No forwarded/client-IP header grants access, and nginx Real-IP rewriting is not enabled. Do not add Docker gateway CIDRs to make a NAT-collapsed deployment work. Docker Desktop/VM forwarding and additional reverse proxies can hide browser IPs: verify the actual ingress addresses on the target Linux host. If another TLS proxy is added, it must preserve the source address or become a separately reviewed ingress boundary; do not simply trust its forwarded headers.
 
@@ -57,7 +55,7 @@ Successful login explicitly cycles the session ID and revokes the previous ID. L
 
 The frontend checks `/api/auth/me` before mounting any traffic views. Loading, sign-in, authenticated and connection-error states are separate. A protected JSON or raw-payload 401 unmounts traffic views, stops polling and shows sign-in. No token goes into browser storage. API requests use same-origin cookies. Vite binds loopback and proxies `/api` to `127.0.0.1:3000`; it is not a team-facing deployment server.
 
-Permissive CORS is removed. Mutations use POST/PUT/DELETE. When present, `Origin` must match the request authority, and Fetch Metadata rejects cross-site/same-site mutations from other origins. Strict cookies and JSON login prevent ambient cross-site login; non-browser clients without these headers remain supported. API responses are `no-store`. Do not log credentials, hashes, cookies, session IDs or complete authentication headers.
+No permissive CORS is enabled. Mutations use POST/PUT/DELETE. When present, `Origin` must match the request authority, and Fetch Metadata rejects cross-site/same-site mutations from other origins. Strict cookies and JSON login prevent ambient cross-site login; non-browser clients without these headers remain supported. API responses are `no-store`. Do not log credentials, hashes, cookies, session IDs or complete authentication headers.
 
 HTTP does not encrypt passwords, session cookies or captured payloads. Use the current HTTP mode only on an isolated trusted network; for untrusted transport, configure HTTPS and `AUTH_COOKIE_SECURE=true`. The subnet allowlist does not replace encryption. Local processes are inside the transport trust boundary but still need credentials.
 
