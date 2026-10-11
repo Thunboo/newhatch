@@ -4,7 +4,7 @@ const root = path.resolve(__dirname, "../..");
 const node = process.env.NEWHATCH_TEST_NODE;
 module.exports = {
   testDir: "..",
-  testMatch: ["**/session-chains.spec.cjs", "**/session-feed.spec.cjs", "**/frontend.spec.cjs", "**/session_chains/replay.spec.cjs"],
+  testMatch: ["**/session-chains.spec.cjs", "**/session-feed.spec.cjs", "**/session-filtering.spec.cjs", "**/frontend.spec.cjs", "**/session_chains/replay.spec.cjs"],
   workers: 1,
   timeout: 30000,
   reporter: "list",

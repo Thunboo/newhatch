@@ -23,6 +23,11 @@ preservation, exact one-second boundaries, sliding adjacency, all key components
 equal-time ordering, filtered full context, list/member pagination, late merging,
 retention, continuation after 2,000 payload candidates and SQL interruption.
 Authentication integration tests cover both new routes and invalid cursors/filters.
+Payload filtering checks cover shared limits, 128/129 Unicode code points,
+duplicate terms, literal case-sensitive AND across both directions, rejection of
+cross-direction boundary matches and terms split across chain members. The API
+fixture searches beyond 2,000 candidates with a continuation cursor and verifies
+full chain context.
 
 ## Browser Checks Without Docker
 
@@ -43,8 +48,8 @@ NEWHATCH_TEST_RESULTS="$CHAIN_TEST_TOOLS/results" NEWHATCH_TEST_PYTHON="$CHAIN_T
 ```
 
 The configuration starts and stops a temporary Vite server on port 4173 and runs
-the existing auth/localization/feed regressions plus eight chain UI scenarios
-and 24 framing/Python replay scenarios.
+the existing auth/localization/feed regressions, eight chain UI scenarios,
+11 session-filtering scenarios and 24 framing/Python replay scenarios.
 The command sets a temporary results directory for all screenshots, including
 the shared auth/feed tests whose standalone fallback is `/results`. Overrides:
 `NEWHATCH_TEST_RESULTS`, `NEWHATCH_TEST_NODE`, `NEWHATCH_TEST_CHROMIUM`,
@@ -55,6 +60,18 @@ order and timestamps, C2S-only per-window cURL/Python actions, clipboard/Hex beh
 progressive metadata/payload loading, fixed window heights, independent inner
 and outer scroll with no background movement, mobile layout, Escape and removal
 of stale rows after a late bridge merges chains.
+
+`test/auth/session-filtering.spec.cjs` exercises both list modes: draft input,
+Enter/Add, duplicates, pending chip removal, Refresh, blank submissions including
+an in-flight request, Source/Protocol/Flags-only application, polling eligibility,
+failed application, stale first-page/history replies, backend-driven count limits
+and Unicode length. A raised advertised limit permits eleven chips without UI
+changes; Russian mobile layout and pending copy are checked too. Delayed
+responses and DOM mutation tracking verify that Enter/Add never briefly renders
+the Refresh notice; current failures restore it and obsolete failures do not.
+
+On 2026-10-12, all 11 filtering browser scenarios, TypeScript checking and the
+Vite production build passed for the notice lifecycle fix.
 
 The chain-card scenario also verifies that the small scroll hint appears below
 Text/Hex in chain detail and is absent in ordinary session detail.
@@ -118,6 +135,13 @@ call was updated to use the effective Host. All runs used the explicit temporary
 results path above. No Docker was run and no production data was used.
 
 ## User-Run Docker Checks
+
+On 2026-10-11, session filtering v2 passed 49 Rust tests, strict workspace
+clippy/fmt, TypeScript/Vite build, eight Python ingress/config checks and all 45
+unique local Chromium/replay scenarios. The final nine filtering cases were
+rerun after pending-notice fixes, including return to the previous terms after
+failed loading. The Russian mobile screenshot was inspected. No Docker or
+production traffic was used.
 
 Agents must not invoke Docker or OrbStack. If verification is performed through
 the existing isolated images, the user can run these exact commands:

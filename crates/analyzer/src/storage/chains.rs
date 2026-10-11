@@ -14,7 +14,7 @@ use super::{
     catalog::{blob_to_ip, ip_to_blob, map_session_summary, to_sql_error},
     read_payload, Catalog, SessionFilter,
 };
-use crate::domain::SessionSummary;
+use crate::{domain::SessionSummary, payload_search::PayloadSearch};
 
 const WINDOW_MICROS: i64 = 1_000_000;
 const MAX_PAYLOAD_CANDIDATES: usize = 2_000;
@@ -132,7 +132,7 @@ impl ChainReader {
         &self,
         filter: &SessionFilter,
         cursor: Option<ChainCursor>,
-        needle: Option<&[u8]>,
+        search: &PayloadSearch,
         data_dir: &Path,
     ) -> Result<ChainPage> {
         let mut cursor = cursor.unwrap_or(ChainCursor {
@@ -144,7 +144,7 @@ impl ChainReader {
             bail!("invalid chain snapshot");
         }
         let limit = filter.limit.clamp(1, 200);
-        if needle.is_none() {
+        if search.is_empty() {
             let mut items = self.summaries(filter, &cursor, limit + 1)?;
             let has_more = items.len() > limit;
             items.truncate(limit);
@@ -165,7 +165,6 @@ impl ChainReader {
             });
         }
 
-        let needle = needle.expect("checked above");
         let mut items = Vec::with_capacity(limit);
         let mut scanned = 0;
         let mut active_chain: Option<ChainSummary> = None;
@@ -248,7 +247,7 @@ impl ChainReader {
                 });
                 if let Some(stored) = self.stored_session(session.id)? {
                     let payload = read_payload(data_dir.to_path_buf(), &stored)?;
-                    if contains(&payload.c2s, needle) || contains(&payload.s2c, needle) {
+                    if search.matches(&payload.c2s, &payload.s2c) {
                         found = true;
                         break;
                     }
@@ -533,10 +532,6 @@ pub fn is_interrupted(error: &anyhow::Error) -> bool {
         Some(rusqlite::Error::SqliteFailure(code, _)) if code.code == rusqlite::ErrorCode::OperationInterrupted))
 }
 
-fn contains(bytes: &[u8], needle: &[u8]) -> bool {
-    needle.is_empty() || bytes.windows(needle.len()).any(|window| window == needle)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -602,7 +597,12 @@ mod tests {
         }
         fn list(&self, filter: &SessionFilter) -> ChainPage {
             self.reader()
-                .list(filter, None, None, self.directory.path())
+                .list(
+                    filter,
+                    None,
+                    &PayloadSearch::default(),
+                    self.directory.path(),
+                )
                 .unwrap()
         }
     }
@@ -672,13 +672,23 @@ mod tests {
         assert_eq!(ids, vec![1, 2, 3]);
         let payload = f
             .reader()
-            .list(&filter, None, Some(b"FLAG{test}"), f.directory.path())
+            .list(
+                &filter,
+                None,
+                &PayloadSearch::new(vec!["FLAG{test}".into(), "/3 HTTP".into()]).unwrap(),
+                f.directory.path(),
+            )
             .unwrap();
         assert_eq!(payload.items[0].session_count, 3);
         assert_eq!(payload.items[0].id, 1);
         let no_match = f
             .reader()
-            .list(&filter, None, Some(b"/1 HTTP"), f.directory.path())
+            .list(
+                &filter,
+                None,
+                &PayloadSearch::new(vec!["FLAG{test}".into(), "/1 HTTP".into()]).unwrap(),
+                f.directory.path(),
+            )
             .unwrap();
         assert!(
             no_match.items.is_empty(),
@@ -701,7 +711,12 @@ mod tests {
         f.add(3, 1_000_000, Some("one"), "10.0.0.2", 1, false);
         let older = f
             .reader()
-            .list(&filter, Some(cursor), None, f.directory.path())
+            .list(
+                &filter,
+                Some(cursor),
+                &PayloadSearch::default(),
+                f.directory.path(),
+            )
             .unwrap();
         assert_eq!(older.items[0].id, 2);
         assert_eq!(older.items[0].session_count, 1);
@@ -739,7 +754,12 @@ mod tests {
         };
         let first = f
             .reader()
-            .list(&filter, None, Some(b"GET /2001 HTTP"), f.directory.path())
+            .list(
+                &filter,
+                None,
+                &PayloadSearch::new(vec!["GET /2001 HTTP".into(), "Host: test".into()]).unwrap(),
+                f.directory.path(),
+            )
             .unwrap();
         assert!(first.items.is_empty());
         let cursor = decode_cursor::<ChainCursor>(first.next_cursor.as_deref().unwrap()).unwrap();
@@ -752,7 +772,7 @@ mod tests {
             .list(
                 &filter,
                 Some(cursor),
-                Some(b"GET /2001 HTTP"),
+                &PayloadSearch::new(vec!["GET /2001 HTTP".into(), "Host: test".into()]).unwrap(),
                 f.directory.path(),
             )
             .unwrap();
@@ -778,7 +798,12 @@ mod tests {
         let cursor = decode_cursor(first.next_cursor.as_deref().unwrap()).unwrap();
         let second = f
             .reader()
-            .list(&filter, Some(cursor), None, f.directory.path())
+            .list(
+                &filter,
+                Some(cursor),
+                &PayloadSearch::default(),
+                f.directory.path(),
+            )
             .unwrap();
         assert_eq!(second.items[0].id, 1);
         assert!(second.next_cursor.is_none());

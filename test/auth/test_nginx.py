@@ -1,8 +1,10 @@
 import importlib.util
 import ipaddress
+import json
 from pathlib import Path
 import re
 import unittest
+from urllib.parse import urlencode
 
 ROOT = Path(__file__).resolve().parents[2]
 spec = importlib.util.spec_from_file_location("configure_nginx", ROOT / "docker/configure-nginx.py")
@@ -48,6 +50,17 @@ class IngressConfigTests(unittest.TestCase):
         self.assertNotIn("set_real_ip_from", rendered)
         self.assertNotIn("real_ip_header", rendered)
         self.assertNotIn("@", rendered)
+
+    def test_full_unicode_filter_list_fits_one_request_line_buffer(self):
+        search = (ROOT / "crates/analyzer/src/payload_search.rs").read_text()
+        terms = int(re.search(r"MAX_PAYLOAD_TERMS: usize = (\d+)", search)[1])
+        chars = int(re.search(r"MAX_PAYLOAD_TERM_CHARS: usize = (\d+)", search)[1])
+        payload = json.dumps(["🦀" * chars] * terms, ensure_ascii=False, separators=(",", ":"))
+        query = urlencode({"payload": payload, "chain_cursor": "x" * 512, "limit": 100})
+        request = f"GET /api/chains?{query} HTTP/1.1\r\n".encode()
+        size = int(re.search(r"large_client_header_buffers \d+ (\d+)k;", self.rules(""))[1]) * 1024
+        self.assertGreater(len(request), 8192)
+        self.assertLess(len(request), size)
 
     def test_sensitive_artifact_paths_are_explicitly_denied(self):
         rendered = self.rules("")

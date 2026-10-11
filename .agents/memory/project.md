@@ -9,6 +9,8 @@
 
 ## Canonical Files
 
+- `docs/session-filtering-v2.md`: implemented Issues #25/#22 chip/search/API contract.
+
 - `PROJECT.md`: product and implementation overview.
 - `README.md`: operator quick start and deployment guide.
 - `docs/agent-decisions.md`: fixed architecture decisions.
@@ -51,6 +53,8 @@
 
 ## Implemented UI Behavior
 
+- Issues #25/#22: literal AND `payload` list with duplicate chips, 10 terms/128 Unicode characters and backend-supplied limits. Enter/Add, Refresh and metadata changes apply edited chips; removal waits, unchanged blank submits send no requests, polling retains the applied snapshot. Applying edits immediately hides the Refresh notice; current failure restores it, success acknowledges it and stale failures are ignored. Enter/Add never flashes it during loading. Chains require all terms in one member. Contract: `docs/session-filtering-v2.md`.
+
 - Sessions, Sources and Collectors views are operational.
 - Optional session chains use key `collector_id + client_ip + source_id` and adjacent start gaps <= 1 second. The off-by-default checkbox groups complete session pairs; filtered cards retain full context and order C2S before its S2C by session start/ID.
 - Chain cards scroll between fixed-size, independently scrollable payload windows. C2S alone exposes per-window cURL/Python export. Payloads load near the viewport and release offscreen; late bridging sessions replace obsolete chain rows on refresh.
@@ -82,6 +86,9 @@
 - Analyzer persists collector identity and earliest directional non-empty payload capture times. Nullable startup migration preserves old segments; unknown collectors stay singleton chains. On-demand SQL grouping has two concurrent readers, a 2-second/50-million-step SQL budget, capped pages and resumable 2,000-candidate payload search. Cursors pin an insertion watermark; retention can still remove members.
 
 ## Verification
+
+- 2026-10-12 notice lifecycle fix: TypeScript/Vite build and all 11 filtering browser scenarios passed. Held responses plus DOM mutation tracking catch transient Enter/Add notices in sessions and chains; current failure/retry and stale failure behavior also pass.
+- Issues #25/#22 passed 49 Rust tests, strict clippy/fmt, TypeScript/Vite build, 8 Python ingress/config checks and 45 unique local Chromium/replay cases on 2026-10-11; the final nine filtering cases were rerun after notice fixes. Coverage includes Unicode/count limits, stored AND search with continuation, chain context, pending/failed application, stale first-page/history replies and Russian mobile layout. No Docker or production traffic used.
 
 - Issue #20's clarified Host behavior passed TypeScript lint, Vite production build and all 36 unique local browser/replay checks on 2026-10-10: 35 in the full run plus the chain clipboard test rerun after updating its seeding expectation. Real IPv4/IPv6 and locally resolved FQDN requests verify adaptive existing Host with preserved ports, invalid argv, fresh/deleted cookies and flushed flags. Different captured hosts converge under argv across ports; mixed/absent Host also works. Temporary NEWHATCH_TEST_RESULTS was set; no Docker was run.
 - Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.

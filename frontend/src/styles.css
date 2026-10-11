@@ -51,6 +51,13 @@ button:disabled { cursor: default; opacity: .5; }
 .search-box:focus-within { border-color: #7a838d; box-shadow: 0 0 0 2px rgba(60,67,75,.08); }
 .search-box input { min-width: 0; flex: 1; border: 0; outline: 0; color: #202329; background: transparent; }
 .search-box button { width: 25px; height: 25px; display: grid; place-items: center; border: 0; background: transparent; color: #8b929a; }
+.search-box button.add-filter { width: auto; flex-shrink: 0; display: flex; gap: 4px; color: #30343a; font-size: 12px; }
+.payload-filters { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 10px; }
+.payload-filter { display: inline-flex; align-items: center; gap: 6px; max-width: 100%; padding: 4px 6px 4px 9px; border: 1px solid #d8dce0; border-radius: 5px; background: #fff; font-size: 12px; }
+.payload-filter > span { min-width: 0; overflow-wrap: anywhere; white-space: pre-wrap; }
+.payload-filter button { flex-shrink: 0; display: grid; place-items: center; border: 0; background: transparent; padding: 2px; color: #707780; }
+.filter-notice { padding: 2px 5px; color: #30343a; background: #f09892; border: 1px solid #ccd1d6; border-bottom-width: 2px; border-radius: 4px; font-size: 12px; }
+.filter-error { margin-top: 8px; color: #a02e2e; font-size: 12px; }
 .filter-bar select { height: 38px; padding: 0 30px 0 10px; color: #30343a; background: #fff; border: 1px solid #d8dce0; border-radius: 5px; }
 .flag-toggle { height: 38px; padding: 0 12px; display: flex; align-items: center; gap: 7px; white-space: nowrap; color: #584b20; background: #fff9df; border: 1px solid #e6d78f; border-radius: 5px; font-size: 13px; font-weight: 600; }
 .flag-toggle input { accent-color: #ba8c0e; }

@@ -20,6 +20,7 @@ use crate::{
     collector::{CollectorRegistry, CollectorStatus},
     config::AnalyzerMode,
     domain::{SessionProtocol, SessionSummary, Source, SourceInput},
+    payload_search::{self, PayloadSearch, PayloadSearchLimits},
     storage::{parse_optional_ip, read_payload, Catalog, SessionFilter},
 };
 
@@ -37,6 +38,7 @@ pub fn router(state: ApiState, config: AuthConfig) -> Router {
     let app = Router::new()
         .route("/api/sources", get(list_sources).post(create_source))
         .route("/api/collectors", get(list_collectors))
+        .route("/api/payload-search/limits", get(payload_search_limits))
         .route(
             "/api/sources/{id}",
             put(update_source).delete(delete_source),
@@ -135,8 +137,23 @@ struct SessionQuery {
     started_after: Option<i64>,
     cursor: Option<i64>,
     limit: Option<usize>,
-    payload: Option<String>,
+    #[serde(default, deserialize_with = "deserialize_payload_terms")]
+    payload: Vec<String>,
     chain_cursor: Option<String>,
+}
+
+// A JSON list in one URL-encoded query value preserves commas, quotes and
+// duplicate terms without relying on repeated-key decoding in serde_urlencoded.
+fn deserialize_payload_terms<'de, D>(deserializer: D) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let value = String::deserialize(deserializer)?;
+    serde_json::from_str(&value).map_err(serde::de::Error::custom)
+}
+
+async fn payload_search_limits() -> Json<PayloadSearchLimits> {
+    Json(payload_search::limits())
 }
 
 #[derive(Serialize)]
@@ -183,15 +200,12 @@ async fn list_chains(
     if cursor.as_ref().is_some_and(|cursor| cursor.snapshot < 0) {
         return Err(ApiError::bad_request("invalid chain snapshot"));
     }
-    let needle = query
-        .payload
-        .filter(|value| !value.is_empty())
-        .map(String::into_bytes);
+    let search = PayloadSearch::new(query.payload).map_err(ApiError::bad_request)?;
     let catalog = state.catalog.clone();
     let data_dir = state.data_dir.clone();
     Ok(Json(
         chain_blocking(move || {
-            ChainReader::open(&catalog)?.list(&filter, cursor, needle.as_deref(), &data_dir)
+            ChainReader::open(&catalog)?.list(&filter, cursor, &search, &data_dir)
         })
         .await?,
     ))
@@ -241,8 +255,9 @@ async fn list_sessions(
 ) -> Result<Json<SessionPage>, ApiError> {
     let base_filter = query.filter()?;
 
-    let page = if let Some(payload) = query.payload.filter(|value| !value.is_empty()) {
-        search_payload(state, base_filter, payload.into_bytes()).await?
+    let search = PayloadSearch::new(query.payload).map_err(ApiError::bad_request)?;
+    let page = if !search.is_empty() {
+        search_payload(state, base_filter, search).await?
     } else {
         let catalog = state.catalog.clone();
         let requested = base_filter.limit;
@@ -261,7 +276,7 @@ async fn list_sessions(
 async fn search_payload(
     state: Arc<ApiState>,
     filter: SessionFilter,
-    needle: Vec<u8>,
+    search: PayloadSearch,
 ) -> Result<SessionPage, ApiError> {
     let desired = filter.limit;
     let catalog = state.catalog.clone();
@@ -288,7 +303,7 @@ async fn search_payload(
                     continue;
                 };
                 let payload = read_payload(data_dir.clone(), &stored)?;
-                if contains_bytes(&payload.c2s, &needle) || contains_bytes(&payload.s2c, &needle) {
+                if search.matches(&payload.c2s, &payload.s2c) {
                     matches.push(summary);
                     if matches.len() == desired {
                         break;
@@ -391,13 +406,6 @@ async fn get_flag_matches(
     })
     .await?;
     Ok(Json(matches))
-}
-
-fn contains_bytes(haystack: &[u8], needle: &[u8]) -> bool {
-    needle.is_empty()
-        || haystack
-            .windows(needle.len())
-            .any(|window| window == needle)
 }
 
 fn notify_source_change(sender: &watch::Sender<u64>) {

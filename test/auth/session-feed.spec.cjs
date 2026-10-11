@@ -41,6 +41,7 @@ test("live feed merges refreshes, pauses away from the top and loads history aut
     });
 
     if (url.pathname === "/api/auth/me") return send({ authenticated: true, username: "team" });
+    if (url.pathname === "/api/payload-search/limits") return send({ max_terms: 10, max_term_chars: 128 });
     if (url.pathname === "/api/sources") return send([]);
     if (url.pathname === "/api/collectors") return send({
       mode: "remote",

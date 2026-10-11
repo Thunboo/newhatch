@@ -74,9 +74,11 @@ export type SessionFilters = {
   sourceId?: number;
   containsFlag?: boolean;
   protocol?: Protocol;
-  payload?: string;
+  payload?: string[];
   cursor?: number;
 };
+
+export type PayloadSearchLimits = { max_terms: number; max_term_chars: number };
 
 export type Chain = {
   id: number;

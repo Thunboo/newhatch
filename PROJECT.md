@@ -244,6 +244,17 @@ headers, and each actual response is printed with flush enabled.
 
 While the Sessions view is at the live edge, the frontend checks for new sessions every five seconds. Polling pauses while older traffic is being inspected and resumes near the top; see [`LIVE_REFRESH_INTERVAL_MS` and the feed polling effect](frontend/src/App.tsx).
 
+[Session filtering v2](docs/session-filtering-v2.md), implemented on 2026-10-11
+for Issues #25/#22, provides literal AND search chips with separate
+editable/applied sets. Enter/Add and Refresh apply the entire edited set;
+chip removal alone waits for application and polling retains the applied set.
+The Refresh notice hides immediately when applying edits and returns if that
+application fails; Enter/Add never flashes it during loading.
+The `payload` search parameter is a JSON-encoded list; duplicates are allowed. Limits are
+10 terms and 128 Unicode characters per term, with the count limit controlled by
+one backend value and supplied to frontend. Blank Enter/Add only applies pending
+changes; Source, Protocol and Flags-only changes also apply pending removals.
+
 ## Security compliance
 
 The analyzer hashes the password with Argon2id during startup. See [authentication details](docs/authentication.md).

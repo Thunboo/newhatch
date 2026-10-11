@@ -10,6 +10,7 @@ test.beforeEach(async ({ page }) => {
   await page.route("**/api/**", (route) => {
     const pathname = new URL(route.request().url()).pathname;
     const value = pathname === "/api/auth/me" ? { authenticated: true, username: "team" }
+      : pathname === "/api/payload-search/limits" ? { max_terms: 10, max_term_chars: 128 }
       : pathname === "/api/collectors" ? { mode: "local", collectors: [] }
       : pathname === "/api/sources" ? [] : { items: [], next_cursor: null };
     return route.fulfill({ contentType: "application/json", body: JSON.stringify(value) });

@@ -40,6 +40,11 @@ Production Compose uses Linux host networking for both nginx and analyzer. nginx
 
 The frontend container has no `/data` volume. nginx explicitly returns 404 for dotfiles, `data`/`segments` paths and SQLite/database/segment filename extensions. These rules are defense in depth against a future image or mount mistake; SQLite and reconstructed payload segments remain analyzer-only files and are never web resources.
 
+nginx uses 32 KiB large request-line/header buffers so URL-encoded Unicode
+payload-filter lists fit the supported search limits. The JSON body limit remains
+4 KiB. See [session filtering](session-filtering-v2.md) for the authenticated
+limits endpoint and list validation.
+
 No forwarded/client-IP header grants access, and nginx Real-IP rewriting is not enabled. Do not add Docker gateway CIDRs to make a NAT-collapsed deployment work. Docker Desktop/VM forwarding and additional reverse proxies can hide browser IPs: verify the actual ingress addresses on the target Linux host. If another TLS proxy is added, it must preserve the source address or become a separately reviewed ingress boundary; do not simply trust its forwarded headers.
 
 `GET /api/health` returns only `{"status":"ok"}` publicly through nginx. Local `POST /api/auth/login` accepts JSON username/password and returns 200 plus a cookie on success, generic 401 on incorrect credentials. `GET /api/auth/me` returns authenticated identity; `POST /api/auth/logout` invalidates it. All data routes and unknown/future API paths require a session. Non-local analyzer peers receive 403 before credentials are considered. Overlapping password checks return 429 instead of queuing expensive Argon2 work.

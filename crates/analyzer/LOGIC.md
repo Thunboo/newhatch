@@ -111,6 +111,12 @@ transaction, a 2 MiB cache, file-backed sorting and SQL progress interruption.
 
 `auth.rs` implements startup Argon2id credential hashing, bounded in-memory server-side sessions and local-peer/origin checks. `api.rs` provides minimal public health, login/logout/current-user endpoints, Source CRUD, cursor-based session listing, metadata filters, bounded payload substring search, directional payload retrieval, flag-match ranges and collector status. Blocking SQLite and file operations run through `spawn_blocking`.
 
+`payload_search.rs` validates a list of literal AND terms, owns the 10-term and
+128-code-point limits, and matches each term in either stored direction of one
+session. Sessions and chains reuse it after one payload read per candidate.
+`api.rs` accepts the list as a JSON-encoded `payload` query value and exposes the
+same limits through authenticated `GET /api/payload-search/limits`.
+
 Authenticated chain list/member routes use at most two concurrent blocking reads;
 excess or interrupted requests return 503. See `docs/session-chains.md` for limits.
 

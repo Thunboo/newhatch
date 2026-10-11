@@ -8,6 +8,7 @@ test("auth gate, login errors, logout, expiration and stopped polling", async ({
     const path = new URL(route.request().url()).pathname;
     const send = (status, body) => route.fulfill({ status, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/auth/me") return send(authenticated ? 200 : 401, { authenticated, username: "team" });
+    if (path === "/api/payload-search/limits") return send(200, { max_terms: 10, max_term_chars: 128 });
     if (path === "/api/auth/login") {
       authenticated = route.request().postDataJSON().password === "test-only-password";
       return send(authenticated ? 200 : 401, { authenticated, username: "team" });
@@ -102,6 +103,7 @@ test("language defaults from the browser and an explicit choice persists", async
     const path = new URL(route.request().url()).pathname;
     const send = (body) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(body) });
     if (path === "/api/auth/me") return send({ authenticated: true, username: "team" });
+    if (path === "/api/payload-search/limits") return send({ max_terms: 10, max_term_chars: 128 });
     if (path === "/api/sources") return send([]);
     if (path === "/api/collectors") return send({ mode: "local", collectors: [] });
     if (path === "/api/sessions") return send({ items: [], next_cursor: null });

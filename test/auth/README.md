@@ -18,6 +18,15 @@ filter/cursor regression coverage. The browser image also picks up chain-card
 tests from `session-chains.spec.cjs`; host-only execution is documented in
 [session-chain verification](../session_chains/README.md).
 
+Session filtering coverage verifies the authenticated limits endpoint and both
+feeds' payload-list validation, stored AND matches, bounded continuation and
+full chain context. `session-filtering.spec.cjs` checks chips, pending/failed
+application, stale replies, empty-submit suppression and backend-provided limits
+in both modes. Delayed responses and DOM mutation tracking catch even transient
+Refresh notices during Enter/Add; failure, retry and stale failure are covered.
+nginx generation checks also confirm that a full-length Unicode
+filter list fits one configured request-line buffer.
+
 ## Real Network Test
 
 ```bash

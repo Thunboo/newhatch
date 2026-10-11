@@ -305,3 +305,29 @@ timeouts, disabled redirects, cancellation and complete-export errors. Cookie
 scope follows effective Host or the effective destination without Host; use a
 runtime cookie-setup condition when host reuse depends on argv. This is a
 frontend-only change with no session/storage/collector architecture change.
+
+## Session Filtering v2 (2026-10-11, Issues #25 and #22)
+
+The user approved and authorized [session filtering v2](session-filtering-v2.md),
+now implemented. Removable chips below the input are literal payload substrings,
+combined with AND within one reconstructed bidirectional session. A chain must
+have one member satisfying every term and metadata filter; its card retains full
+context. Keep editable and applied chip lists separate. Enter/Add adds a term and
+immediately applies the whole edited set, including pending removals; Refresh
+also applies the whole set. Removing a chip alone shows a pending-change notice.
+Starting application of edited chips hides it immediately, with no Enter/Add
+flash during loading; a current application failure restores it. Successful
+loading clears the failure state; obsolete failures cannot restore the notice
+(UI lifecycle clarified by the user on 2026-10-12).
+Scheduled polling uses the applied snapshot and never commits edits. Source,
+Protocol and Flags-only changes also apply pending chip removals. Blank Enter/Add
+adds nothing and applies only pending changes; unchanged or duplicate in-flight
+blank submissions must not cause additional API requests. The `payload` search
+parameter is a JSON-encoded list; duplicates remain separate chips. Allow 10 terms and
+128 Unicode characters per term. The count limit has one backend source of truth
+shared by both search paths and exposed to frontend, so increasing one backend
+value raises the limit without a second UI edit. Preserve bounded analyzer-side
+payload search and existing capture/storage/chain rules. The previously listed
+filtering API/limit/UI edge questions were resolved by the user on 2026-10-11.
+`payload_search.rs` owns both limits and matching; authenticated
+`GET /api/payload-search/limits` supplies the values to the UI.

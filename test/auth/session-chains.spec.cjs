@@ -28,6 +28,7 @@ async function routes(page) {
     const url = new URL(route.request().url());
     const send = (value) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
     if (url.pathname === "/api/auth/me") return send({ authenticated: true, username: "team" });
+    if (url.pathname === "/api/payload-search/limits") return send({ max_terms: 10, max_term_chars: 128 });
     if (url.pathname === "/api/sources") return send([{ id: 1, name: "web", port: 8080, enabled: true }]);
     if (url.pathname === "/api/collectors") return send({ mode: "local", collectors: [] });
     if (url.pathname === "/api/sessions") return send({ items: [session(41)], next_cursor: null });

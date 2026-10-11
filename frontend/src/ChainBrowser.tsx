@@ -11,9 +11,15 @@ import { replayProblemKeys } from "./requestExport";
 import type { PayloadMode } from "./Stream";
 import { TrafficFilters } from "./TrafficFilters";
 import type { TrafficFilterProps } from "./TrafficFilters";
-import type { Chain, FlagMatches, Session } from "./types";
+import type { Chain, FlagMatches, Session, SessionFilters } from "./types";
 
-export function ChainBrowser(props: TrafficFilterProps & { onUngroup: () => void }) {
+export function ChainBrowser(props: TrafficFilterProps & {
+  onUngroup: () => void;
+  applyEdited: () => boolean;
+  onLoaded: (snapshot: SessionFilters) => void;
+  onLoadFailed: (snapshot: SessionFilters) => void;
+  isCurrent: (snapshot: SessionFilters) => boolean;
+}) {
   const { locale, t } = useI18n();
   const [chains, setChains] = useState<Chain[]>([]);
   const [selected, setSelected] = useState<Chain | null>(null);
@@ -26,6 +32,7 @@ export function ChainBrowser(props: TrafficFilterProps & { onUngroup: () => void
   const requestRef = useRef<AbortController | null>(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const anchor = useRef<{ id: number; top: number } | null>(null);
+  const { onLoaded, onLoadFailed, isCurrent } = props;
 
   useLayoutEffect(() => {
     if (anchor.current) {
@@ -54,7 +61,7 @@ export function ChainBrowser(props: TrafficFilterProps & { onUngroup: () => void
         if (page.next_cursor === previous) throw new Error(t("history.noProgress"));
         incoming = [...incoming, ...page.items];
       }
-      if (currentGeneration !== generation.current || controller.signal.aborted) return;
+      if (currentGeneration !== generation.current || controller.signal.aborted || !isCurrent(props.filters)) return;
       if (!refresh && page.next_cursor === cursorRef.current) throw new Error(t("history.noProgress"));
       if (refresh && window.scrollY > 80) {
         const row = Array.from(document.querySelectorAll<HTMLElement>("[data-chain-id]")).find((row) => row.getBoundingClientRect().bottom > 0);
@@ -67,12 +74,16 @@ export function ChainBrowser(props: TrafficFilterProps & { onUngroup: () => void
       cursorRef.current = page.next_cursor;
       setChains(rows);
       setCursor(page.next_cursor);
+      onLoaded(props.filters);
     } catch (caught) {
-      if (!controller.signal.aborted && currentGeneration === generation.current) setError(messageOf(caught, t("error.unexpected")));
+      if (!controller.signal.aborted && currentGeneration === generation.current && isCurrent(props.filters)) {
+        onLoadFailed(props.filters);
+        setError(messageOf(caught, t("error.unexpected")));
+      }
     } finally {
       if (requestRef.current === controller) { requestRef.current = null; setLoading(false); }
     }
-  }, [props.filters, t]);
+  }, [props.filters, isCurrent, onLoaded, onLoadFailed, t]);
 
   useEffect(() => {
     generation.current++;
@@ -100,7 +111,7 @@ export function ChainBrowser(props: TrafficFilterProps & { onUngroup: () => void
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (!selected && !props.filters.payload && window.scrollY <= 80) void load(true);
+      if (!selected && !props.filters.payload?.length && window.scrollY <= 80) void load(true);
     }, 5_000);
     return () => window.clearInterval(timer);
   }, [load, selected, props.filters.payload]);
@@ -108,7 +119,7 @@ export function ChainBrowser(props: TrafficFilterProps & { onUngroup: () => void
   return <>
     <header className="page-header">
       <div><h1>{t("nav.sessions")}</h1><p>{t("chains.loaded", { count: chains.length })}</p></div>
-      <button className="icon-button" title={t("sessions.refresh")} aria-label={t("sessions.refresh")} disabled={loading} onClick={() => void load(true)}><RefreshCw size={17} className={loading ? "spin" : ""} /></button>
+      <button className="icon-button" title={t("sessions.refresh")} aria-label={t("sessions.refresh")} disabled={loading} onClick={() => { if (!props.applyEdited()) void load(true); }}><RefreshCw size={17} className={loading ? "spin" : ""} /></button>
     </header>
     <TrafficFilters {...props} grouped onToggleGroup={props.onUngroup} />
     {error && <div className="error-strip"><AlertTriangle size={16} />{error}<button onClick={() => void load(cursor ? false : true)}>{t("common.retry")}</button></div>}

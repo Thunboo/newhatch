@@ -103,7 +103,8 @@ The network suite builds an isolated stack and removes its own resources. See `t
 Host-only Rust/frontend/browser checks and user-run Docker commands are in
 `test/session_chains/README.md`. The browser configuration
 `test/session_chains/playwright.config.cjs` starts temporary Vite and includes
-auth/localization/feed regressions plus chain order/export/scroll/late-merge
+auth/localization/feed regressions, session-filtering chip/application/race/limit
+checks and chain order/export/scroll/late-merge
 coverage, plus whole-chain export and generated Python execution against a
 temporary loopback HTTP receiver. The complete suite requires Python 3/requests;
 `NEWHATCH_TEST_PYTHON` can choose a virtual-environment interpreter. Results default to the OS temp directory; `NEWHATCH_TEST_RESULTS`
@@ -112,6 +113,12 @@ auth/feed screenshots also use that temporary directory. No production data or
 `.env` is used. Replay coverage includes Issue #20's optional IP/FQDN/IPv6 argv,
 adaptive existing Host, preserved server ports, cookie scope and flag output through a pipe before exit;
 see `docs/python-replay.md`.
+
+To run only the new filtering browser coverage, append
+`session-filtering.spec.cjs` to the Playwright test command in that runbook.
+The 11 scenarios include transient-notice checks during delayed Enter/Add
+requests in both modes, current failure/retry and stale failures. The implemented
+API and shared backend limits are in `docs/session-filtering-v2.md`.
 
 ## Request Export Tests
 

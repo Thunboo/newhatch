@@ -8,6 +8,7 @@ import type {
   Source,
   SourceInput,
   CollectorsResponse,
+  PayloadSearchLimits,
 } from "./types";
 
 export class ApiError extends Error {
@@ -63,6 +64,8 @@ export const api = {
 
   listCollectors: () => request<CollectorsResponse>("/api/collectors"),
 
+  payloadSearchLimits: () => request<PayloadSearchLimits>("/api/payload-search/limits"),
+
   createSource: (input: SourceInput) =>
     request<Source>("/api/sources", {
       method: "POST",
@@ -85,7 +88,7 @@ export const api = {
     if (filters.sourceId) params.set("source_id", String(filters.sourceId));
     if (filters.containsFlag) params.set("contains_flag", "true");
     if (filters.protocol) params.set("protocol", filters.protocol);
-    if (filters.payload) params.set("payload", filters.payload);
+    if (filters.payload?.length) params.set("payload", JSON.stringify(filters.payload));
     if (filters.cursor) params.set("cursor", String(filters.cursor));
     return request<SessionPage>(`/api/sessions?${params}`);
   },
@@ -95,7 +98,7 @@ export const api = {
     if (filters.sourceId) params.set("source_id", String(filters.sourceId));
     if (filters.containsFlag) params.set("contains_flag", "true");
     if (filters.protocol) params.set("protocol", filters.protocol);
-    if (filters.payload) params.set("payload", filters.payload);
+    if (filters.payload?.length) params.set("payload", JSON.stringify(filters.payload));
     if (cursor) params.set("chain_cursor", cursor);
     return request<ChainPage>(`/api/chains?${params}`, { signal });
   },

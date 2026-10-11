@@ -257,7 +257,7 @@ Required MVP filters:
 - destination port
 - protocol
 - contains flag
-- payload substring/search expression
+- literal payload substrings combined with AND
 
 Payload search flow:
 
@@ -279,6 +279,27 @@ The UI should not request or render unbounded result sets.
 Pagination or cursor-based loading is required.
 
 Current API coverage includes every metadata filter listed above except an upper/end-time bound; it provides `started_after` for the recent-time constraint. The current UI exposes source, protocol, contains-flag and payload filters. Endpoint IP/port and time controls remain API-only. Session API pages are capped at 200 rows, and one payload-search request scans at most 2,000 metadata-prefiltered candidates.
+
+[Session filtering v2](session-filtering-v2.md)
+combines literal payload-search chips with AND. Enter/Add and Refresh apply the
+entire edited list; removing a chip alone shows a pending-change notice, while
+scheduled polling retains the applied snapshot. This covers Issues #25 and #22
+for ordinary sessions and chains.
+
+The `payload` query value is a JSON-encoded list with duplicate chips allowed, at most
+10 terms and 128 Unicode characters per term. The count limit is defined once on
+backend and supplied to frontend. Blank Enter/Add applies only pending changes;
+unchanged blank submissions send no request. Source, Protocol and Flags-only
+changes also apply pending removals.
+
+Every term must occur in the same session's C2S or S2C stream. A matching chain
+needs one member satisfying all terms and metadata filters; opening it preserves
+all members as context. Search stays case-sensitive against stored bytes, before
+UI decoding/formatting. Refresh ignores draft input text. Starting application
+of edited chips immediately hides the pending notice; it does not flash during
+Enter/Add loading. A current application failure restores it, while successful
+loading clears the failure state. Stale responses cannot replace a newer feed.
+`GET /api/payload-search/limits` supplies both limits to the UI.
 
 ## Suricata UX
 

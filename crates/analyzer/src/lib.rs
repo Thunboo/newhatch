@@ -6,5 +6,6 @@ pub mod config;
 pub mod domain;
 pub mod flow;
 pub mod packet;
+pub mod payload_search;
 pub mod protocol;
 pub mod storage;

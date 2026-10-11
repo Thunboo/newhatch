@@ -29,12 +29,13 @@ import { Stream } from "./Stream";
 import type { PayloadMode } from "./Stream";
 import { formatBytes, formatDateTime, formatEndpoint, formatTime, messageOf, protocolLabel } from "./format";
 import { TrafficFilters } from "./TrafficFilters";
+import type { TrafficFilterProps } from "./TrafficFilters";
+import { useTrafficFilters } from "./useTrafficFilters";
 import { ChainBrowser } from "./ChainBrowser";
 import type {
   FlagMatches,
   Protocol,
   Session,
-  SessionFilters,
   Source,
   SourceInput,
   Collector,
@@ -83,8 +84,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [olderCursor, setOlderCursorState] = useState<number | null>(null);
   const [selected, setSelected] = useState<Session | null>(null);
-  const [filters, setFilters] = useState<SessionFilters>({});
-  const [searchValue, setSearchValue] = useState("");
+  const { filters, applyEdited, isCurrent, onLoaded, onLoadFailed, chipProps } = useTrafficFilters();
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -137,12 +137,14 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     setError(null);
     try {
       const page = await api.listSessions(filters);
-      if (generation !== feedGenerationRef.current) return;
+      if (generation !== feedGenerationRef.current || !isCurrent(filters)) return;
       if (!liveEdgeRef.current) pendingAnchorRef.current = captureSessionAnchor();
       setSessions((current) => mergeSessions(current, page.items));
       setOnline(true);
+      onLoaded(filters);
     } catch (caught) {
-      if (generation !== feedGenerationRef.current) return;
+      if (generation !== feedGenerationRef.current || !isCurrent(filters)) return;
+      onLoadFailed(filters);
       setOnline(false);
       setError(messageOf(caught, t("error.unexpected")));
     } finally {
@@ -151,7 +153,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         setRefreshing(false);
       }
     }
-  }, [filters, grouped, t]);
+  }, [filters, grouped, isCurrent, onLoaded, onLoadFailed, t]);
 
   const loadOlderSessions = useCallback(async () => {
     const generation = feedGenerationRef.current;
@@ -162,7 +164,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     setOlderError(null);
     try {
       const page = await api.listSessions({ ...filters, cursor });
-      if (generation !== feedGenerationRef.current || olderCursorRef.current !== cursor) return;
+      if (generation !== feedGenerationRef.current || !isCurrent(filters) || olderCursorRef.current !== cursor) return;
       const loadedIds = new Set(sessionsRef.current.map((session) => session.id));
       const added = page.items.filter((session) => !loadedIds.has(session.id)).length;
       if (page.next_cursor === cursor || (page.items.length > 0 && added === 0)) {
@@ -173,7 +175,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       updateOlderCursor(page.next_cursor);
       setOnline(true);
     } catch (caught) {
-      if (generation !== feedGenerationRef.current) return;
+      if (generation !== feedGenerationRef.current || !isCurrent(filters)) return;
       setOnline(false);
       setOlderError(messageOf(caught, t("error.unexpected")));
     } finally {
@@ -183,7 +185,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         setLoadingOlder(false);
       }
     }
-  }, [filters, t, updateOlderCursor]);
+  }, [filters, isCurrent, t, updateOlderCursor]);
 
   const loadCollectors = useCallback(async () => {
     try {
@@ -222,14 +224,16 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
     window.scrollTo({ top: 0, left: 0 });
 
     void api.listSessions(filters).then((page) => {
-      if (generation !== feedGenerationRef.current) return;
+      if (generation !== feedGenerationRef.current || !isCurrent(filters)) return;
       const unique = mergeSessions([], page.items);
       sessionsRef.current = unique;
       setSessions(unique);
       updateOlderCursor(page.next_cursor);
       setOnline(true);
+      onLoaded(filters);
     }).catch((caught) => {
-      if (generation !== feedGenerationRef.current) return;
+      if (generation !== feedGenerationRef.current || !isCurrent(filters)) return;
+      onLoadFailed(filters);
       setOnline(false);
       setError(messageOf(caught, t("error.unexpected")));
     }).finally(() => {
@@ -238,7 +242,8 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         setInitialLoading(false);
       }
     });
-  }, [filters, grouped, t, updateOlderCursor]);
+    return () => { feedGenerationRef.current++; };
+  }, [filters, grouped, isCurrent, onLoaded, onLoadFailed, t, updateOlderCursor]);
 
   useEffect(() => {
     let frame = 0;
@@ -260,7 +265,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         && view === "sessions"
         && !grouped
         && !selected
-        && !filters.payload
+        && !filters.payload?.length
       ) {
         void refreshSessions();
       }
@@ -280,7 +285,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
 
   useEffect(() => {
     const timer = window.setInterval(() => {
-      if (view === "sessions" && !grouped && !selected && !filters.payload && atLiveEdge) void refreshSessions();
+      if (view === "sessions" && !grouped && !selected && !filters.payload?.length && atLiveEdge) void refreshSessions();
       if (view === "collectors" || analyzerMode === "remote") void loadCollectors();
     }, LIVE_REFRESH_INTERVAL_MS);
     return () => window.clearInterval(timer);
@@ -289,14 +294,6 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   useEffect(() => {
     if (view === "collectors") void loadCollectors();
   }, [loadCollectors, view]);
-
-  function submitSearch(event: FormEvent) {
-    event.preventDefault();
-    setFilters((current) => ({
-      ...current,
-      payload: searchValue.trim() || undefined,
-    }));
-  }
 
   const collectorOnline = collectors.some((collector) => collector.connected);
 
@@ -336,8 +333,8 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
 
       <main className="workspace">
         {view === "sessions" ? grouped ? (
-          <ChainBrowser sources={sources} filters={filters} searchValue={searchValue}
-            onFilters={setFilters} onSearchValue={setSearchValue} onSearch={submitSearch}
+          <ChainBrowser sources={sources} {...chipProps}
+            applyEdited={applyEdited} onLoaded={onLoaded} onLoadFailed={onLoadFailed} isCurrent={isCurrent}
             onUngroup={() => setGrouped(false)} />
         ) : (
           <SessionsView
@@ -345,18 +342,14 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
             sources={sources}
             sessions={sessions}
             selected={selected}
-            filters={filters}
-            searchValue={searchValue}
+            {...chipProps}
             initialLoading={initialLoading}
             refreshing={refreshing}
             loadingOlder={loadingOlder}
             olderError={olderError}
             error={error}
             hasOlder={olderCursor !== null}
-            onFilters={setFilters}
-            onSearchValue={setSearchValue}
-            onSearch={submitSearch}
-            onRefresh={() => void refreshSessions()}
+            onRefresh={() => { if (!applyEdited()) void refreshSessions(); }}
             onLoadOlder={() => void loadOlderSessions()}
             onSelect={setSelected}
           />
@@ -418,22 +411,16 @@ function CollectorMetric({ label, value, warning = false }: { label: string; val
   return <div className={warning ? "collector-metric warning" : "collector-metric"}><small>{label}</small><strong className="mono">{value.toLocaleString(locale)}</strong></div>;
 }
 
-type SessionsViewProps = {
+type SessionsViewProps = TrafficFilterProps & {
   onGroup: () => void;
-  sources: Source[];
   sessions: Session[];
   selected: Session | null;
-  filters: SessionFilters;
-  searchValue: string;
   initialLoading: boolean;
   refreshing: boolean;
   loadingOlder: boolean;
   olderError: string | null;
   error: string | null;
   hasOlder: boolean;
-  onFilters: (updater: (current: SessionFilters) => SessionFilters) => void;
-  onSearchValue: (value: string) => void;
-  onSearch: (event: FormEvent) => void;
   onRefresh: () => void;
   onLoadOlder: () => void;
   onSelect: (session: Session) => void;
@@ -463,9 +450,7 @@ function SessionsView(props: SessionsViewProps) {
         </button>
       </header>
 
-      <TrafficFilters sources={props.sources} filters={props.filters} searchValue={props.searchValue}
-        grouped={false} onToggleGroup={props.onGroup} onFilters={props.onFilters}
-        onSearchValue={props.onSearchValue} onSearch={props.onSearch} />
+      <TrafficFilters {...props} grouped={false} onToggleGroup={props.onGroup} />
 
       {props.error && <div className="error-strip"><AlertTriangle size={16} /> {props.error}</div>}
 

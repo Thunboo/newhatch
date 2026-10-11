@@ -58,6 +58,9 @@ retention can still remove members. No collector aggregation or payload duplicat
 
 ## Current Verification
 
+- 2026-10-12 notice lifecycle fix: TypeScript/Vite build and all 11 filtering browser scenarios passed. Delayed requests plus DOM mutation tracking verify no Enter/Add flash in either mode, current failure/retry and obsolete failures.
+- Issues #25/#22 on main: 49 Rust tests, strict clippy/fmt, TypeScript/Vite build, 8 Python ingress/config checks and all 45 unique local Chromium/replay scenarios passed on 2026-10-11, with the final nine filtering cases rerun after notice fixes. No Docker or production traffic used.
+
 - Issue #20's clarified Host behavior: TypeScript lint, Vite build and all 36 unique local browser/replay checks passed on 2026-10-10 (35 full-run cases plus the chain clipboard rerun after its seeding expectation was updated). IPv4/FQDN/IPv6 argv updates existing Host with captured ports; different Host cookie scopes converge across ports. Mixed/absent Host, invalid input, transport failure and live piped flags pass. Fixture FQDNs resolve locally and NEWHATCH_TEST_RESULTS was set; no Docker was run.
 - Issue #14's namespaced credential regression passes all 7 Python auth/Compose checks and the user-run Docker auth E2E suite on 2026-09-29. The E2E build compiled the analyzer and validated real IPv4/IPv6 login behavior with the new variables.
 - Issue #13: 45 Rust tests, strict clippy/fmt, TypeScript/Vite build and 7 local Chromium browser scenarios passed on 2026-10-08. Covers migration, correlation, pagination/search budgets, late merging and desktop/mobile nested scroll. Live Linux capture is target-host follow-up; agent ran no Docker.
@@ -70,6 +73,22 @@ retention can still remove members. No collector aggregation or payload duplicat
 - Rust auth integration, nginx/Compose unit checks and isolated IPv4/IPv6 Docker auth e2e pass, including sensitive artifact denial and rejected mutation side effects.
 - Previous Playwright run: four scenarios passed, including English/Russian browser defaults and persistence plus current session-feed and detail interactions.
 - Real split deployment over VPN/FQDN works after rebuilding the collector from current sources.
+
+## Session Filtering v2
+
+Issues #25/#22 are implemented; the durable contract is in
+`docs/session-filtering-v2.md`: literal AND payload chips, editable/applied sets,
+Enter/Add and Refresh apply the whole edited list including pending removals,
+X alone shows a notice, and polling never applies edits. Applying edits hides
+the notice immediately without an Enter/Add flash during loading; current
+application failure restores it, success clears the failure state and obsolete
+failures are ignored. Chains require all
+terms in one member. `payload` is a JSON-encoded list, duplicates are allowed, limits are
+10 terms/128 Unicode characters; count limit comes from one backend value exposed
+to frontend. Blank Enter/Add applies only pending changes without duplicate
+in-flight requests; Source/Protocol/Flags-only changes also apply pending removals.
+Limits and matching live in `payload_search.rs`; `/api/payload-search/limits`
+supplies the frontend. The earlier edge questions are resolved.
 
 ## Next Work
 

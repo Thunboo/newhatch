@@ -40,6 +40,7 @@ Canonical details live in `docs/agent-decisions.md`. This file is the compact wo
 
 ## UI Choices
 
+- Implemented Issues #25/#22 contract, authorized 2026-10-11: `docs/session-filtering-v2.md`. `payload` is a JSON-encoded literal substring list combined with AND in one session (one member for a matching chain); duplicate chips are allowed. Limits: 10 terms, 128 Unicode characters per term; one backend count-limit value is shared and exposed to frontend. Enter/Add, Refresh and Source/Protocol/Flags-only changes apply pending edits; X alone shows a notice. Applying edits hides the notice immediately; Enter/Add must not flash it during loading. Current application failure restores it, success clears the failure state and stale failures are ignored (2026-10-12). Blank Enter/Add creates no chip and only applies pending changes, with no duplicate in-flight requests. Polling retains the applied snapshot. Shared limits/matching: `payload_search.rs`; authenticated `/api/payload-search/limits` supplies frontend. Earlier edge questions are resolved.
 - The user-facing name is `Нюхач`; the logo is a bundled frontend asset.
 - Session pagination is cursor-based and merged by unique ID.
 - Five-second polling runs only at the live edge and must not collapse loaded history.

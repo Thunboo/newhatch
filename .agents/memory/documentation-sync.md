@@ -92,6 +92,18 @@ When saving or refreshing context:
 - Verification/runbooks: `test/session_chains/README.md`, `.codex/commands.md`.
 - Task state: `.agents/tasks/backlog.md`, `.agents/tasks/active.md`, `.agents/tasks/done.md`, according to the lifecycle above.
 
+### Session Filtering v2 (Issues #25 and #22)
+
+- Approved behavior, API and verification: `docs/session-filtering-v2.md`.
+- UX, operator and product summaries: `docs/mvp.md`, `README.md`, `PROJECT.md`.
+- Approved decisions and routing: `docs/agent-decisions.md`, `AGENTS.md`.
+- Mirrors: `.agents/memory/project.md`, `.agents/memory/decisions.md`, `.codex/context.md`.
+- Payload list, limits and UI edge decisions were finalized on 2026-10-11 in the contract; their former open-question entries were removed.
+- Backend/chain code map: `crates/analyzer/LOGIC.md`, `docs/session-chains.md`; Unicode query ingress bound: `docker/nginx.conf`, `test/auth/test_nginx.py`.
+- Verification: `test/auth/session-filtering.spec.cjs`, `test/auth/backend.rs`, `test/session_chains/README.md`, `.codex/commands.md`.
+- Task state: normal active/done lifecycle; implemented and locally verified on 2026-10-11.
+- Notice lifecycle refined on 2026-10-12: applying edits hides it immediately; current failures restore it and stale failures are ignored. Browser coverage checks transient DOM insertions during delayed Enter/Add requests.
+
 ### Runtime Configuration
 
 - Runtime defaults: `.env.example`, `compose.yaml`, analyzer/collector config code.

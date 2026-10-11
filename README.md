@@ -38,6 +38,17 @@ Open `http://localhost:8080`, sign in, then add monitored services on the Source
 
 The UI supports English and Russian. Without a saved preference it follows the browser language; after sign-in, use the language button immediately above Sign out to persist a choice.
 
+On Sessions, Enter or **Add to filter** adds a literal payload substring as a chip
+and applies all displayed chips with AND. Each term must match the same TCP
+session, in either direction. Duplicate chips are allowed, with up to 10 terms
+of 128 Unicode characters each. Removing a chip shows a pending-change notice;
+**Refresh**, Enter/Add or changing Source/Protocol/Flags-only applies the edited
+set. The notice hides as application starts, without flashing during Enter/Add;
+a failed application restores it. Refresh ignores unfinished input. Blank Enter does nothing when no chip
+edits are pending. Automatic polling keeps the applied set and pauses during
+payload search. The same controls work with chains; see
+[session filtering](docs/session-filtering-v2.md).
+
 On Sessions, **Group into chains** combines complete TCP sessions from the same
 collector, client IP and service when adjacent session starts are at most one
 second apart. The option is off by default. Open a chain to inspect ordered

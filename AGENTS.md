@@ -25,6 +25,7 @@
 - `docs/architecture.md` - capture, pipeline, concurrency, reassembly, protocol and Suricata model.
 - `docs/storage.md` - SQLite, append-only segments, retention and recovery.
 - `docs/mvp.md` - frontend UX, screens, filters and user-visible behavior.
+- `docs/session-filtering-v2.md` - implemented Issues #25/#22 chip filtering contract: literal AND `payload` list, duplicate chips allowed, 10 terms/128 Unicode characters, count limit defined once in `payload_search.rs` and supplied to frontend; Enter/Add, Refresh and metadata changes apply edits, unchanged blank submissions do nothing, polling never applies pending edits. The Refresh notice hides when application starts and returns on current application failure; Enter/Add must not flash it during loading.
 - `docs/authentication.md` - login, sessions, nginx ingress and team access.
 
 Служебные файлы:

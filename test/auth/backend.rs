@@ -172,6 +172,7 @@ async fn every_data_route_and_future_route_is_protected() {
         ("PUT", "/api/sources/1"),
         ("DELETE", "/api/sources/1"),
         ("GET", "/api/collectors"),
+        ("GET", "/api/payload-search/limits"),
         ("GET", "/api/sessions"),
         ("GET", "/api/sessions/1"),
         ("GET", "/api/sessions/1/payload/c2s"),
@@ -199,6 +200,182 @@ async fn every_data_route_and_future_route_is_protected() {
             "{method} {path}"
         );
     }
+}
+
+fn payload_query(terms: &[String]) -> String {
+    use std::fmt::Write;
+    serde_json::to_string(terms)
+        .unwrap()
+        .bytes()
+        .fold(String::new(), |mut value, byte| {
+            write!(value, "%{byte:02X}").unwrap();
+            value
+        })
+}
+
+#[tokio::test]
+async fn both_feeds_validate_payload_lists_using_advertised_limits() {
+    use newhatch_analyzer::payload_search::{MAX_PAYLOAD_TERMS, MAX_PAYLOAD_TERM_CHARS};
+    let (app, _dir) = app("86400s", "false");
+    let session = login(&app, "").await;
+    let session = cookie(&session);
+    let response = call(
+        &app,
+        "127.0.0.1:1",
+        "GET",
+        "/api/payload-search/limits",
+        session,
+        "",
+        &[],
+    )
+    .await;
+    assert_eq!(response.status(), StatusCode::OK);
+    let limits: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap()).unwrap();
+    assert_eq!(limits["max_terms"], MAX_PAYLOAD_TERMS);
+    assert_eq!(limits["max_term_chars"], MAX_PAYLOAD_TERM_CHARS);
+    for feed in ["sessions", "chains"] {
+        for terms in [
+            vec![],
+            vec!["same".into(); MAX_PAYLOAD_TERMS],
+            vec!["🦀".repeat(MAX_PAYLOAD_TERM_CHARS)],
+            vec!["  quoted,\"term\" OR .*  ".into()],
+        ] {
+            let path = format!("/api/{feed}?payload={}", payload_query(&terms));
+            assert_eq!(
+                call(&app, "127.0.0.1:1", "GET", &path, session, "", &[])
+                    .await
+                    .status(),
+                StatusCode::OK,
+                "{path}"
+            );
+        }
+        for terms in [
+            vec!["same".into(); MAX_PAYLOAD_TERMS + 1],
+            vec!["🦀".repeat(MAX_PAYLOAD_TERM_CHARS + 1)],
+            vec![" \n".into()],
+        ] {
+            let path = format!("/api/{feed}?payload={}", payload_query(&terms));
+            let response = call(&app, "127.0.0.1:1", "GET", &path, session, "", &[]).await;
+            assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+            let body: serde_json::Value =
+                serde_json::from_slice(&to_bytes(response.into_body(), 1024).await.unwrap())
+                    .unwrap();
+            assert!(body["error"].is_string());
+        }
+        for value in ["scalar", "%22string%22", "%5B1%5D", "%5B"] {
+            let path = format!("/api/{feed}?payload={value}");
+            assert_eq!(
+                call(&app, "127.0.0.1:1", "GET", &path, session, "", &[])
+                    .await
+                    .status(),
+                StatusCode::BAD_REQUEST
+            );
+        }
+    }
+}
+
+#[tokio::test]
+async fn payload_and_searches_stored_sessions_with_bounded_continuation_and_chain_context() {
+    use newhatch_analyzer::{
+        domain::{CompletedSession, FlagDirection, SessionProtocol, SourceInput},
+        storage::{start_writer, SessionFilter},
+    };
+    let (app, dir) = app("86400s", "false");
+    let catalog = Catalog::open(dir.path().join("index.sqlite")).unwrap();
+    catalog
+        .create_source(&SourceInput {
+            name: "web".into(),
+            port: 8080,
+            enabled: true,
+        })
+        .unwrap();
+    let writer = start_writer(
+        catalog.clone(),
+        dir.path().to_owned(),
+        std::time::Duration::from_secs(1800),
+        3,
+        3000,
+    )
+    .unwrap();
+    // The old matching session lies beyond the first 2,000 search candidates.
+    // The last two sessions share a chain, but split the required terms.
+    for id in 1..=2003 {
+        let (c2s, s2c, flag) = match id {
+            1 => (b"POST alpha".to_vec(), b"beta FLAG".to_vec(), true),
+            2002 => (b"alpha".to_vec(), vec![], false),
+            2003 => (vec![], b"beta FLAG".to_vec(), true),
+            _ => (b"noise".to_vec(), vec![], false),
+        };
+        assert!(writer.try_store(CompletedSession {
+            collector_id: "test".into(),
+            first_payload_c2s_at: Some(id),
+            first_payload_s2c_at: Some(id),
+            source_id: 1,
+            started_at: id * 500_000,
+            ended_at: id * 500_000 + 100,
+            client_ip: if id >= 2002 { "10.0.0.2" } else { "10.0.0.3" }
+                .parse()
+                .unwrap(),
+            client_port: 40000,
+            server_ip: "10.0.0.1".parse().unwrap(),
+            server_port: 8080,
+            protocol: SessionProtocol::Http,
+            c2s,
+            s2c,
+            flag_direction: if flag {
+                FlagDirection::S2c
+            } else {
+                FlagDirection::None
+            },
+            flag_count: usize::from(flag),
+            incomplete: false,
+            http: Default::default(),
+        }));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        loop {
+            if catalog
+                .list_sessions(&SessionFilter {
+                    limit: 1,
+                    ..Default::default()
+                })
+                .unwrap()
+                .first()
+                .is_some_and(|s| s.id == 2003)
+            {
+                break;
+            }
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    drop(writer);
+    let session = login(&app, "").await;
+    let session = cookie(&session);
+    let terms = payload_query(&["alpha".into(), "beta".into(), "alpha".into()]);
+    let app = &app;
+    let get = |path: String| async move {
+        let response = call(app, "127.0.0.1:1", "GET", &path, session, "", &[]).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        serde_json::from_slice::<serde_json::Value>(
+            &to_bytes(response.into_body(), 100_000).await.unwrap(),
+        )
+        .unwrap()
+    };
+    let first = get(format!("/api/sessions?payload={terms}")).await;
+    assert_eq!(first["items"], serde_json::json!([]));
+    assert_eq!(first["next_cursor"], 4);
+    let second = get(format!("/api/sessions?payload={terms}&cursor=4")).await;
+    assert_eq!(second["items"][0]["id"], 1);
+    assert_eq!(second["next_cursor"], serde_json::Value::Null);
+    let chains = get(format!("/api/chains?payload={terms}&contains_flag=true")).await;
+    assert_eq!(chains["items"].as_array().unwrap().len(), 1);
+    assert_eq!(chains["items"][0]["id"], 1);
+    assert_eq!(chains["items"][0]["session_count"], 2001);
+    let no_match = get(format!("/api/sessions?payload={terms}&contains_flag=false")).await;
+    assert_eq!(no_match["items"], serde_json::json!([]));
 }
 
 #[tokio::test]
