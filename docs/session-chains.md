@@ -7,12 +7,10 @@ HTTP status is not correlation evidence.
 
 ## Correlation
 
-The TCP-step granularity below describes the current implementation. The planned
-HTTP-step replacement is specified in [Atomic HTTP Sessions (#28)](http-sessions.md).
-
-One step is one complete reconstructed TCP session with its existing C2S/S2C pair.
-Persistent connections containing multiple HTTP exchanges remain one step.
-Do not split browsing/persistence into transactions or interleave directional turns.
+One step is one stored session with its C2S/S2C pair. New HTTP/1.x traffic uses
+[atomic HTTP sessions](http-sessions.md); raw TCP and WebSocket retain connection
+records. Persistent HTTP connections can produce several steps. Existing saved
+records are not split or rewritten.
 
 The key is collector_id + client_ip + source_id. Client port, server IP, cookies
 and status do not join the key. Different collectors, clients or sources never merge.
@@ -90,7 +88,8 @@ partial clipboard writes; never silently skip a request.
 
 Split complete HTTP/1.x C2S requests using raw-byte header boundaries and
 Content-Length before applying readable text/Format JSON per message.
-Multi-request streams are supported here while browsing remains one TCP pair.
+Multi-request C2S remains supported for existing saved records; newly captured
+HTTP session payloads each contain one request.
 The input restrictions are otherwise those of individual export: origin-form,
 uncompressed UTF-8, no-body/Content-Length framing and supported headers.
 Binary, chunked, Upgrade and incomplete messages fail the entire export.

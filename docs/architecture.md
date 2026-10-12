@@ -1,6 +1,6 @@
 # Architecture
 
-The analyzer is the source of reconstructed TCP sessions. Suricata captures
+The analyzer owns TCP reconstruction and stored sessions. Suricata captures
 independently as optional enrichment; neither its JSON/log output nor its
 availability controls Rust ingest.
 
@@ -10,7 +10,8 @@ flowchart TD
     BPF --> CAP[Cooked AF_PACKET capture/classification]
     CAP --> Q[Bounded queues and collector-isolated flow sharding]
     Q --> REASM[Worker-local bidirectional reassembly]
-    REASM --> ANALYSIS[Flag scan and protocol metadata]
+    REASM --> PRE[HTTP session preprocessing or raw/WebSocket streams]
+    PRE --> ANALYSIS[Flag scan and protocol metadata]
     ANALYSIS --> STORE[Single writer: segments plus SQLite metadata]
     STORE --> API[Authenticated API]
     API --> UI[React/TypeScript UI]
@@ -41,22 +42,30 @@ collectors must not merge. Each worker has a local HashMap, bounded packet chann
 and configurable active-flow limit. Avoid global hot-path locks and unbounded
 queues; saturation drops new packets and exposes counters.
 
-Each direction has a bounded byte vector and BTreeMap of out-of-order ranges.
-Trim retransmitted overlap, reconstruct sequence order and finalize on RST,
-both-direction FIN or idle timeout. Timed-out, truncated or not-fully-closed
-sessions are incomplete. MAX_STREAM_BYTES bounds each direction; very large gaps
-and long-lived-flow policy remain unresolved.
+Each direction tracks TCP sequence order and bounded out-of-order ranges.
+Trim retransmitted overlap; conflicting pending overlaps suppress further
+assembly. The pending set is limited to 256 ranges and MAX_STREAM_BYTES bytes.
+Sequence comparisons handle wraparound. FIN is effective only after its preceding
+bytes have been assembled; missing bytes can still arrive before idle expiry.
 
-Incremental FLAG_REGEX scans use a 4 KiB overlap; finalization repeats an exact
-full-stream scan. Store contains_flag, flag_direction (none/c2s/s2c/both) and
-flag_count. Never scan packets independently to decide session flags.
+Raw TCP/WebSocket streams retain bounded directional byte vectors and finalize
+on RST, both-direction FIN or idle timeout. Timed-out, truncated, gapped or
+not-fully-closed connection records are incomplete. HTTP session preprocessing,
+its inactivity timer and asymmetric retention limits are specified in
+[Atomic HTTP Sessions](http-sessions.md). Expiry uses analyzer monotonic time;
+capture timestamps remain traffic chronology, including for remote collectors.
+
+Raw TCP/WebSocket incremental FLAG_REGEX scans use a 4 KiB overlap; finalization
+repeats an exact retained-stream scan. HTTP flags are scanned over each emitted
+atomic session's retained C2S/S2C. Store contains_flag, flag_direction
+(none/c2s/s2c/both) and flag_count. Never scan packets independently to decide
+session flags.
 
 HTTP/1.x metadata includes method, host, path, status and content type.
 HTTP Upgrade/101 detects websocket, but frame decoding is not implemented.
-Parsing failure retains raw_tcp visibility and original reconstructed bytes.
-
-The agreed replacement for HTTP session granularity and preprocessing is in
-[Atomic HTTP Sessions (#28)](http-sessions.md); implementation is pending.
+Unrecognized protocols retain raw_tcp visibility. Recognized HTTP with ambiguous
+association is suppressed according to [Atomic HTTP Sessions](http-sessions.md),
+rather than emitted as an unsplit or one-sided HTTP record.
 
 ## Remote Collector Boundary
 
@@ -92,7 +101,8 @@ when unavailable. started_at/ended_at are minimum/maximum observed packet times,
 including out-of-order arrival. first_payload_c2s_at/first_payload_s2c_at are
 minimum capture times of observed nonempty directional packets, including
 retransmissions; empty directions and legacy data remain NULL.
-These fields add neither per-packet persistence nor HTTP transaction splitting.
+For HTTP, timestamps describe each atomic session rather than the entire TCP
+connection. This adds no per-packet persistence.
 
 ## Storage, API and UI
 

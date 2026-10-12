@@ -5,9 +5,9 @@ Clarify these when implementing the related area. Unfinished work is in
 
 | Area | Unresolved choice |
 | --- | --- |
-| Flags | Identity/ranges linking flag-bearing S2C replies to triggering player/C2S requests |
-| Protocols | WebSocket parser and frame representation; explicit HTTP/WebSocket request/response boundaries in detail |
-| Reassembly | Production policy for very long-lived flows and large TCP gaps |
+| Flags | Application/player identity and request-level linkage for non-HTTP traffic |
+| Protocols | WebSocket parser, frame representation and request/response boundaries in detail |
+| Reassembly | Production policy for very long-lived non-HTTP flows and large TCP gaps |
 | Capture | VLAN behavior, IPv6 extension headers, benchmark-justified PACKET_MMAP strategy and RX-ring size |
 | Recovery | Truncated segment tails and SQLite/file reconciliation |
 | Suricata | Correlation key and live Source/filter synchronization |

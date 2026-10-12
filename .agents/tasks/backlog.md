@@ -11,10 +11,10 @@ GitHub issues. Clarify related design choices in
 - [ ] Add per-collector PSK authentication; resolve replay protection, rotation and encryption requirements before implementing.
 - [ ] Implement segment-tail recovery and SQLite/file reconciliation.
 - [ ] Measure the socket capture path before considering PACKET_MMAP/RX rings; validate IPv6 extensions and VLAN handling.
-- [ ] Define how flag-bearing S2C data links to the triggering client/request.
+- [ ] Define application/player identity and request-level flag linkage for non-HTTP traffic.
 - [ ] Low priority: restrict local storage to a dedicated analyzer UID/GID, data directory 0700 and SQLite/WAL/SHM/segment files 0600; review .env permissions and minimum capture capabilities. Add relevant permission/runtime checks. This is separate from HTTP authorization.
 - [ ] Optional: investigate capture-time ordering in session browsing under high RPS, accounting for worker finalization order, stable pagination and live updates without global ingest serialization.
-- [ ] Future refinement: evaluate HTTP transaction browsing and cookie/token/user/object correlation beyond whole-session chains. Account for NAT, parallel traffic, connection reuse and encrypted HTTPS; this is not required by the existing chain contract.
+- [ ] Future refinement: evaluate cookie/token/user/object correlation beyond existing session chains. Account for NAT, parallel traffic, connection reuse and encrypted HTTPS; this is not required by the existing chain contract.
 
 ## Target-host validation
 

@@ -26,7 +26,7 @@ Without an explicit product decision, do not introduce:
 - Reject unmonitored traffic in the kernel before userspace. Do not capture everything and filter it later in Rust.
 - The analyzer owns reconstructed sessions. Suricata must stay outside its hot path and remain optional.
 - Persist sessions, not packets. SQLite holds metadata; C2S/S2C bytes stay in append-only segments addressed by segment_id, segment_offset and record_length.
-- Detect flags on reconstructed streams with one installation-wide FLAG_REGEX. Preserve enough context to inspect the client traffic associated with flag-bearing replies; exact linkage remains unresolved.
+- Detect flags on reconstructed streams with one installation-wide FLAG_REGEX. Preserve the client traffic associated with flag-bearing replies; HTTP linkage follows [atomic sessions](http-sessions.md), while non-HTTP/application identity remains unresolved.
 - Bound queues, flow state and read work. Prefer observable drops and explicit backpressure over unbounded buffering.
 - Keep collectors diskless and lightweight. Analyzer owns reassembly, enrichment, persistence and chain correlation; isolate flow identity by collector.
 - Use capture timestamps rather than processing/insertion time for traffic chronology.
@@ -40,7 +40,7 @@ These documents are authoritative; do not replace their agreed rules with a new 
 | Subject | Contract |
 | --- | --- |
 | Capture, reassembly, split transport and Suricata | [Architecture](architecture.md) |
-| Planned atomic HTTP session model (#28) | [Atomic HTTP Sessions](http-sessions.md) |
+| Atomic HTTP session model (#28) | [Atomic HTTP Sessions](http-sessions.md) |
 | Segment format, writer ordering and retention | [Storage](storage.md) |
 | Single-user login and two independent access checks | [Authentication](authentication.md) |
 | UI, payload rendering and individual HTTP export | [MVP UX](mvp.md) |

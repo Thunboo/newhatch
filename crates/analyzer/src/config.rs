@@ -93,9 +93,9 @@ impl Config {
             flow_workers,
             packet_queue_capacity: parse_env("PACKET_QUEUE_CAPACITY", 8_192usize)?,
             storage_queue_capacity: parse_env("STORAGE_QUEUE_CAPACITY", 2_048usize)?,
-            flow_idle_timeout: parse_duration_env("FLOW_IDLE_TIMEOUT", "30s")?,
+            flow_idle_timeout: parse_duration_env("FLOW_IDLE_TIMEOUT", "15s")?,
             max_active_flows_per_worker: parse_env("MAX_ACTIVE_FLOWS_PER_WORKER", 16_384usize)?,
-            max_stream_bytes: parse_size_env("MAX_STREAM_BYTES", "4MiB")?,
+            max_stream_bytes: parse_size_env("MAX_STREAM_BYTES", "16MiB")?,
             analyzer_mode,
             collector_listen_addr,
             collector_allowed_ips,
@@ -227,8 +227,8 @@ mod tests {
     fn default_size_is_valid() {
         std::env::remove_var("NEWHATCH_TEST_SIZE");
         assert_eq!(
-            parse_size_env("NEWHATCH_TEST_SIZE", "4MiB").unwrap(),
-            4 * 1_024 * 1_024
+            parse_size_env("NEWHATCH_TEST_SIZE", "16MiB").unwrap(),
+            16 * 1_024 * 1_024
         );
     }
 

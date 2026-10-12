@@ -6,7 +6,8 @@ the focused document relevant to the task.
 
 The current pipeline is enabled Sources → kernel BPF → cooked AF_PACKET →
 bounded classified packets → collector-isolated worker reassembly →
-flag/protocol analysis → SQLite metadata plus payload segments → authenticated API/UI.
+atomic HTTP sessions or raw/WebSocket streams → SQLite metadata plus payload
+segments → authenticated API/UI.
 
 Local and split capture, source management, session/chain browsing, literal
 AND filter chips, EN/RU UI and HTTP cURL/Python export are implemented.

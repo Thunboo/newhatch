@@ -2,7 +2,7 @@
 
 A lightweight live-traffic analyzer for Attack/Defence CTF competitions.
 It aims for Packmate-like browsing with low CPU/RAM use on a constrained vulnbox.
-The primary entity is a reconstructed bidirectional TCP session; normal operation
+The primary entity is a stored bidirectional session; normal operation
 captures a configured interface without requiring manual PCAP files.
 
 ## Product direction
@@ -24,7 +24,7 @@ Startup and deployment: [README](README.md).
 | Area | Status and detailed contract |
 | --- | --- |
 | Capture | Linux cooked AF_PACKET, classic kernel BPF, capture timestamps, bounded queues and worker-local TCP reassembly; [architecture](docs/architecture.md) |
-| Protocols and flags | Raw TCP, HTTP/1.x metadata, WebSocket Upgrade classification and reconstructed-stream flag detection |
+| Protocols and flags | Atomic HTTP/1.x sessions, raw TCP, WebSocket Upgrade classification and reconstructed-stream flag detection; [HTTP sessions](docs/http-sessions.md) |
 | Persistence | SQLite metadata, versioned append-only payload segments and count-based retention; [storage](docs/storage.md) |
 | UI | React/TypeScript, source CRUD/search/sorting, live session browsing, text/hex, JSON formatting, flag highlighting and EN/RU localization; [UX](docs/mvp.md) |
 | Filtering | Literal AND chips for sessions and chains, separate edited/applied sets and backend-supplied limits; [filtering](docs/session-filtering-v2.md) |
@@ -38,9 +38,6 @@ Docker Compose packages analyzer, frontend and optional Suricata/collector servi
 A test-profile nginx fixture provides flag-capture traffic on port 18080.
 
 ## Remaining work
-
-The planned atomic HTTP session model for #28 is specified in
-[Atomic HTTP Sessions](docs/http-sessions.md).
 
 PACKET_MMAP requires measurement before adoption. WebSocket frame decoding,
 Suricata enrichment, crash-tail reconciliation, IPv6 extension headers and

@@ -1,6 +1,6 @@
 # MVP Scope and UX
 
-Players configure service ports, browse reconstructed TCP sessions, inspect both
+Players configure service ports, browse stored sessions, inspect both
 directions, search payloads and locate flags. CAPTURE_INTERFACE is configured
 through .env; there is no UI interface selector. Manual PCAP creation is not
 part of normal operation.
@@ -59,8 +59,11 @@ JSON object/array string fields. Embedded JSON strings decode Unicode in both
 modes, up to four embedded levels; compact mode keeps them as strings, while
 Format JSON expands them into objects/arrays. Escaped literal backslashes remain
 literal, and malformed embedded JSON stays a string. Hex and stored bytes remain raw.
-Protocol parsing must never remove raw visibility. Session values are raw_tcp,
+Unrecognized protocols retain raw visibility. Session values are raw_tcp,
 http and websocket; only WebSocket Upgrade classification is currently implemented.
+
+New HTTP detail and chain windows follow [Atomic HTTP Sessions](http-sessions.md).
+Unrecognized TCP remains inspectable; ambiguous HTTP associations are suppressed.
 
 ## Individual HTTP Export
 

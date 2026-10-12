@@ -47,47 +47,113 @@ struct ResponseInfo {
 fn parse_request(bytes: &[u8]) -> RequestInfo {
     let mut headers = [httparse::EMPTY_HEADER; 64];
     let mut request = httparse::Request::new(&mut headers);
-    if request.parse(bytes).is_err() || request.method.is_none() {
+    let parsed = request.parse(bytes);
+    let overflow = matches!(parsed, Err(httparse::Error::TooManyHeaders));
+    if (!matches!(parsed, Ok(httparse::Status::Complete(_))) && !overflow)
+        || request.method.is_none()
+        || request.version.is_none()
+    {
         return RequestInfo::default();
     }
-
-    RequestInfo {
+    let mut info = RequestInfo {
         parsed: true,
-        websocket_upgrade: has_websocket_upgrade(request.headers),
         method: request.method.map(str::to_owned),
-        host: header_value(request.headers, "host"),
         path: request.path.map(str::to_owned),
-        content_type: header_value(request.headers, "content-type"),
+        ..RequestInfo::default()
+    };
+    let mut visit = |header: httparse::Header<'_>| {
+        if header.name.eq_ignore_ascii_case("host") && info.host.is_none() {
+            info.host = Some(String::from_utf8_lossy(header.value).into_owned());
+        }
+        if header.name.eq_ignore_ascii_case("content-type") && info.content_type.is_none() {
+            info.content_type = Some(String::from_utf8_lossy(header.value).into_owned());
+        }
+        info.websocket_upgrade |= header.name.eq_ignore_ascii_case("upgrade")
+            && header.value.eq_ignore_ascii_case(b"websocket");
+        Ok(())
+    };
+    if overflow {
+        if for_each_header(bytes, visit).is_err() {
+            return RequestInfo::default();
+        }
+    } else {
+        for header in request.headers {
+            let _ = visit(*header);
+        }
     }
+    info
 }
 
 fn parse_response(bytes: &[u8]) -> ResponseInfo {
     let mut headers = [httparse::EMPTY_HEADER; 64];
     let mut response = httparse::Response::new(&mut headers);
-    if response.parse(bytes).is_err() || response.code.is_none() {
+    let parsed = response.parse(bytes);
+    let overflow = matches!(parsed, Err(httparse::Error::TooManyHeaders));
+    if (!matches!(parsed, Ok(httparse::Status::Complete(_))) && !overflow)
+        || response.code.is_none()
+        || response.version.is_none()
+    {
         return ResponseInfo::default();
     }
-
-    ResponseInfo {
+    let mut info = ResponseInfo {
         parsed: true,
-        websocket_upgrade: has_websocket_upgrade(response.headers),
         status: response.code,
-        content_type: header_value(response.headers, "content-type"),
+        ..ResponseInfo::default()
+    };
+    let mut visit = |header: httparse::Header<'_>| {
+        if header.name.eq_ignore_ascii_case("content-type") && info.content_type.is_none() {
+            info.content_type = Some(String::from_utf8_lossy(header.value).into_owned());
+        }
+        info.websocket_upgrade |= header.name.eq_ignore_ascii_case("upgrade")
+            && header.value.eq_ignore_ascii_case(b"websocket");
+        Ok(())
+    };
+    if overflow {
+        if for_each_header(bytes, visit).is_err() {
+            return ResponseInfo::default();
+        }
+    } else {
+        for header in response.headers {
+            let _ = visit(*header);
+        }
     }
+    info
 }
 
-fn has_websocket_upgrade(headers: &[httparse::Header<'_>]) -> bool {
-    headers.iter().any(|header| {
-        header.name.eq_ignore_ascii_case("upgrade")
-            && String::from_utf8_lossy(header.value).eq_ignore_ascii_case("websocket")
-    })
-}
-
-fn header_value(headers: &[httparse::Header<'_>], name: &str) -> Option<String> {
-    headers
-        .iter()
-        .find(|header| header.name.eq_ignore_ascii_case(name))
-        .map(|header| String::from_utf8_lossy(header.value).trim().to_owned())
+// Overflow headers are validated one line at a time, so the common 64-field
+// stack buffer is a fast path rather than a reason to drop a valid exchange.
+// Scratch memory is proportional to the largest line, not the header count.
+pub(crate) fn for_each_header(
+    bytes: &[u8],
+    mut visit: impl FnMut(httparse::Header<'_>) -> Result<(), ()>,
+) -> Result<(), ()> {
+    let mut cursor = bytes.iter().position(|byte| *byte == b'\n').ok_or(())? + 1;
+    let mut scratch = Vec::new();
+    while cursor < bytes.len() {
+        let end = cursor
+            + bytes[cursor..]
+                .iter()
+                .position(|byte| *byte == b'\n')
+                .ok_or(())?
+            + 1;
+        let line = &bytes[cursor..end];
+        if line == b"\r\n" || line == b"\n" {
+            return Ok(());
+        }
+        if scratch.capacity() < line.len() + 2 {
+            scratch = Vec::with_capacity(line.len() + 2)
+        }
+        scratch.clear();
+        scratch.extend_from_slice(line);
+        scratch.extend_from_slice(b"\r\n");
+        let mut headers = [httparse::EMPTY_HEADER; 1];
+        match httparse::parse_headers(&scratch, &mut headers) {
+            Ok(httparse::Status::Complete((_, parsed))) if parsed.len() == 1 => visit(parsed[0])?,
+            _ => return Err(()),
+        }
+        cursor = end;
+    }
+    Err(())
 }
 
 #[cfg(test)]

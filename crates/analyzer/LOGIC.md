@@ -50,7 +50,9 @@ Both paths then use the same analyzer pipeline:
 
 ```text
 flow.rs
-  -> TCP reassembly + streaming flag scan
+  -> TCP reassembly + bounded raw/WebSocket streams
+http_sessions.rs
+  -> incremental atomic HTTP sessions
 protocol.rs
   -> raw TCP / HTTP / WebSocket-upgrade classification
 storage/
@@ -87,15 +89,30 @@ The transport is neither encrypted nor application-authenticated. Per-collector 
 
 Hashes `CollectorId + FlowKey` into worker-local flow tables so equal endpoint tuples from different collectors cannot merge. `StreamAssembler` orders payload by TCP sequence number, trims retransmitted overlap and buffers out-of-order ranges within configured limits.
 
-Flags are scanned incrementally with overlap and counted exactly again at finalization. A flow is finalized on RST, both-direction FIN, idle timeout or worker shutdown. Timed-out, truncated or not-fully-closed sessions are marked incomplete.
+Raw TCP/WebSocket flags are scanned incrementally with overlap and counted exactly
+again at finalization. Connection records finalize on RST, both-direction FIN,
+idle timeout or worker shutdown. HTTP records are emitted incrementally instead.
+TCP sequence anchors, wraparound, pending overlaps and FIN gaps are handled before
+HTTP association. Idle scheduling uses monotonic analyzer time.
 
 Completed sessions retain collector identity and the earliest observed non-empty
-payload capture time in each direction. This metadata supports whole-session
+payload capture time in each direction. This metadata supports session
 chain browsing without adding aggregation to the collector or persisting packets.
+
+### `http_sessions.rs`
+
+Frames ordered HTTP/1.x bytes into request/final-response sessions, with bounded
+pending requests and response backlog. It tracks Content-Length, chunked bodies,
+informational/no-body/connection-delimited responses and WebSocket transitions.
+Clipped S2C still advances framing; oversized C2S consumes its matching response
+without persistence. See [atomic HTTP sessions](../../docs/http-sessions.md).
 
 ### `protocol.rs`
 
-Classifies finalized streams as `raw_tcp`, `http` or `websocket`. It extracts HTTP method, host, path, response status and content type with `httparse`. WebSocket Upgrade/101 is recognized, but frames are not decoded.
+Classifies retained streams as `raw_tcp`, `http` or `websocket` and extracts HTTP
+metadata from complete headers with `httparse`. WebSocket Upgrade/101 is
+recognized, but frames are not decoded. The HTTP framing state lives separately
+in `http_sessions.rs`.
 
 ### `storage/`
 

@@ -44,6 +44,10 @@ set. Removing a chip waits for **Refresh** or the next application action.
 scroll between pairs using the card or the right side of a payload window.
 See [filtering](docs/session-filtering-v2.md) and [chain browsing](docs/session-chains.md).
 
+New HTTP traffic uses [atomic sessions](docs/http-sessions.md): each stored
+session has one request and its corresponding response, including on keep-alive
+connections.
+
 C2S windows offer cURL/Python export; the chain-toolbar Python action exports all
 supported requests. Run `python3 replay.py` for captured destinations or
 `python3 replay.py <IP/FQDN>` to replace hosts while preserving ports.

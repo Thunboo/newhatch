@@ -5,6 +5,7 @@ pub mod collector;
 pub mod config;
 pub mod domain;
 pub mod flow;
+mod http_sessions;
 pub mod packet;
 pub mod payload_search;
 pub mod protocol;

@@ -1,13 +1,12 @@
 # Atomic HTTP Sessions
 
-Implementation specification for [issue #28](https://github.com/Thunboo/newhatch/issues/28).
-The behavior below is agreed but not yet implemented. This document is the
-authoritative specification for the new HTTP session granularity.
+Current contract for [issue #28](https://github.com/Thunboo/newhatch/issues/28).
+This document is the authoritative source for atomic HTTP session behavior.
 
 ## Goal and scope
 
 Make an HTTP session atomic: one C2S request and its corresponding S2C response.
-A payload window must never contain several HTTP requests or several final
+A newly captured HTTP payload window must never contain several requests or several final
 responses. This applies both to standalone session details and to chain cards.
 
 Apply the change to newly captured HTTP/1.x traffic. Raw TCP and WebSocket keep
@@ -18,8 +17,8 @@ Existing saved traffic is not split, rewritten or backfilled. Legacy traffic
 migration is not a requirement; verification uses newly generated traffic.
 
 Known/unsorted classification and URL rules from
-[issue #29](https://github.com/Thunboo/newhatch/issues/29) are deferred until this
-session model is implemented. They are not part of #28.
+[issue #29](https://github.com/Thunboo/newhatch/issues/29) remain a separate
+follow-up. They are not part of #28.
 
 ## Session identity and payloads
 
@@ -113,12 +112,24 @@ reliably associated sessions; suppress the ambiguous remainder. In particular,
 dropping or expiring one request must not shift all later responses onto the
 wrong requests.
 
+The implementation requires observed SYN sequence anchors in both TCP directions
+before emitting HTTP sessions. An established connection first seen mid-stream
+is suppressed rather than assuming that the first observed response belongs to
+the first observed request. A new client SYN with a different initial sequence
+number starts a fresh connection even when the endpoint tuple is reused.
+
 ## Waiting and missing data
 
 Wait up to **15 seconds without new payload data** for an unfinished exchange.
 Receipt of new payload data resets the timer. This is an inactivity limit, not
 a maximum total response duration: a response can take longer than 15 seconds
 while it continues to arrive.
+
+When no exchange or gap is pending, an open keep-alive connection retains only
+its small TCP/HTTP context past this interval, without completed payloads. This
+lets a later request reuse the observed sequence anchors. At the existing
+active-flow admission limit, the periodic expiry sweep can reclaim idle empty
+HTTP contexts. FIN/RST still closes the relevant connection state.
 
 During this interval, reassembly can fill gaps using delayed, out-of-order or
 retransmitted packets from the same connection. The analyzer is passive and
@@ -140,7 +151,7 @@ The analyzer may run on a vulnbox with 2 GB of RAM, as well as on a separate
 host. Allocate payload memory on demand; do not reserve a full buffer allowance
 for every admitted connection.
 
-Raise the existing MAX_STREAM_BYTES default from 4 MiB to **16 MiB per direction**.
+MAX_STREAM_BYTES defaults to **16 MiB per direction**.
 Preserve its per-direction semantics: C2S and S2C each have their own limit,
 rather than sharing one 16 MiB allowance.
 
@@ -148,6 +159,13 @@ Apply bounded buffering to outstanding data. Already emitted sessions must not
 consume the TCP connection's buffer allowance indefinitely. Keep existing
 bounded packet/storage queues, active-flow admission and out-of-order controls;
 do not introduce an unbounded list of pending requests.
+
+HTTP headers use a 64-field inline parsing buffer; additional headers are
+validated one line at a time without a header-count-sized allocation. Pending
+request metadata is capped at 256 entries, and responses awaiting request context at 256 chunks
+and MAX_STREAM_BYTES bytes. Exceeding an association/retention limit discards
+affected exchanges and is counted in worker logs. Stream prefixes and individual
+header/chunk parsing buffers are bounded by MAX_STREAM_BYTES.
 
 There is **no new aggregate byte budget across analyzer sessions or queues**.
 Do not add a global 64 MiB limit or temporary disk buffering. Limits remain
@@ -157,6 +175,10 @@ configurable through the existing configuration mechanism.
 | --- | --- |
 | C2S exceeds 16 MiB | Discard the whole atomic HTTP session, including its corresponding response. Never display a deliberately shortened C2S request. |
 | S2C exceeds 16 MiB | Retain at most the first 16 MiB of S2C, including headers, with the complete C2S request. Do not add a dedicated truncation notice, text or badge to the frontend. |
+
+Size clipping alone does not set the existing incomplete-session indicator.
+An actually unfinished captured response can still have the existing incomplete
+state; it is distinct from deliberate size clipping.
 
 For oversized S2C, continue tracking the response framing after the retained
 prefix is full. Skip the remaining body and resume with subsequent sessions
@@ -201,6 +223,8 @@ chain opening continues to retain the other members as context. Do not expand
 export's supported encodings or framing as part of this task.
 
 ## Verification and acceptance
+
+Runnable commands and coverage: [HTTP session checks](../test/http_sessions/README.md).
 
 Use the user's competition observations as the representative workload:
 approximately 99.9% of sessions were below 1 MB, and responses above 10 MB were

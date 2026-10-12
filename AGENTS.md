@@ -12,7 +12,7 @@
 | --- | --- |
 | Запуск, .env, local/split deployment | README.md и .env.example |
 | Capture, reassembly, concurrency, collector, Suricata | docs/architecture.md |
-| Atomic HTTP sessions (#28, planned) | docs/http-sessions.md |
+| Atomic HTTP sessions (#28) | docs/http-sessions.md |
 | SQLite, segments, retention, recovery | docs/storage.md |
 | UI, live feed, payload display, individual HTTP export | docs/mvp.md |
 | Correlation, chain cards, chain API/export preparation | docs/session-chains.md |
