@@ -25,7 +25,21 @@ Use your own password and actual team CIDR. An empty `AUTH_ALLOWED_SUBNETS` allo
 
 ## Quick Start (All-in-One)
 
-The capture path is Linux-only. On the target vulnbox:
+The capture path is Linux-only.
+
+For keyboard-only local control, install `newhatchctl` from the latest release:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/Thunboo/newhatch/main/install/unix.sh | bash
+newhatchctl
+```
+
+It manages collector/analyzer/frontend startup, recreation, stopping, status,
+configuration drift and logs. See [newhatchctl](newhatchctl-src/README.md)
+for installation, `NEWHATCH_DIR`, source builds and controls. The one-command
+installer requires a published release; source builds are available independently.
+
+To start containers directly on the target vulnbox:
 
 ```bash
 # Configure CAPTURE_INTERFACE, FLAG_REGEX and authentication in .env first.

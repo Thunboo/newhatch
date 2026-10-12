@@ -1,0 +1,180 @@
+name: Release newhatchctl
+
+on:
+  push:
+    tags:
+      - 'newhatchctl-v*'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: newhatchctl-release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  NEWHATCHCTL_RUST_VERSION: '1.85.1'
+  CARGO_TERM_COLOR: always
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build:
+    name: Build ${{ matrix.platform }}
+    if: github.event.deleted == false
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux-amd64
+            runner: ubuntu-24.04
+            target: x86_64-unknown-linux-musl
+          - platform: linux-arm64
+            runner: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-musl
+          - platform: macos-amd64
+            runner: macos-15-intel
+            target: x86_64-apple-darwin
+          - platform: macos-arm64
+            runner: macos-15
+            target: aarch64-apple-darwin
+    env:
+      NEWHATCHCTL_TARGET: ${{ matrix.target }}
+      NEWHATCHCTL_PLATFORM: ${{ matrix.platform }}
+      CARGO_TARGET_DIR: ${{ github.workspace }}/newhatchctl-src/target
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain
+        run: |
+          rustup toolchain install "$NEWHATCHCTL_RUST_VERSION" --profile minimal --component rustfmt --component clippy
+          rustup default "$NEWHATCHCTL_RUST_VERSION"
+          rustup target add "$NEWHATCHCTL_TARGET"
+
+      - name: Verify stable tag matches package version
+        run: |
+          package_version=$(cargo metadata --locked --no-deps --format-version 1 --manifest-path newhatchctl-src/Cargo.toml |
+            python3 -c 'import json, sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"] == "newhatchctl"))')
+          if [[ ! "$package_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || [[ "$GITHUB_REF_NAME" != "newhatchctl-v$package_version" ]]; then
+            echo "Expected stable tag newhatchctl-v$package_version; got $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+      - name: Install native musl linker
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes --no-install-recommends musl-tools
+          case "$NEWHATCHCTL_TARGET" in
+            x86_64-unknown-linux-musl)
+              echo 'CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc' >> "$GITHUB_ENV"
+              ;;
+            aarch64-unknown-linux-musl)
+              echo 'CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc' >> "$GITHUB_ENV"
+              ;;
+          esac
+
+      - name: Check formatting, tests and Clippy without Docker
+        run: |
+          cargo fmt --manifest-path newhatchctl-src/Cargo.toml --check
+          cargo test --locked --target "$NEWHATCHCTL_TARGET" --manifest-path newhatchctl-src/Cargo.toml
+          cargo clippy --locked --target "$NEWHATCHCTL_TARGET" --manifest-path newhatchctl-src/Cargo.toml --all-targets --all-features -- -D warnings
+
+      - name: Test the installer without downloads or root access
+        run: |
+          bash -n install/unix.sh
+          python3 -m unittest discover -s newhatchctl-src/tests -p test_installer.py -v
+
+      - name: Build and exercise the release binary
+        run: |
+          cargo build --locked --release --target "$NEWHATCHCTL_TARGET" --manifest-path newhatchctl-src/Cargo.toml
+          binary="newhatchctl-src/target/$NEWHATCHCTL_TARGET/release/newhatchctl"
+          expected_version="${GITHUB_REF_NAME#newhatchctl-v}"
+          [[ "$("$binary" --version)" == "newhatchctl $expected_version" ]]
+          "$binary" --help
+          python3 newhatchctl-src/tests/tui_smoke.py "$binary"
+
+      - name: Verify Linux binary is self-contained
+        if: runner.os == 'Linux'
+        run: |
+          binary="newhatchctl-src/target/$NEWHATCHCTL_TARGET/release/newhatchctl"
+          readelf --program-headers "$binary" > "$RUNNER_TEMP/newhatchctl-program-headers.txt"
+          readelf --dynamic "$binary" > "$RUNNER_TEMP/newhatchctl-dynamic.txt"
+          if grep -q 'INTERP' "$RUNNER_TEMP/newhatchctl-program-headers.txt" || grep -q 'NEEDED' "$RUNNER_TEMP/newhatchctl-dynamic.txt"; then
+            echo 'Linux release binary must not depend on a dynamic loader or shared libraries' >&2
+            exit 1
+          fi
+
+      - name: Package executable
+        run: |
+          mkdir -p dist "$RUNNER_TEMP/newhatchctl-package"
+          cp "newhatchctl-src/target/$NEWHATCHCTL_TARGET/release/newhatchctl" "$RUNNER_TEMP/newhatchctl-package/newhatchctl"
+          chmod 755 "$RUNNER_TEMP/newhatchctl-package/newhatchctl"
+          # Exclude macOS AppleDouble metadata so every archive has one member.
+          COPYFILE_DISABLE=1 tar -czf "dist/newhatchctl-$NEWHATCHCTL_PLATFORM.tar.gz" -C "$RUNNER_TEMP/newhatchctl-package" newhatchctl
+
+      - name: Upload platform archive
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: newhatchctl-${{ matrix.platform }}
+          path: dist/newhatchctl-${{ matrix.platform }}.tar.gz
+          archive: false
+          if-no-files-found: error
+          overwrite: true
+          retention-days: 7
+
+  publish:
+    name: Publish complete release
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Download all platform archives
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8
+        with:
+          pattern: newhatchctl-*
+          path: dist
+          merge-multiple: true
+
+      - name: Verify archive set and generate checksums
+        working-directory: dist
+        run: |
+          archives=(
+            newhatchctl-linux-amd64.tar.gz
+            newhatchctl-linux-arm64.tar.gz
+            newhatchctl-macos-amd64.tar.gz
+            newhatchctl-macos-arm64.tar.gz
+          )
+          for archive in "${archives[@]}"; do
+            [[ -s "$archive" ]]
+            [[ "$(tar -tzf "$archive")" == 'newhatchctl' ]]
+          done
+          sha256sum "${archives[@]}" > SHA256SUMS
+          sha256sum --check SHA256SUMS
+
+      - name: Upload assets before publishing latest stable release
+        run: |
+          tag="$GITHUB_REF_NAME"
+          if is_draft=$(gh release view "$tag" --json isDraft --jq '.isDraft' 2>/dev/null); then
+            if [[ "$is_draft" != 'true' ]]; then
+              echo "Release $tag is already published; use a new version tag" >&2
+              exit 1
+            fi
+          else
+            gh release create "$tag" --verify-tag --draft --title "newhatchctl ${tag#newhatchctl-v}" \
+              --notes 'Prebuilt newhatchctl binaries for Linux and macOS, amd64 and arm64. Verify downloads against SHA256SUMS. Rust/Cargo are only required when building from source.'
+          fi
+          gh release upload "$tag" dist/newhatchctl-*.tar.gz dist/SHA256SUMS --clobber
+          gh release edit "$tag" --draft=false --latest

@@ -31,6 +31,7 @@ Startup and deployment: [README](README.md).
 | Chains | Optional whole-session correlation, bounded queries, full-context cards and lazy payload loading; [chains](docs/session-chains.md) |
 | Export | Individual cURL/Python HTTP export and whole-chain Python replay; [Python contract](docs/python-replay.md) |
 | Access | Single-user authentication, loopback analyzer API and nginx team-CIDR ingress; [authentication](docs/authentication.md) |
+| Local control | Keyboard-only `newhatchctl` for collector/analyzer/frontend lifecycle, status, configuration drift and logs; [control panel](newhatchctl-src/README.md) |
 | Split capture | Diskless collector, framed protobuf transport, analyzer-pushed Sources, collector-isolated flows and status counters; [architecture](docs/architecture.md#remote-collector-boundary) |
 | Suricata | Optional passive parallel sensor; EVE ingestion, correlation and filter synchronization are not implemented |
 
