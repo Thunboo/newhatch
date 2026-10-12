@@ -40,10 +40,6 @@ fn is_newhatch(directory: &Path) -> bool {
     ["collector", "analyzer", "frontend"]
         .iter()
         .all(|name| services.get(*name).is_some())
-        && services["analyzer"]["build"]["dockerfile"].as_str()
-            == Some("crates/analyzer/Dockerfile")
-        && services["collector"]["build"]["dockerfile"].as_str()
-            == Some("crates/collector/Dockerfile")
 }
 
 #[cfg(test)]
@@ -70,6 +66,60 @@ mod tests {
                 .directory,
             fs::canonicalize(local.path()).unwrap()
         );
+    }
+
+    #[test]
+    fn image_build_and_mixed_deployments_are_recognized_by_service_names() {
+        let directory = tempfile::tempdir().unwrap();
+        for compose in [
+            r#"services:
+  collector: {image: 'ghcr.io/thunboo/newhatch-collector:latest'}
+  analyzer: {image: 'ghcr.io/thunboo/newhatch-analyzer:latest'}
+  frontend: {image: 'ghcr.io/thunboo/newhatch-frontend:latest'}
+"#,
+            r#"services:
+  collector: {build: {context: '.', dockerfile: 'docker/collector.Dockerfile'}}
+  analyzer: {build: {context: '.', dockerfile: 'docker/analyzer.Dockerfile'}}
+  frontend: {build: './web'}
+"#,
+            r#"services:
+  collector: {image: '${NEWHATCH_IMAGE_PREFIX}-collector:${NEWHATCH_IMAGE_TAG}'}
+  analyzer: {build: '.'}
+  frontend: {image: 'nginx:alpine'}
+"#,
+        ] {
+            fs::write(directory.path().join("compose.yaml"), compose).unwrap();
+            assert_eq!(
+                Project::resolve(directory.path(), None).unwrap().directory,
+                fs::canonicalize(directory.path()).unwrap()
+            );
+        }
+    }
+
+    #[test]
+    fn each_managed_service_name_is_required() {
+        let directory = tempfile::tempdir().unwrap();
+        for missing in ["collector", "analyzer", "frontend"] {
+            let mut services = serde_yaml::Mapping::new();
+            for name in ["collector", "analyzer", "frontend"] {
+                if name != missing {
+                    services.insert(name.into(), Value::Mapping(serde_yaml::Mapping::new()));
+                }
+            }
+            let mut compose = serde_yaml::Mapping::new();
+            compose.insert("services".into(), Value::Mapping(services));
+            fs::write(
+                directory.path().join("compose.yaml"),
+                serde_yaml::to_string(&compose).unwrap(),
+            )
+            .unwrap();
+            assert_eq!(
+                Project::resolve(directory.path(), None)
+                    .unwrap_err()
+                    .to_string(),
+                "Unknown Newhatch location"
+            );
+        }
     }
 
     #[test]

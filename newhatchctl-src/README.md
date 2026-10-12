@@ -32,9 +32,11 @@ absolute directory to choose another destination, and add that directory to PATH
 
 At each launch, the current directory wins if it contains the newhatch
 `compose.yaml`. Otherwise the tool checks the host environment variable
-`NEWHATCH_DIR`. Both candidates must have the collector/analyzer/frontend services
-and the newhatch analyzer and collector Dockerfile paths. No valid candidate
-produces exactly `Unknown Newhatch location`.
+`NEWHATCH_DIR`. A candidate is recognized by the three service names `collector`,
+`analyzer` and `frontend` in its Compose file. Image names, registry locations,
+build configuration and Dockerfile paths are not checked: prebuilt images,
+source builds and mixed deployments are supported. No valid candidate produces
+exactly `Unknown Newhatch location`.
 
 To launch from any directory, add this to your shell configuration
 (`~/.bashrc` or `~/.zshrc`) and open a new terminal:
