@@ -69,9 +69,20 @@ overlay. The overlay appears only in chain detail.
 Below Text/Hex, show “Scroll sessions here” / “Прокручивайте сессии здесь”.
 
 Load member metadata progressively in pages of 20 and payloads near the visible
-area. Abort obsolete requests and release offscreen payload bytes. Placeholders
-preserve dimensions and inner scroll offsets survive unloading.
-Mobile cards end above bottom navigation.
+area. Once a pair starts loading, scrolling away does not abort it. Keep loaded
+C2S/S2C bytes and rendered text for the entire open card, including offscreen
+pairs, so browser Ctrl+F finds all loaded text and scrolling back needs no new
+payload reads. Unvisited pairs stay lazy; placeholders preserve window dimensions.
+Inner scroll offsets survive Text/Hex changes during the same opening.
+
+Closing or switching cards aborts pending member/payload reads and export preparation.
+Retain successful member pages, their continuation cursor and payload pairs for
+three seconds after closing, keyed by chain ID and snapshot_id; reopening that
+snapshot cancels expiry and reuses the data. Every opening starts the outer card
+and all C2S/S2C windows at the beginning, including when using cached data.
+Filter changes, leaving grouped browsing or logout release the cache immediately.
+Mobile cards end above bottom navigation. This browsing contract is defined by
+[#27](https://github.com/Thunboo/newhatch/issues/27).
 
 ## Whole-chain Python export
 

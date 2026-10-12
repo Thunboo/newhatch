@@ -170,6 +170,164 @@ test("chain windows remain bounded and independently scrollable on mobile", asyn
   await page.screenshot({ path: testInfo.outputPath("chain-mobile.png") });
 });
 
+test("loaded offscreen pairs stay searchable by native browser find without refetching", async ({ page }) => {
+  const state = await routes(page);
+  state.c2s.set(41, "GET /old-c2s-search-marker HTTP/1.1\r\nHost: test\r\n\r\n");
+  state.s2c.set(41, "HTTP/1.1 200 OK\r\n\r\nold-s2c-search-marker");
+  state.s2c.set(70, "HTTP/1.1 200 OK\r\n\r\nnew-s2c-search-marker");
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  const scroll = page.locator(".chain-scroll");
+  const first = page.locator('.chain-pair[data-session-id="41"]');
+  await expect(first.locator("pre").first()).toContainText("old-c2s-search-marker");
+  expect(state.payloadRequests.some((request) => request.id === 55)).toBe(false);
+  await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await expect(page.locator(".chain-pair")).toHaveCount(30);
+  await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await expect(page.locator('.chain-pair[data-session-id="70"] pre').last()).toContainText("new-s2c-search-marker");
+  expect(await first.evaluate((node) => node.getBoundingClientRect().bottom)).toBeLessThan((await scroll.boundingBox()).y - 200);
+  await expect(first.locator("pre")).toHaveCount(2);
+  for (const marker of ["old-c2s-search-marker", "old-s2c-search-marker", "new-s2c-search-marker"]) {
+    const found = await page.evaluate((text) => {
+      window.getSelection().removeAllRanges();
+      return window.find(text, false, false, true) && window.getSelection().toString();
+    }, marker);
+    expect(found).toBe(marker);
+  }
+  await scroll.evaluate((node) => { node.scrollTop = 0; });
+  await expect(first.locator("pre").first()).toBeVisible();
+  expect(state.payloadRequests.filter((request) => request.id === 41)).toHaveLength(2);
+});
+
+test("quick reopening reuses cached pages and pairs but resets all scroll positions", async ({ page }) => {
+  const state = await routes(page);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  const scroll = page.locator(".chain-scroll");
+  const first = page.locator('.chain-pair[data-session-id="41"] pre');
+  await expect(first.first()).toContainText("POST /41");
+  await first.evaluateAll((nodes) => nodes.forEach((node) => { node.scrollTop = 120; }));
+  await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await expect(page.locator(".chain-pair")).toHaveCount(30);
+  await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await expect(page.locator('.chain-pair[data-session-id="70"] pre').last()).toContainText("HTTP/1.1 200 OK");
+  const reads = state.payloadRequests.length;
+  const memberReads = state.memberRequests.length;
+  await page.getByRole("button", { name: "Close session", exact: true }).click();
+  await expect(page.locator(".chain-panel")).toHaveCount(0);
+  expect(await page.evaluate(() => window.find("POST /41", false, false, true))).toBe(false);
+  await page.clock.fastForward(2_999);
+  await page.locator('[data-chain-id="41"]').click();
+  await expect(first.first()).toContainText("POST /41");
+  await expect(page.locator(".chain-pair")).toHaveCount(30);
+  expect(await scroll.evaluate((node) => node.scrollTop)).toBe(0);
+  expect(await page.locator(".chain-pair pre").evaluateAll((nodes) => nodes.every((node) => node.scrollTop === 0))).toBe(true);
+  expect(state.memberRequests).toHaveLength(memberReads);
+  expect(state.payloadRequests).toHaveLength(reads);
+  // Reopening cancels expiry; an open card must never lose its accumulated data.
+  await page.clock.fastForward(4_000);
+  await expect(first.first()).toContainText("POST /41");
+  await page.keyboard.press("Escape");
+  await page.clock.fastForward(2_999);
+  await page.locator('[data-chain-id="41"]').click();
+  await expect(first.first()).toContainText("POST /41");
+  expect(state.memberRequests).toHaveLength(memberReads);
+  expect(state.payloadRequests).toHaveLength(reads);
+});
+
+test("closed chain data expires after three seconds", async ({ page }) => {
+  const state = await routes(page);
+  await page.clock.install();
+  await page.clock.pauseAt(new Date());
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  const first = page.locator('.chain-pair[data-session-id="41"] pre').first();
+  await expect(first).toContainText("POST /41");
+  const memberReads = state.memberRequests.length;
+  const payloadReads = state.payloadRequests.filter((request) => request.id === 41).length;
+  await page.keyboard.press("Escape");
+  await expect(page.locator(".chain-panel")).toHaveCount(0);
+  await page.clock.fastForward(3_001);
+  state.c2s.set(41, "GET /after-cache-expiry HTTP/1.1\r\nHost: test\r\n\r\n");
+  await page.locator('[data-chain-id="41"]').click();
+  await expect(first).toContainText("/after-cache-expiry");
+  expect(state.memberRequests.length).toBeGreaterThan(memberReads);
+  expect(state.memberRequests.slice(memberReads).every((params) => !params.has("cursor"))).toBe(true);
+  expect(state.payloadRequests.filter((request) => request.id === 41)).toHaveLength(payloadReads + 2);
+  expect(await page.locator(".chain-scroll").evaluate((node) => node.scrollTop)).toBe(0);
+});
+
+test("scrolling away lets an unfinished pair complete and keeps its text", async ({ page }) => {
+  const state = await routes(page);
+  let release;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  state.waitPayload = (id) => id === 41 ? waiting : Promise.resolve();
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  await expect.poll(() => state.payloadRequests.filter((request) => request.id === 41).length).toBe(2);
+  const scroll = page.locator(".chain-scroll");
+  await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await expect(page.locator(".chain-pair")).toHaveCount(30);
+  await scroll.evaluate((node) => { node.scrollTop = node.scrollHeight; });
+  await expect(page.locator('.chain-pair[data-session-id="70"] pre').last()).toContainText("HTTP/1.1 200 OK");
+  release();
+  const first = page.locator('.chain-pair[data-session-id="41"] pre');
+  await expect(first.first()).toContainText("POST /41");
+  await expect(first.last()).toContainText("HTTP/1.1 200 OK");
+  expect(state.payloadRequests.filter((request) => request.id === 41)).toHaveLength(2);
+});
+
+test("closing aborts unfinished payload reads and reopening retries the pair", async ({ page }) => {
+  const state = await routes(page);
+  let release;
+  const waiting = new Promise((resolve) => { release = resolve; });
+  state.waitPayload = (id, direction) => id === 41 && direction === "c2s" ? waiting : Promise.resolve();
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  await expect.poll(() => state.payloadRequests.filter((request) => request.id === 41).length).toBe(2);
+  const aborted = page.waitForEvent("requestfailed", (request) => request.url().endsWith("/sessions/41/payload/c2s"));
+  await page.keyboard.press("Escape");
+  await aborted;
+  state.waitPayload = null;
+  release();
+  await page.locator('[data-chain-id="41"]').click();
+  await expect(page.locator('.chain-pair[data-session-id="41"] pre').first()).toContainText("POST /41");
+  expect(state.payloadRequests.filter((request) => request.id === 41)).toHaveLength(4);
+});
+
+test("cached members and pairs are isolated by snapshot and cleared on filter changes", async ({ page }) => {
+  const state = await routes(page);
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  const first = page.locator('.chain-pair[data-session-id="41"] pre').first();
+  await expect(first).toContainText("POST /41");
+  await page.keyboard.press("Escape");
+  state.rows = [{ ...chain(), snapshot_id: 101 }];
+  state.c2s.set(41, "GET /new-snapshot HTTP/1.1\r\nHost: test\r\n\r\n");
+  const beforeRefresh = state.chainRequests.length;
+  await page.getByRole("button", { name: "Refresh sessions", exact: true }).click();
+  await expect.poll(() => state.chainRequests.length).toBe(beforeRefresh + 1);
+  await page.locator('[data-chain-id="41"]').click();
+  await expect(first).toContainText("/new-snapshot");
+  expect(state.memberRequests.at(-1).get("snapshot_id")).toBe("101");
+  await page.keyboard.press("Escape");
+  state.c2s.set(41, "GET /after-filter-change HTTP/1.1\r\nHost: test\r\n\r\n");
+  const beforeFilter = state.chainRequests.length;
+  await page.getByRole("checkbox", { name: "Flags only" }).check();
+  await expect.poll(() => state.chainRequests.length).toBe(beforeFilter + 1);
+  await page.locator('[data-chain-id="41"]').click();
+  await expect(first).toContainText("/after-filter-change");
+  expect(state.payloadRequests.filter((request) => request.id === 41)).toHaveLength(6);
+});
+
 test("chain Python export loads offscreen sessions and all requests within each C2S", async ({ page, context }, testInfo) => {
   const state = await routes(page);
   const body = '{"message":"\\u041f\\u0440\\u0438\\u0432\\u0435\\u0442","nested":"{\\"ok\\":true}"}';

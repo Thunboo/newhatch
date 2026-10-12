@@ -59,6 +59,10 @@ order and timestamps, C2S-only per-window cURL/Python actions, clipboard/Hex beh
 progressive metadata/payload loading, fixed window heights, independent inner
 and outer scroll with no background movement, mobile layout, Escape and removal
 of stale rows after a late bridge merges chains.
+Accumulated-payload checks cover native browser find across offscreen C2S/S2C,
+no repeated reads on scrolling back, completion after scrolling away, abort on
+close, three-second cache reuse/expiry, fresh outer/inner scroll positions on
+every reopening, snapshot isolation and cache clearing on filter changes.
 
 Payload display checks in `test/auth/frontend.spec.cjs` and
 `test/auth/session-chains.spec.cjs` verify readable embedded Unicode with

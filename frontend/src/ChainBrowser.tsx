@@ -1,5 +1,6 @@
 import { AlertTriangle, Braces, Flag, ListFilter, RefreshCw, Settings2, X } from "lucide-react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import type { RefObject } from "react";
 import { api } from "./api";
 import pythonLogoUrl from "./assets/python-logo.png";
 import { ChainExportError, loadChainPython } from "./chainExport";
@@ -13,6 +14,19 @@ import { TrafficFilters } from "./TrafficFilters";
 import type { TrafficFilterProps } from "./TrafficFilters";
 import type { Chain, FlagMatches, Session, SessionFilters } from "./types";
 
+const CLOSED_CHAIN_CACHE_MS = 3_000;
+type PairPayload = { c2s: Uint8Array; s2c: Uint8Array; matches: FlagMatches };
+type ChainCache = {
+  members: Session[];
+  cursor: string | null;
+  initialized: boolean;
+  payloads: Map<number, PairPayload>;
+  expiresAt: number | null;
+  timer: number | null;
+};
+type SelectedChain = { chain: Chain; cache: ChainCache };
+const chainCacheKey = (chain: Chain) => `${chain.id}:${chain.snapshot_id}`;
+
 export function ChainBrowser(props: TrafficFilterProps & {
   onUngroup: () => void;
   applyEdited: () => boolean;
@@ -22,7 +36,7 @@ export function ChainBrowser(props: TrafficFilterProps & {
 }) {
   const { locale, t } = useI18n();
   const [chains, setChains] = useState<Chain[]>([]);
-  const [selected, setSelected] = useState<Chain | null>(null);
+  const [selected, setSelected] = useState<SelectedChain | null>(null);
   const [cursor, setCursor] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -32,7 +46,48 @@ export function ChainBrowser(props: TrafficFilterProps & {
   const requestRef = useRef<AbortController | null>(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const anchor = useRef<{ id: number; top: number } | null>(null);
+  const caches = useRef(new Map<string, ChainCache>());
   const { onLoaded, onLoadFailed, isCurrent } = props;
+
+  const clearCaches = useCallback(() => {
+    caches.current.forEach((cache) => { if (cache.timer !== null) window.clearTimeout(cache.timer); });
+    caches.current.clear();
+  }, []);
+  useEffect(() => clearCaches, [clearCaches]);
+
+  function retainClosedChain(selection: SelectedChain) {
+    const key = chainCacheKey(selection.chain);
+    const cache = selection.cache;
+    if (cache.timer !== null) window.clearTimeout(cache.timer);
+    cache.expiresAt = Date.now() + CLOSED_CHAIN_CACHE_MS;
+    cache.timer = window.setTimeout(() => {
+      if (caches.current.get(key) === cache) caches.current.delete(key);
+    }, CLOSED_CHAIN_CACHE_MS);
+  }
+
+  function openChain(chain: Chain) {
+    const key = chainCacheKey(chain);
+    let cache = caches.current.get(key);
+    if (cache && cache.expiresAt !== null && cache.expiresAt <= Date.now()) {
+      if (cache.timer !== null) window.clearTimeout(cache.timer);
+      caches.current.delete(key);
+      cache = undefined;
+    }
+    if (!cache) {
+      cache = { members: [], cursor: null, initialized: false, payloads: new Map(), expiresAt: null, timer: null };
+      caches.current.set(key, cache);
+    }
+    if (selected && selected.cache !== cache) retainClosedChain(selected);
+    if (cache.timer !== null) window.clearTimeout(cache.timer);
+    cache.timer = null;
+    cache.expiresAt = null;
+    setSelected({ chain, cache });
+  }
+
+  function closeChain() {
+    if (selected) retainClosedChain(selected);
+    setSelected(null);
+  }
 
   useLayoutEffect(() => {
     if (anchor.current) {
@@ -94,10 +149,11 @@ export function ChainBrowser(props: TrafficFilterProps & {
     setChains([]);
     setCursor(null);
     setSelected(null);
+    clearCaches();
     window.scrollTo(0, 0);
     void load(true);
     return () => { generation.current++; requestRef.current?.abort(); requestRef.current = null; };
-  }, [load]);
+  }, [clearCaches, load]);
 
   useEffect(() => {
     const node = sentinel.current;
@@ -126,8 +182,8 @@ export function ChainBrowser(props: TrafficFilterProps & {
     <div className="table-wrap"><table className="session-table chain-table">
       <thead><tr><th>{t("sessions.time")}</th><th>{t("common.source")}</th><th>{t("sessions.client")}</th><th>{t("chains.collector")}</th><th>{t("chains.steps")}</th><th>{t("chains.duration")}</th><th>{t("sessions.size")}</th><th>{t("sessions.flag")}</th></tr></thead>
       <tbody>{chains.map((chain) => <tr key={chain.id} data-chain-id={chain.id}
-        className={[chain.contains_flag ? "flag-row" : "", selected?.id === chain.id ? "selected-row" : ""].filter(Boolean).join(" ")}
-        onClick={() => setSelected(chain)}>
+        className={[chain.contains_flag ? "flag-row" : "", selected?.chain.id === chain.id ? "selected-row" : ""].filter(Boolean).join(" ")}
+        onClick={() => openChain(chain)}>
         <td className="mono time-cell">{formatTime(chain.started_at, locale)}</td>
         <td><span className="source-name">{chain.source_name}</span></td><td className="mono endpoint">{chain.client_ip}</td>
         <td>{chain.collector_id ?? t("chains.unknown")}</td><td className="mono">{chain.session_count}</td>
@@ -141,14 +197,14 @@ export function ChainBrowser(props: TrafficFilterProps & {
       </tr>)}</tbody>
     </table>{!loading && !chains.length && !error && <div className="empty-state"><ListFilter size={20} /><strong>{t("chains.empty")}</strong></div>}</div>
     <div ref={sentinel} className="history-sentinel" role="status" aria-live="polite">{loading ? t("chains.loading") : !cursor && chains.length ? t("chains.allShown") : null}</div>
-    {selected && <ChainDetail key={`${selected.id}:${selected.snapshot_id}`} chain={selected} onClose={() => setSelected(null)} />}
+    {selected && <ChainDetail key={chainCacheKey(selected.chain)} chain={selected.chain} cache={selected.cache} onClose={closeChain} />}
   </>;
 }
 
-function ChainDetail({ chain, onClose }: { chain: Chain; onClose: () => void }) {
+function ChainDetail({ chain, cache, onClose }: { chain: Chain; cache: ChainCache; onClose: () => void }) {
   const { locale, t } = useI18n();
-  const [members, setMembers] = useState<Session[]>([]);
-  const [cursor, setCursor] = useState<string | null>(null);
+  const [members, setMembers] = useState<Session[]>(cache.members);
+  const [cursor, setCursor] = useState<string | null>(cache.cursor);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<PayloadMode>("text");
@@ -159,35 +215,35 @@ function ChainDetail({ chain, onClose }: { chain: Chain; onClose: () => void }) 
   const scroll = useRef<HTMLDivElement>(null);
   const sentinel = useRef<HTMLDivElement>(null);
   const request = useRef<AbortController | null>(null);
-  const cursorRef = useRef<string | null>(null);
-  const initialized = useRef(false);
 
   const load = useCallback(async () => {
-    if (request.current || (initialized.current && cursorRef.current === null)) return;
+    if (request.current || (cache.initialized && cache.cursor === null)) return;
     const controller = new AbortController();
     request.current = controller;
     setLoading(true);
     setError(null);
     try {
-      const page = await api.getChainMembers(chain.id, chain.snapshot_id, cursorRef.current ?? undefined, controller.signal);
+      const page = await api.getChainMembers(chain.id, chain.snapshot_id, cache.cursor ?? undefined, controller.signal);
       if (controller.signal.aborted) return;
-      if (page.next_cursor && page.next_cursor === cursorRef.current) throw new Error(t("history.noProgress"));
-      setMembers((current) => {
-        const merged = new Map(current.map((member) => [member.id, member]));
-        page.items.forEach((member) => merged.set(member.id, member));
-        return Array.from(merged.values()).sort((a, b) => a.started_at - b.started_at || a.id - b.id);
-      });
-      initialized.current = true;
-      cursorRef.current = page.next_cursor;
+      if (page.next_cursor && page.next_cursor === cache.cursor) throw new Error(t("history.noProgress"));
+      const merged = new Map(cache.members.map((member) => [member.id, member]));
+      page.items.forEach((member) => merged.set(member.id, member));
+      cache.members = Array.from(merged.values()).sort((a, b) => a.started_at - b.started_at || a.id - b.id);
+      cache.initialized = true;
+      cache.cursor = page.next_cursor;
+      setMembers(cache.members);
       setCursor(page.next_cursor);
     } catch (caught) {
       if (!controller.signal.aborted) setError(messageOf(caught, t("error.unexpected")));
     } finally {
       if (request.current === controller) { request.current = null; setLoading(false); }
     }
-  }, [chain.id, chain.snapshot_id, t]);
+  }, [cache, chain.id, chain.snapshot_id, t]);
 
-  useEffect(() => { void load(); return () => { request.current?.abort(); request.current = null; }; }, [load]);
+  useEffect(() => {
+    if (!cache.initialized) void load();
+    return () => { request.current?.abort(); request.current = null; };
+  }, [cache, load]);
   useEffect(() => {
     const close = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", close);
@@ -263,37 +319,47 @@ function ChainDetail({ chain, onClose }: { chain: Chain; onClose: () => void }) 
     </div>
     {exportError && <div className="error-strip chain-export-error" role="alert"><AlertTriangle size={16} />{exportError}</div>}
     <div ref={scroll} className="chain-scroll">
-      {members.map((session) => <LazyPair key={session.id} session={session} root={scroll.current} mode={mode} formatJson={formatJson} />)}
+      {members.map((session) => <LazyPair key={session.id} session={session} cache={cache} root={scroll} mode={mode} formatJson={formatJson} />)}
       {error && <div className="error-strip"><AlertTriangle size={16} />{error}<button onClick={() => void load()}>{t("common.retry")}</button></div>}
       <div ref={sentinel} className="history-sentinel" role="status">{loading ? t("chains.loadingMembers") : cursor ? <button onClick={() => void load()}>{t("chains.more")}</button> : members.length ? t("chains.membersLoaded", { count: members.length }) : null}</div>
     </div>
   </aside>;
 }
 
-function LazyPair({ session, root, mode, formatJson }: { session: Session; root: HTMLElement | null; mode: PayloadMode; formatJson: boolean }) {
+function LazyPair({ session, cache, root, mode, formatJson }: { session: Session; cache: ChainCache; root: RefObject<HTMLElement | null>; mode: PayloadMode; formatJson: boolean }) {
   const { locale, t } = useI18n();
   const node = useRef<HTMLDivElement>(null);
   const positions = useRef([0, 0]);
-  const [visible, setVisible] = useState(false);
-  const [payload, setPayload] = useState<{ c2s: Uint8Array; s2c: Uint8Array; matches: FlagMatches } | null>(null);
+  const [activated, setActivated] = useState(false);
+  const [payload, setPayload] = useState<PairPayload | null>(() => cache.payloads.get(session.id) ?? null);
   const [error, setError] = useState<string | null>(null);
   const [retry, setRetry] = useState(0);
   useEffect(() => {
-    if (!node.current) return;
-    const observer = new IntersectionObserver((entries) => setVisible(entries.some((entry) => entry.isIntersecting)), { root, rootMargin: "200px" });
+    if (!node.current || cache.payloads.has(session.id)) return;
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting)) {
+        setActivated(true);
+        observer.disconnect();
+      }
+    }, { root: root.current, rootMargin: "200px" });
     observer.observe(node.current);
     return () => observer.disconnect();
-  }, [root]);
+  }, [cache, root, session.id]);
   useEffect(() => {
-    setPayload(null);
+    if (!activated || cache.payloads.has(session.id)) return;
     setError(null);
-    if (!visible) return;
     const controller = new AbortController();
     Promise.all([api.getPayload(session.id, "c2s", controller.signal), api.getPayload(session.id, "s2c", controller.signal), api.getFlagMatches(session.id, controller.signal)])
-      .then(([c2s, s2c, matches]) => { if (!controller.signal.aborted) setPayload({ c2s, s2c, matches }); })
+      .then(([c2s, s2c, matches]) => {
+        if (!controller.signal.aborted) {
+          const loaded = { c2s, s2c, matches };
+          cache.payloads.set(session.id, loaded);
+          setPayload(loaded);
+        }
+      })
       .catch((caught) => { if (!controller.signal.aborted) setError(messageOf(caught, t("error.unexpected"))); });
     return () => controller.abort();
-  }, [session.id, visible, retry, t]);
+  }, [cache, session.id, activated, retry, t]);
   useLayoutEffect(() => {
     const windows = Array.from(node.current?.querySelectorAll<HTMLPreElement>(".stream pre") ?? []);
     windows.forEach((window, index) => { window.scrollTop = positions.current[index]; });
@@ -304,6 +370,6 @@ function LazyPair({ session, root, mode, formatJson }: { session: Session; root:
     {payload ? <>
       <Stream chainScrollLane title={`#${session.id} · C2S`} subtitle={timestamp(session.first_payload_c2s_at)} bytes={payload.c2s} ranges={payload.matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} replayTarget={{ host: session.server_ip, port: session.server_port }} />
       <Stream chainScrollLane title={`#${session.id} · S2C`} subtitle={timestamp(session.first_payload_s2c_at)} bytes={payload.s2c} ranges={payload.matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
-    </> : ["C2S", "S2C"].map((direction) => <section key={direction} className="stream"><header><span>#{session.id} · {direction}</span></header><div className="payload-loading">{error ? <button onClick={() => setRetry((value) => value + 1)} title={error}>{t("common.retry")}</button> : visible ? <RefreshCw className="spin" size={17} /> : null}</div></section>)}
+    </> : ["C2S", "S2C"].map((direction) => <section key={direction} className="stream"><header><span>#{session.id} · {direction}</span></header><div className="payload-loading">{error ? <button onClick={() => setRetry((value) => value + 1)} title={error}>{t("common.retry")}</button> : activated ? <RefreshCw className="spin" size={17} /> : null}</div></section>)}
   </div>;
 }
