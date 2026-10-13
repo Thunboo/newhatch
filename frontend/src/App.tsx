@@ -685,8 +685,8 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
       </div>
       {!payloads ? <div className="payload-loading"><RefreshCw className="spin" size={17} /></div> : (
         <div className="streams">
-          <Stream replayTarget={{ host: session.server_ip, port: session.server_port }} title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
-          <Stream title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
+          <Stream direction="c2s" replayTarget={{ host: session.server_ip, port: session.server_port }} title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
+          <Stream direction="s2c" title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
         </div>
       )}
     </aside>

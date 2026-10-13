@@ -167,6 +167,11 @@ button:disabled { cursor: default; opacity: .5; }
 .stream.flagged { border-color: #c99918; box-shadow: 0 0 0 1px rgba(201,153,24,.2); }
 .stream > header { min-height: 34px; padding: 0 10px; display: flex; align-items: center; justify-content: space-between; color: #aeb5bd; background: #22262b; border-bottom: 1px solid #30353b; font-size: 11px; font-weight: 650; text-transform: uppercase; }
 .stream > header > span:first-child { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream-title-line { display: flex; align-items: center; gap: 7px; min-width: 0; }
+.stream-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.stream-flag-count { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 1px 5px; color: #f3d574; background: #4a3b15; border: 1px solid #94752b; border-radius: 4px; font-size: 11px; line-height: 16px; }
+.stream-flag-count:focus-visible { outline: 2px solid #f3d574; outline-offset: 2px; }
+.stream.response-flagged > header { color: #e6cc83; background: #302918; border-bottom-color: #695423; }
 .stream-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 8px; }
 .stream-actions button { width: 26px; height: 26px; display: grid; place-items: center; color: #aeb5bd; background: transparent; border: 1px solid #41474e; border-radius: 4px; }
 .stream-actions button.export-action { padding: 0; overflow: hidden; color: #30363d; background: #e8ebee; border-color: #123f53; border-radius: 5px; }

@@ -23,7 +23,7 @@ function chain(id = 41) {
 }
 
 async function routes(page) {
-  const state = { memberRequests: [], payloadRequests: [], chainRequests: [], rows: [chain()], c2s: new Map(), s2c: new Map(), waitPayload: null, memberSummary: null };
+  const state = { memberRequests: [], payloadRequests: [], flagMatchRequests: [], chainRequests: [], rows: [chain()], c2s: new Map(), s2c: new Map(), flagMatches: new Map(), waitPayload: null, memberSummary: null };
   await page.route("**/api/**", async (route) => {
     const url = new URL(route.request().url());
     const send = (value) => route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify(value) });
@@ -44,7 +44,10 @@ async function routes(page) {
     const found = url.pathname.match(/^\/api\/sessions\/(\d+)\/(payload\/(c2s|s2c)|flag-matches)$/);
     if (!found) return route.fulfill({ status: 404, body: "{}" });
     const id = Number(found[1]);
-    if (found[2] === "flag-matches") return send({ c2s: [], s2c: [] });
+    if (found[2] === "flag-matches") {
+      state.flagMatchRequests.push(id);
+      return send(state.flagMatches.get(id) ?? { c2s: [], s2c: [] });
+    }
     state.payloadRequests.push({ id, direction: found[3] });
     if (state.waitPayload) await state.waitPayload(id, found[3]);
     const body = Array.from({ length: 200 }, (_, i) => `line ${i}: contents for ${id}`).join("\n");
@@ -53,6 +56,134 @@ async function routes(page) {
   });
   return state;
 }
+
+function flagRanges(payload, flags) {
+  const bytes = Buffer.from(payload);
+  let offset = 0;
+  return flags.map((flag) => {
+    const token = Buffer.from(flag);
+    const start = bytes.indexOf(token, offset);
+    expect(start).toBeGreaterThanOrEqual(0);
+    offset = start + token.length;
+    return { start, end: offset };
+  });
+}
+
+for (const grouped of [false, true]) {
+  test(`${grouped ? "chain" : "standalone"} S2C header counts unique raw flags and keeps the badge across display modes`, async ({ page }, testInfo) => {
+    const state = await routes(page);
+    const c2s = "GET /?flag=FLAG{A} HTTP/1.1\r\nHost: test\r\n\r\n";
+    const body = JSON.stringify({ message: "Привет", flags: ["FLAG{A}", "FLAG{A}", "FLAG{B}"] });
+    const s2c = `HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n${body}`;
+    state.c2s.set(41, c2s);
+    state.s2c.set(41, s2c);
+    state.flagMatches.set(41, { c2s: flagRanges(c2s, ["FLAG{A}"]), s2c: flagRanges(s2c, ["FLAG{A}", "FLAG{A}", "FLAG{B}"]) });
+    state.s2c.set(42, "FLAG{A}");
+    state.flagMatches.set(42, { c2s: [], s2c: flagRanges("FLAG{A}", ["FLAG{A}"]) });
+    await page.goto("/");
+    if (grouped) await page.getByRole("checkbox", { name: "Group into chains" }).check();
+    await page.locator(grouped ? '[data-chain-id="41"]' : '[data-session-id="41"]').click();
+    const streams = page.locator(grouped ? '.chain-pair[data-session-id="41"] .stream' : ".detail-panel .stream");
+    const request = streams.first();
+    const response = streams.last();
+    const badge = response.getByRole("img", { name: "2 unique flags, 3 occurrences" });
+    await expect(badge).toHaveText("2");
+    await expect(badge).toHaveAttribute("title", "2 unique flags, 3 occurrences");
+    await expect(response).toHaveClass(/response-flagged/);
+    await expect(request).not.toHaveClass(/response-flagged/);
+    await expect(request.locator(".stream-flag-count")).toHaveCount(0);
+    await expect(request.locator("mark")).toHaveText("FLAG{A}");
+    expect(await badge.evaluate((node) => node.parentElement.className)).toBe("stream-title-line");
+    const payloadReads = state.payloadRequests.length;
+    const matchReads = state.flagMatchRequests.length;
+    await page.getByRole("checkbox", { name: "Format JSON" }).check();
+    await expect(badge).toHaveText("2");
+    await page.getByRole("button", { name: "Hex", exact: true }).click();
+    await expect(badge).toHaveText("2");
+    await expect(response.locator("mark")).toHaveCount(0);
+    await page.getByRole("button", { name: "Text", exact: true }).click();
+    await expect(badge).toHaveText("2");
+    expect(state.payloadRequests).toHaveLength(payloadReads);
+    expect(state.flagMatchRequests).toHaveLength(matchReads);
+    if (grouped) {
+      await page.locator('.chain-pair[data-session-id="42"]').evaluate((node) => node.scrollIntoView({ block: "center" }));
+      await expect(page.locator('.chain-pair[data-session-id="42"] .stream').last().getByRole("img", { name: "1 unique flag, 1 occurrence" })).toHaveText("1");
+      await page.locator(".chain-scroll").evaluate((node) => { node.scrollTop = 0; });
+      await expect(badge).toHaveText("2");
+    }
+    await page.screenshot({ path: testInfo.outputPath(`s2c-flags-${grouped ? "chain" : "standalone"}.png`) });
+  });
+}
+
+test("S2C uniqueness uses captured bytes before display decoding and handles long matches", async ({ page }) => {
+  const state = await routes(page);
+  const long = `FLAG{${"x".repeat(12_000)}}`;
+  const cases = [
+    { id: 41, payload: "FLAG{A} FLAG{%41}", flags: ["FLAG{A}", "FLAG{%41}"], unique: 2 },
+    { id: 42, payload: Buffer.from([0xff, 0x20, 0xfe, 0x20, 0xff]), flags: [Buffer.from([0xff]), Buffer.from([0xfe]), Buffer.from([0xff])], unique: 2 },
+    { id: 43, payload: `${long} ${long}`, flags: [long, long], unique: 1 },
+    { id: 44, payload: "no flag in this response", flags: [], unique: 0 },
+  ];
+  for (const item of cases) {
+    state.c2s.set(item.id, "FLAG{request-only}");
+    state.s2c.set(item.id, item.payload);
+    state.flagMatches.set(item.id, { c2s: flagRanges("FLAG{request-only}", ["FLAG{request-only}"]), s2c: flagRanges(item.payload, item.flags) });
+  }
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Group into chains" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  for (const item of cases) {
+    const pair = page.locator(`.chain-pair[data-session-id="${item.id}"]`);
+    await pair.evaluate((node) => node.scrollIntoView({ block: "center" }));
+    await expect(pair.locator("pre")).toHaveCount(2);
+    await expect(pair.locator(".stream").first().locator(".stream-flag-count")).toHaveCount(0);
+    const response = pair.locator(".stream").last();
+    if (item.unique) {
+      await expect(response.locator(".stream-flag-count")).toHaveText(String(item.unique));
+    } else {
+      await expect(response.locator(".stream-flag-count")).toHaveCount(0);
+      await expect(response).not.toHaveClass(/response-flagged/);
+    }
+  }
+});
+
+test("Russian S2C badge plurals and placement fit mobile headers", async ({ page }, testInfo) => {
+  const state = await routes(page);
+  const cases = [
+    { id: 41, unique: 1, occurrences: 1, title: "1 уникальный флаг, 1 вхождение" },
+    { id: 42, unique: 2, occurrences: 3, title: "2 уникальных флага, 3 вхождения" },
+    { id: 43, unique: 5, occurrences: 11, title: "5 уникальных флагов, 11 вхождений" },
+    { id: 44, unique: 21, occurrences: 22, title: "21 уникальный флаг, 22 вхождения" },
+  ];
+  for (const item of cases) {
+    const flags = Array.from({ length: item.occurrences }, (_, index) => `FLAG{${index % item.unique}}`);
+    const payload = flags.join(" ");
+    state.s2c.set(item.id, payload);
+    state.flagMatches.set(item.id, { c2s: [], s2c: flagRanges(payload, flags) });
+  }
+  await page.addInitScript(() => localStorage.setItem("newhatch_language", "ru"));
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto("/");
+  await page.getByRole("checkbox", { name: "Группировать в цепочки" }).check();
+  await page.locator('[data-chain-id="41"]').click();
+  for (const item of cases) {
+    const response = page.locator(`.chain-pair[data-session-id="${item.id}"] .stream`).last();
+    await response.evaluate((node) => node.scrollIntoView({ block: "center" }));
+    const badge = response.getByRole("img", { name: item.title });
+    await expect(badge).toHaveText(String(item.unique));
+    await expect(badge).toHaveAttribute("title", item.title);
+    const bounds = await badge.boundingBox();
+    const title = await response.locator(".stream-title-line").boundingBox();
+    const timestamp = await response.locator("header small").boundingBox();
+    const actions = await response.locator(".stream-actions").boundingBox();
+    expect(bounds.y).toBeGreaterThanOrEqual(title.y);
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(timestamp.y);
+    expect(bounds.x + bounds.width).toBeLessThan(actions.x);
+  }
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  await page.locator(".chain-scroll").evaluate((node) => { node.scrollTop = 0; });
+  await page.screenshot({ path: testInfo.outputPath("s2c-flags-mobile-ru.png") });
+});
 
 test("chain detail shows embedded Unicode by default in C2S and S2C", async ({ page }) => {
   const state = await routes(page);

@@ -62,6 +62,17 @@ literal, and malformed embedded JSON stays a string. Hex and stored bytes remain
 Unrecognized protocols retain raw visibility. Session values are raw_tcp,
 http and websocket; only WebSocket Upgrade classification is currently implemented.
 
+S2C headers show a gold flag icon and the number of unique flags beside the window
+title; flagged response headers also use a gold tint. Hide the badge at zero.
+Its localized tooltip reports unique flags and total occurrences, with correct
+EN/RU plural forms. This applies to standalone details and chain windows in Text
+and Hex, independently of Format JSON. Count unique, byte-identical full matches
+within that window's stored S2C only, using the existing backend-provided ranges;
+the frontend neither reruns FLAG_REGEX nor makes additional API requests.
+Do not deduplicate across sessions or use display decoding for identity. C2S has
+no new header badge; backend detection and existing aggregate counters retain
+their current semantics. See [#24](https://github.com/Thunboo/newhatch/issues/24).
+
 New HTTP detail and chain windows follow [Atomic HTTP Sessions](http-sessions.md).
 Unrecognized TCP remains inspectable; ambiguous HTTP associations are suppressed.
 

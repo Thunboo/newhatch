@@ -1,4 +1,4 @@
-import { Copy } from "lucide-react";
+import { Copy, Flag } from "lucide-react";
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import curlLogoUrl from "./assets/Curl-logo.svg";
@@ -12,7 +12,7 @@ import type { ByteRange } from "./types";
 import { formatBytes } from "./format";
 export type PayloadMode = "text" | "hex";
 
-export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false }: { title: string; subtitle?: string; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean }) {
+export function Stream({ title, subtitle, direction, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false }: { title: string; subtitle?: string; direction: "c2s" | "s2c"; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean }) {
   const { t } = useI18n();
   const displayedText = useMemo(() => displayPayload(bytes, formatJson), [bytes, formatJson]);
   const text = useMemo(() => mode === "hex" ? toHex(bytes) : displayedText, [bytes, displayedText, mode]);
@@ -26,11 +26,15 @@ export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagg
     () => ranges.map((range) => decodeDisplayEscapes(decodePayload(bytes.slice(range.start, range.end)))).filter(Boolean),
     [bytes, ranges],
   );
+  const uniqueFlags = useMemo(() => direction === "s2c" ? countUniqueFlags(bytes, ranges) : 0, [bytes, ranges, direction]);
 
   return (
-    <section className={flagged ? "stream flagged" : "stream"}>
+    <section className={["stream", flagged || uniqueFlags > 0 ? "flagged" : "", uniqueFlags > 0 ? "response-flagged" : ""].filter(Boolean).join(" ")}>
       <header>
-        <span className="stream-title">{title}{subtitle && <small>{subtitle}</small>}</span>
+        <span className="stream-title">
+          <span className="stream-title-line"><span className="stream-title-text">{title}</span>{uniqueFlags > 0 && <ResponseFlagBadge unique={uniqueFlags} occurrences={ranges.length} />}</span>
+          {subtitle && <small>{subtitle}</small>}
+        </span>
         <span className="stream-actions">
           <span className="mono">{formatBytes(bytes.length)}</span>
           {replayTarget && <>
@@ -49,6 +53,32 @@ export function Stream({ title, subtitle, bytes, ranges, mode, formatJson, flagg
       {chainScrollLane && <div className="chain-scroll-lane" aria-hidden="true" />}
     </section>
   );
+}
+
+function countUniqueFlags(bytes: Uint8Array, ranges: ByteRange[]): number {
+  const flags = new Set<string>();
+  for (const { start, end } of ranges) {
+    // One code unit per captured byte preserves identity even for invalid UTF-8.
+    // Chunk conversion avoids argument-size limits for a long regex match.
+    const chunks: string[] = [];
+    for (let offset = start; offset < end; offset += 8_192) {
+      chunks.push(String.fromCharCode(...bytes.subarray(offset, Math.min(offset + 8_192, end))));
+    }
+    flags.add(chunks.join(""));
+  }
+  return flags.size;
+}
+
+function ResponseFlagBadge({ unique, occurrences }: { unique: number; occurrences: number }) {
+  const { locale, t } = useI18n();
+  const plurals = useMemo(() => new Intl.PluralRules(locale), [locale]);
+  const uniqueForm = plurals.select(unique);
+  const occurrenceForm = plurals.select(occurrences);
+  const summary = t("detail.flagSummary", {
+    unique: t(uniqueForm === "one" ? "detail.uniqueFlagsOne" : uniqueForm === "few" ? "detail.uniqueFlagsFew" : "detail.uniqueFlagsOther", { count: unique.toLocaleString(locale) }),
+    occurrences: t(occurrenceForm === "one" ? "detail.flagOccurrencesOne" : occurrenceForm === "few" ? "detail.flagOccurrencesFew" : "detail.flagOccurrencesOther", { count: occurrences.toLocaleString(locale) }),
+  });
+  return <span className="stream-flag-count" role="img" aria-label={summary} title={summary} tabIndex={0}><Flag size={13} aria-hidden="true" /><span>{unique.toLocaleString(locale)}</span></span>;
 }
 
 function HighlightedText({ text, matches }: { text: string; matches: string[] }) {

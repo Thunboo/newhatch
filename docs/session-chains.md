@@ -52,6 +52,7 @@ ordered newest first by chain start with a deterministic ID tie-breaker.
 Card members are oldest first by (started_at, id), C2S immediately before its S2C.
 
 Reuse Text/Hex, JSON formatting, flag highlighting and ordinary copy.
+S2C windows also use the shared [unique-flag header badge](mvp.md#session-detail).
 Headers identify session, direction and first-payload capture time, with
 session/direction above the timestamp on narrow screens.
 Individual cURL/Python export appears only on C2S and retains

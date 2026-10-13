@@ -63,6 +63,9 @@ Accumulated-payload checks cover native browser find across offscreen C2S/S2C,
 no repeated reads on scrolling back, completion after scrolling away, abort on
 close, three-second cache reuse/expiry, fresh outer/inner scroll positions on
 every reopening, snapshot isolation and cache clearing on filter changes.
+S2C header-badge coverage checks per-window unique counts and occurrence tooltips,
+C2S exclusion, zero hiding, exact byte identity before display decoding, long
+matches, Text/Hex/JSON stability without extra reads and EN/RU mobile layout.
 
 Payload display checks in `test/auth/frontend.spec.cjs` and
 `test/auth/session-chains.spec.cjs` verify readable embedded Unicode with
