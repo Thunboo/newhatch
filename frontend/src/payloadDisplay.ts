@@ -1,5 +1,5 @@
 const utf8Decoder = new TextDecoder("utf-8", { fatal: false });
-const MAX_EMBEDDED_JSON_DEPTH = 4;
+export const MAX_EMBEDDED_JSON_DEPTH = 4;
 
 export function decodePayload(bytes: Uint8Array): string {
   return utf8Decoder.decode(bytes);
@@ -26,7 +26,7 @@ export function decodeDisplayEscapes(text: string): string {
   return decodePercentEncoding(decodeJsonEscapes(text));
 }
 
-function findHttpBodyBoundary(text: string): { headerEnd: number; bodyStart: number; separator: string } | null {
+export function findHttpBodyBoundary(text: string): { headerEnd: number; bodyStart: number; separator: string } | null {
   const crlfIndex = text.indexOf("\r\n\r\n");
   const lfIndex = text.indexOf("\n\n");
   if (crlfIndex < 0 && lfIndex < 0) return null;
@@ -67,7 +67,7 @@ function normalizeJsonValue(value: unknown, depth: number, expandEmbeddedJson: b
   return value;
 }
 
-function looksLikeJson(text: string): boolean {
+export function looksLikeJson(text: string): boolean {
   const trimmed = text.trim();
   return (trimmed.startsWith("{") && trimmed.endsWith("}"))
     || (trimmed.startsWith("[") && trimmed.endsWith("]"));

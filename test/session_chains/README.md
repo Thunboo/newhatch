@@ -66,6 +66,11 @@ every reopening, snapshot isolation and cache clearing on filter changes.
 S2C header-badge coverage checks per-window unique counts and occurrence tooltips,
 C2S exclusion, zero hiding, exact byte identity before display decoding, long
 matches, Text/Hex/JSON stability without extra reads and EN/RU mobile layout.
+`test/auth/payload-highlighting.spec.cjs` covers applied-term highlights in both
+directions and chain context, drafts/pending removals, green/yellow intersections,
+literal/case-sensitive/overlapping matches, raw-to-visible provenance through
+UTF-8/escapes/JSON, embedded depth, unchanged formatting/copy, a large loaded
+stream and display-mode changes without new payload requests.
 
 Payload display checks in `test/auth/frontend.spec.cjs` and
 `test/auth/session-chains.spec.cjs` verify readable embedded Unicode with

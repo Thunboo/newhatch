@@ -110,7 +110,8 @@ snapshots, complete-export preparation and query budgets are defined once in
 
 UI exposes Source, Protocol, Flags-only and accumulated literal AND payload chips.
 [Session filtering](session-filtering-v2.md) owns matching, edited/applied state,
-Enter/Add/Refresh/polling behavior, notices, backend limits and the array API.
+Enter/Add/Refresh/polling behavior, notices, backend limits, the array API and
+green Text highlighting of applied terms alongside yellow flag highlighting.
 
 Endpoint IP/port and started_after are API-only; there is no upper/end-time bound.
 Session pages cap at 200 and a payload request scans at most 2,000 prefiltered

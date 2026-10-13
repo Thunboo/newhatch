@@ -2,6 +2,7 @@
 
 Current contract for [#25](https://github.com/Thunboo/newhatch/issues/25) and
 [#22](https://github.com/Thunboo/newhatch/issues/22), shared by sessions and chains.
+Text highlighting is defined by [#33](https://github.com/Thunboo/newhatch/issues/33).
 
 ## Matching
 
@@ -16,6 +17,27 @@ Duplicates remain separate chips and consume separate limit slots.
 LogsQL, regex, field expressions and OR are unsupported; operator-looking text
 is literal. A chain matches only when one member satisfies all payload and
 metadata conditions. Opening it retains all available members as context.
+
+## Text highlighting
+
+In standalone and chain Text windows, highlight every occurrence of the applied
+payload terms in both C2S and S2C, including retained context members. Use the
+same literal, case-sensitive UTF-8 byte matching as filtering, including
+overlapping occurrences; duplicate chips do not create duplicate markup.
+Draft input and pending chip removals cannot change highlighting before application.
+No applied terms means no additional highlighting. Hex remains unmarked.
+
+The frontend uses already loaded bytes and the applied snapshot, without new API
+requests or changing backend filtering. It carries match marks through UTF-8,
+JSON/percent escape decoding, JSON formatting and embedded-JSON expansion to
+the corresponding visible characters. For example, applied `%41` marks its
+displayed `A`, without marking an unrelated literal `A` elsewhere. Formatting
+and copy/export text retain the existing payload-display contract.
+
+Payload matches use green #86D9A0 with dark text. Flags retain yellow #F3C840;
+overlapping characters keep the yellow background with a green underline.
+Recompute for loaded bytes, applied terms, flag ranges or Format JSON changes,
+not ordinary renders or Text/Hex toggles.
 
 ## Input, edited chips and applied snapshot
 
@@ -97,7 +119,11 @@ chain snapshots and query budgets; frontend-only filtering is insufficient.
 
 Behavioral coverage lives in test/auth/session-filtering.spec.cjs,
 test/auth/backend.rs, analyzer payload-search/storage tests and
-test/auth/test_nginx.py. It covers AND/direction boundaries, limits and Unicode,
+test/auth/test_nginx.py. Highlight coverage lives in
+test/auth/payload-highlighting.spec.cjs. It checks applied/draft separation,
+all-direction/context matches, flag overlaps, decoded/formatted source identity,
+formatting/copy preservation and no extra payload reads.
+Filtering checks cover AND/direction boundaries, limits and Unicode,
 duplicates, blank submissions, pending removals, delayed/failing/stale requests,
 pagination, both view modes and mobile/Russian layout.
 Runnable checks: [test/session_chains](../test/session_chains/README.md)

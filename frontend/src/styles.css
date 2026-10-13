@@ -191,6 +191,8 @@ button:disabled { cursor: default; opacity: .5; }
 .stream-actions button.copy-failed { color: #f08a8a; border-color: #965151; }
 .stream pre { min-height: 0; margin: 0; padding: 12px; flex: 1; overflow: auto; overscroll-behavior: contain; color: #d9dee4; font: 12px/1.55 ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; white-space: pre-wrap; overflow-wrap: anywhere; }
 .stream mark { padding: 1px 0; color: #17191d; background: #f3c840; }
+.stream mark.payload-match { background: #86d9a0; }
+.stream mark.flag-match.payload-match { background: #f3c840; text-decoration: underline; text-decoration-color: #86d9a0; text-decoration-thickness: 2px; text-underline-offset: 2px; }
 .payload-loading { display: grid; place-items: center; flex: 1; color: #777e87; }
 .spin { animation: spin .8s linear infinite; }
 @keyframes spin { to { transform: rotate(360deg); } }

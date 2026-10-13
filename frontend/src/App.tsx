@@ -360,7 +360,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
         )}
       </main>
 
-      {selected && <SessionDetail session={selected} onClose={() => setSelected(null)} />}
+      {selected && <SessionDetail session={selected} payloadTerms={filters.payload} onClose={() => setSelected(null)} />}
     </div>
   );
 }
@@ -605,7 +605,7 @@ function SourcesView({ sources, onChanged }: { sources: Source[]; onChanged: () 
   );
 }
 
-function SessionDetail({ session, onClose }: { session: Session; onClose: () => void }) {
+function SessionDetail({ session, payloadTerms, onClose }: { session: Session; payloadTerms?: readonly string[]; onClose: () => void }) {
   const { locale, t } = useI18n();
   const [payloads, setPayloads] = useState<{ c2s: Uint8Array; s2c: Uint8Array } | null>(null);
   const [matches, setMatches] = useState<FlagMatches>({ c2s: [], s2c: [] });
@@ -685,8 +685,8 @@ function SessionDetail({ session, onClose }: { session: Session; onClose: () => 
       </div>
       {!payloads ? <div className="payload-loading"><RefreshCw className="spin" size={17} /></div> : (
         <div className="streams">
-          <Stream direction="c2s" replayTarget={{ host: session.server_ip, port: session.server_port }} title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
-          <Stream direction="s2c" title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
+          <Stream payloadTerms={payloadTerms} direction="c2s" replayTarget={{ host: session.server_ip, port: session.server_port }} title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
+          <Stream payloadTerms={payloadTerms} direction="s2c" title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
         </div>
       )}
     </aside>

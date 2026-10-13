@@ -197,11 +197,11 @@ export function ChainBrowser(props: TrafficFilterProps & {
       </tr>)}</tbody>
     </table>{!loading && !chains.length && !error && <div className="empty-state"><ListFilter size={20} /><strong>{t("chains.empty")}</strong></div>}</div>
     <div ref={sentinel} className="history-sentinel" role="status" aria-live="polite">{loading ? t("chains.loading") : !cursor && chains.length ? t("chains.allShown") : null}</div>
-    {selected && <ChainDetail key={chainCacheKey(selected.chain)} chain={selected.chain} cache={selected.cache} onClose={closeChain} />}
+    {selected && <ChainDetail key={chainCacheKey(selected.chain)} chain={selected.chain} cache={selected.cache} payloadTerms={props.filters.payload} onClose={closeChain} />}
   </>;
 }
 
-function ChainDetail({ chain, cache, onClose }: { chain: Chain; cache: ChainCache; onClose: () => void }) {
+function ChainDetail({ chain, cache, payloadTerms, onClose }: { chain: Chain; cache: ChainCache; payloadTerms?: readonly string[]; onClose: () => void }) {
   const { locale, t } = useI18n();
   const [members, setMembers] = useState<Session[]>(cache.members);
   const [cursor, setCursor] = useState<string | null>(cache.cursor);
@@ -319,14 +319,14 @@ function ChainDetail({ chain, cache, onClose }: { chain: Chain; cache: ChainCach
     </div>
     {exportError && <div className="error-strip chain-export-error" role="alert"><AlertTriangle size={16} />{exportError}</div>}
     <div ref={scroll} className="chain-scroll">
-      {members.map((session) => <LazyPair key={session.id} session={session} cache={cache} root={scroll} mode={mode} formatJson={formatJson} />)}
+      {members.map((session) => <LazyPair key={session.id} session={session} cache={cache} root={scroll} mode={mode} formatJson={formatJson} payloadTerms={payloadTerms} />)}
       {error && <div className="error-strip"><AlertTriangle size={16} />{error}<button onClick={() => void load()}>{t("common.retry")}</button></div>}
       <div ref={sentinel} className="history-sentinel" role="status">{loading ? t("chains.loadingMembers") : cursor ? <button onClick={() => void load()}>{t("chains.more")}</button> : members.length ? t("chains.membersLoaded", { count: members.length }) : null}</div>
     </div>
   </aside>;
 }
 
-function LazyPair({ session, cache, root, mode, formatJson }: { session: Session; cache: ChainCache; root: RefObject<HTMLElement | null>; mode: PayloadMode; formatJson: boolean }) {
+function LazyPair({ session, cache, root, mode, formatJson, payloadTerms }: { session: Session; cache: ChainCache; root: RefObject<HTMLElement | null>; mode: PayloadMode; formatJson: boolean; payloadTerms?: readonly string[] }) {
   const { locale, t } = useI18n();
   const node = useRef<HTMLDivElement>(null);
   const positions = useRef([0, 0]);
@@ -368,8 +368,8 @@ function LazyPair({ session, cache, root, mode, formatJson }: { session: Session
   const timestamp = (value: number | null) => value == null ? t("chains.timeUnknown") : new Date(value / 1_000).toLocaleTimeString(locale, { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit", fractionalSecondDigits: 3 });
   return <div ref={node} className="chain-pair" data-session-id={session.id}>
     {payload ? <>
-      <Stream direction="c2s" chainScrollLane title={`#${session.id} · C2S`} subtitle={timestamp(session.first_payload_c2s_at)} bytes={payload.c2s} ranges={payload.matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} replayTarget={{ host: session.server_ip, port: session.server_port }} />
-      <Stream direction="s2c" chainScrollLane title={`#${session.id} · S2C`} subtitle={timestamp(session.first_payload_s2c_at)} bytes={payload.s2c} ranges={payload.matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
+      <Stream payloadTerms={payloadTerms} direction="c2s" chainScrollLane title={`#${session.id} · C2S`} subtitle={timestamp(session.first_payload_c2s_at)} bytes={payload.c2s} ranges={payload.matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} replayTarget={{ host: session.server_ip, port: session.server_port }} />
+      <Stream payloadTerms={payloadTerms} direction="s2c" chainScrollLane title={`#${session.id} · S2C`} subtitle={timestamp(session.first_payload_s2c_at)} bytes={payload.s2c} ranges={payload.matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
     </> : ["C2S", "S2C"].map((direction) => <section key={direction} className="stream"><header><span>#{session.id} · {direction}</span></header><div className="payload-loading">{error ? <button onClick={() => setRetry((value) => value + 1)} title={error}>{t("common.retry")}</button> : activated ? <RefreshCw className="spin" size={17} /> : null}</div></section>)}
   </div>;
 }
