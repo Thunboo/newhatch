@@ -49,8 +49,14 @@ Every generated Python script starts with #!/usr/bin/env python3.
 
 Individual exports use requests.request; a chain uses one requests.Session,
 sequentially in (session started_at, id) order and then C2S byte order.
-Wait for each response without reproducing capture timing gaps. Keep a 10-second
-timeout per request and disable automatic redirects.
+Wait for each response without reproducing capture timing gaps. A chain always
+pauses before each request except the first, after the preceding response is
+printed. Each pause independently samples random.uniform(DELAY_MIN, DELAY_MAX),
+then calls time.sleep with that duration. DELAY_MIN = 0.5 and DELAY_MAX = 1.5
+seconds are editable constants near the script's beginning. Apply pauses within
+multi-request C2S payloads and across chain members; do not pause after the last
+request. Individual exports have no delay or random/time imports. Keep a
+10-second timeout per request and disable automatic redirects.
 
 After every completed request, keep the variable response and emit
 `print(response.text, flush=True)`. Print the actual replay body, including

@@ -72,6 +72,50 @@ function close(server) {
   return new Promise((resolve) => { server.closeAllConnections(); server.close(resolve); });
 }
 
+test("chain pauses independently between requests after printing responses, with no leading/trailing delay", async ({ page }) => {
+  const received = [];
+  const server = http.createServer((incoming, outgoing) => {
+    received.push({ path: incoming.url, at: performance.now() });
+    outgoing.end(incoming.url);
+  });
+  const port = await listen(server);
+  const probe = [
+    "import random, time",
+    "test_delays = iter([0.5, 1.5])",
+    "test_original_sleep = time.sleep",
+    "def test_uniform(low, high):",
+    "    assert (low, high) == (0.5, 1.5), (low, high)",
+    "    return next(test_delays)",
+    "def test_sleep(delay):",
+    '    print("PAUSE", delay, flush=True)',
+    "    test_original_sleep(delay)",
+    "random.uniform = test_uniform",
+    "time.sleep = test_sleep", "",
+  ].join("\n");
+  try {
+    const first = { id: 41, payload: request("/first") };
+    for (const kind of ["single", "chain"]) {
+      received.length = 0;
+      const code = await generate(page, [first], port, false, kind);
+      if (kind === "single") expect(code).not.toMatch(/import random|import time|time\.sleep/);
+      const output = await executePython(probe + code);
+      expect(output).not.toContain("PAUSE");
+      expect(received.map((item) => item.path)).toEqual(["/first"]);
+    }
+    received.length = 0;
+    const code = await generate(page, [
+      { id: 41, payload: first.payload + request("/second") },
+      { id: 42, payload: request("/third") },
+    ], port);
+    const output = await executePython(probe + code);
+    expect(output.split("\n").filter((line) => line.startsWith("/") || line.startsWith("PAUSE")))
+      .toEqual(["/first", "PAUSE 0.5", "/second", "PAUSE 1.5", "/third"]);
+    expect(received.map((item) => item.path)).toEqual(["/first", "/second", "/third"]);
+    expect(received[1].at - received[0].at).toBeGreaterThanOrEqual(480);
+    expect(received[2].at - received[1].at).toBeGreaterThanOrEqual(1480);
+  } finally { await close(server); }
+});
+
 const cookieHosts = ["fixture.test", "localhost", "127.0.0.1", "[::1]"];
 for (const [host, destination] of cookieHosts.flatMap((host) => [undefined, "localhost"].map((destination) => [host, destination]))) {
   test(`generated Python replays every request, updates/deletes cookies and keeps redirects explicit (${host}, argv=${destination ?? "default"})`, async ({ page }) => {

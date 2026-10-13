@@ -197,13 +197,15 @@ export function exportCurl(request: ReplayRequest): string {
   return (request.hasBody ? "printf '%s' " + bashString(request.body) + " | \\\n" : "") + command + "\n";
 }
 
-function pythonHeader(): string[] {
+function pythonHeader(chain = false): string[] {
   return [
     "#!/usr/bin/env python3",
     "import argparse",
     "from ipaddress import ip_address",
     "import re",
+    ...(chain ? ["import random", "import time"] : []),
     "import requests", "",
+    ...(chain ? ["DELAY_MIN = 0.5", "DELAY_MAX = 1.5", ""] : []),
     "def destination_host(value):",
     '    host = value[1:-1] if value.startswith("[") and value.endswith("]") else value',
     '    error = "Expected an IP address or hostname, without a URL or port"',
@@ -300,8 +302,9 @@ function pythonChainHeader(seedCondition: string | undefined): string {
     '        client.cookies.set(name, cookie.coded_value, domain=domain, path="/")', "",
   ];
   return [
-    ...pythonHeader(),
+    ...pythonHeader(true),
     "# Requests run in capture order, waiting for each response; redirects are disabled.",
+    "# Pause randomly between requests; adjust DELAY_MIN/DELAY_MAX above if needed.",
     ...(seedCondition ? ["# Cookies from the first request seed the jar; responses update later requests."] : []),
     "# Edit response-dependent values (CSRF tokens, IDs, etc.) manually below.", "",
     ...(seedCondition === "True" ? cookieSetup : seedCondition ? [
@@ -367,7 +370,7 @@ export class PythonChainExport {
           const condition = cookieReuseCondition(this.initialHost, cookieHost(request));
           this.seedConditions.add(condition);
         }
-        this.chunks.push(parts.start + parts.end);
+        this.chunks.push("    time.sleep(random.uniform(DELAY_MIN, DELAY_MAX))\n" + parts.start + parts.end);
       }
     });
   }

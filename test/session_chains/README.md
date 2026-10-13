@@ -112,6 +112,10 @@ header inputs with the failing request index.
 Individual and chain replay checks verify case-insensitive Authorization omission,
 unchanged unrelated headers, and explicitly configured session authentication
 across requests in one captured payload and later chain members.
+Delay checks execute real sleeps at both 0.5/1.5-second bounds, using a controlled
+random draw to verify independent pauses after printed responses, within one C2S
+and across members. Individual exports and one-request chains perform no sleeps;
+the first and last requests have no leading/trailing pause.
 
 Conditional-helper checks verify helper/import
 omission without initial cookies, for a single request, for first-only cookies,
