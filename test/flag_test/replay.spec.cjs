@@ -143,7 +143,7 @@ for (const pretty of [false, true]) {
       expect(received.headers["content-type"]).toBe("application/json");
       expect(received.headers.host).toBe("fixture.test:18081");
       expect(received.headers.cookie).toBe("session=fixture");
-      expect(received.headers.authorization).toBe("Bearer fixture-only");
+      expect(received.headers.authorization).toBe(format === "bash" ? "Bearer fixture-only" : undefined);
       expect(received.headers["x-replay"]).toBe("literal $(printf wrong) 'quote'");
       expect(received.headers["x-connection-only"]).toBeUndefined();
       expect(received.params).toEqual([

@@ -109,6 +109,9 @@ and initial cookies under DNS, single-label, IPv4 and IPv6 Host headers. HTTP 50
 does not skip later requests and 302 does not introduce an uncaptured redirect.
 Framing tests reject incomplete, binary, chunked, compressed, Upgrade and invalid
 header inputs with the failing request index.
+Individual and chain replay checks verify case-insensitive Authorization omission,
+unchanged unrelated headers, and explicitly configured session authentication
+across requests in one captured payload and later chain members.
 
 Conditional-helper checks verify helper/import
 omission without initial cookies, for a single request, for first-only cookies,

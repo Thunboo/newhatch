@@ -93,8 +93,8 @@ Decode query arguments into readable cURL options/Python params while preserving
 repeated names; retain path escaping. Send displayed UTF-8 bodies with recalculated
 Content-Length. Omit connection-specific headers and Accept-Encoding.
 cURL requires 7.87+ for --url-query; Python requires Python 3 and requests.
-Timeouts, redirects, destination overrides and response printing are defined in
-[Python replay](python-replay.md). Runnable execution checks are in
+Timeouts, redirects, destination overrides, authentication and response printing
+are defined in [Python replay](python-replay.md). Runnable execution checks are in
 [test/flag_test](../test/flag_test/README.md).
 
 ## Session Chains

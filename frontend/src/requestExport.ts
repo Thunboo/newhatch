@@ -199,6 +199,7 @@ export function exportCurl(request: ReplayRequest): string {
 
 function pythonHeader(): string[] {
   return [
+    "#!/usr/bin/env python3",
     "import argparse",
     "from ipaddress import ip_address",
     "import re",
@@ -234,7 +235,10 @@ function pythonRequestLines(request: ReplayRequest, omitCookies = false): string
   const lines = [
     'url = "http://" + (target_host or ' + pythonString(request.target.host) + ") + " + pythonString(":" + request.target.port + request.path),
     "headers = {",
-    ...request.headers.filter(([name]) => !omitCookies || name.toLowerCase() !== "cookie").map(([name, value]) => {
+    ...request.headers.filter(([name]) => {
+      const key = name.toLowerCase();
+      return key !== "authorization" && (!omitCookies || key !== "cookie");
+    }).map(([name, value]) => {
       const headerValue = name.toLowerCase() === "host"
         ? "(target_host + " + pythonString(":" + request.target.port) + " if target_host else " + pythonHeaderValue(value) + ")"
         : pythonHeaderValue(value);

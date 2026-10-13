@@ -65,6 +65,7 @@ Coverage includes:
   JSON, literal quotes, shell metacharacters, leading @ and trailing newlines.
 - Received headers, cookies, query arguments with repeated names, destination
   Host and recalculated UTF-8 Content-Length are checked through nginx.
+- Python omits captured Authorization; cURL preserves it.
 - Unsupported framing/encoding, multiple requests, duplicate headers and Hex
   mode disable export while ordinary copy still works.
 - Russian labels, mobile layout and the clipboard fallback.

@@ -173,6 +173,42 @@ test("chain replay formats each JSON body before Unicode byte lengths are recalc
 });
 
 for (const kind of ["single", "chain"]) {
+  test(kind + " omits captured Authorization in every casing", async ({ page }) => {
+    const received = [];
+    const server = http.createServer((incoming, outgoing) => {
+      received.push({ path: incoming.url, headers: incoming.headers });
+      outgoing.end("ok");
+    });
+    const port = await listen(server);
+    try {
+      const steps = ["Authorization", "authorization", "aUtHoRiZaTiOn"].map((name, index) => ({
+        id: 41 + index,
+        payload: request("/auth/" + index, [[name, "Bearer captured-stale-" + index], ["X-Replay", "keep-me"]]),
+      }));
+      const scripts = kind === "single"
+        ? await Promise.all(steps.map((step) => generate(page, [step], port, false, kind)))
+        : [await generate(page, [
+          { id: 41, payload: steps[0].payload + steps[1].payload },
+          steps[2],
+        ], port)];
+      for (const code of scripts) {
+        expect(code).not.toMatch(/authorization|captured-stale/i);
+        await executePython(code);
+      }
+      expect(received.map((item) => item.path)).toEqual(["/auth/0", "/auth/1", "/auth/2"]);
+      expect(received.every((item) => item.headers.authorization === undefined)).toBe(true);
+      expect(received.every((item) => item.headers["x-replay"] === "keep-me")).toBe(true);
+      if (kind === "chain") {
+        received.length = 0;
+        const configured = scripts[0].replace("with requests.Session() as session:\n",
+          'with requests.Session() as session:\n    session.headers["Authorization"] = "Bearer fresh-token"\n');
+        await executePython(configured);
+        expect(received).toHaveLength(3);
+        expect(received.every((item) => item.headers.authorization === "Bearer fresh-token")).toBe(true);
+      }
+    } finally { await close(server); }
+  });
+
   test(kind + " argv changes the destination and existing Host while preserving other headers/query/body", async ({ page }) => {
     const received = [];
     const server = http.createServer(async (incoming, outgoing) => {

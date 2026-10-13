@@ -35,7 +35,17 @@ Normal HTTP-client transport headers remain its responsibility; this is not
 byte-for-byte raw replay or a requirement to suppress automatic Host.
 Existing header validation/omissions still apply.
 
+Individual and chain Python exports omit captured Authorization headers,
+regardless of header-name casing. Configure authentication manually in the script:
+Session automatically persists response cookies, but does not extract or retain
+Authorization from responses. For a chain, set session.auth or session.headers
+explicitly; response-derived Bearer tokens require manual extraction. Individual
+scripts use requests.request and require explicit auth or headers there.
+cURL exports retain captured Authorization.
+
 ## Execution and output
+
+Every generated Python script starts with #!/usr/bin/env python3.
 
 Individual exports use requests.request; a chain uses one requests.Session,
 sequentially in (session started_at, id) order and then C2S byte order.
