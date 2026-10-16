@@ -59,9 +59,14 @@ impl PayloadSearch {
     }
 
     pub fn matches(&self, c2s: &[u8], s2c: &[u8]) -> bool {
+        if self.is_empty() {
+            return true;
+        }
+        let c2s = crate::payload_text::display(c2s, false);
+        let s2c = crate::payload_text::display(s2c, false);
         self.terms
             .iter()
-            .all(|term| contains(c2s, term) || contains(s2c, term))
+            .all(|term| contains(c2s.as_bytes(), term) || contains(s2c.as_bytes(), term))
     }
 }
 
@@ -101,5 +106,24 @@ mod tests {
         assert!(PayloadSearch::new(vec!["\u{0085}".into()])
             .unwrap()
             .matches("\u{0085}".as_bytes(), b""));
+    }
+
+    #[test]
+    fn matches_decoded_unicode_nested_json_and_percent_encoding() {
+        let search = PayloadSearch::new(vec!["Привет".into(), "A".into()]).unwrap();
+        assert!(search.matches(
+            br#"{"nested":"{\"text\":\"\u041f\u0440\u0438\u0432\u0435\u0442\"}"}"#,
+            b"%41"
+        ));
+        assert!(!search.matches(
+            br#"{"text":"\u041f\u0440\u0438\u0432\u0435\u0442"}"#,
+            b"%61"
+        ));
+        assert!(!PayloadSearch::new(vec!["AB".into()])
+            .unwrap()
+            .matches(b"%41", br"\u0042"));
+        assert!(!PayloadSearch::new(vec!["%41".into()])
+            .unwrap()
+            .matches(b"%41", b""));
     }
 }

@@ -70,7 +70,7 @@ function flagRanges(payload, flags) {
 }
 
 for (const grouped of [false, true]) {
-  test(`${grouped ? "chain" : "standalone"} S2C header counts unique raw flags and keeps the badge across display modes`, async ({ page }, testInfo) => {
+  test(`${grouped ? "chain" : "standalone"} S2C header counts unique flags and keeps the badge across display modes`, async ({ page }, testInfo) => {
     const state = await routes(page);
     const c2s = "GET /?flag=FLAG{A} HTTP/1.1\r\nHost: test\r\n\r\n";
     const body = JSON.stringify({ message: "Привет", flags: ["FLAG{A}", "FLAG{A}", "FLAG{B}"] });
@@ -115,19 +115,19 @@ for (const grouped of [false, true]) {
   });
 }
 
-test("S2C uniqueness uses captured bytes before display decoding and handles long matches", async ({ page }) => {
+test("S2C uniqueness uses canonical flag values and handles long matches", async ({ page }) => {
   const state = await routes(page);
   const long = `FLAG{${"x".repeat(12_000)}}`;
   const cases = [
-    { id: 41, payload: "FLAG{A} FLAG{%41}", flags: ["FLAG{A}", "FLAG{%41}"], unique: 2 },
-    { id: 42, payload: Buffer.from([0xff, 0x20, 0xfe, 0x20, 0xff]), flags: [Buffer.from([0xff]), Buffer.from([0xfe]), Buffer.from([0xff])], unique: 2 },
+    { id: 41, payload: "FLAG{A} FLAG{%41}", flags: ["FLAG{A}", "FLAG{%41}"], values: ["FLAG{A}", "FLAG{A}"], unique: 1 },
+    { id: 42, payload: Buffer.from([0xff, 0x20, 0xfe, 0x20, 0xff]), flags: [Buffer.from([0xff]), Buffer.from([0xfe]), Buffer.from([0xff])], values: ["�", "�", "�"], unique: 1 },
     { id: 43, payload: `${long} ${long}`, flags: [long, long], unique: 1 },
     { id: 44, payload: "no flag in this response", flags: [], unique: 0 },
   ];
   for (const item of cases) {
     state.c2s.set(item.id, "FLAG{request-only}");
     state.s2c.set(item.id, item.payload);
-    state.flagMatches.set(item.id, { c2s: flagRanges("FLAG{request-only}", ["FLAG{request-only}"]), s2c: flagRanges(item.payload, item.flags) });
+    state.flagMatches.set(item.id, { c2s: flagRanges("FLAG{request-only}", ["FLAG{request-only}"]), s2c: flagRanges(item.payload, item.flags).map((range, index) => ({ ...range, value: item.values?.[index] ?? item.flags[index] })) });
   }
   await page.goto("/");
   await page.getByRole("checkbox", { name: "Group into chains" }).check();

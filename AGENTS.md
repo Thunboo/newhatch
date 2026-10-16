@@ -18,6 +18,7 @@
 | Correlation, chain cards, chain API/export preparation | docs/session-chains.md |
 | Python replay, destination override, response output, cookies | docs/python-replay.md |
 | Search chips, application lifecycle, payload list API/limits | docs/session-filtering-v2.md |
+| Known/Unsorted buckets, ordered HTTP rules, ownership and labels | docs/session-buckets.md |
 | Login, nginx ingress, sessions, team access | docs/authentication.md |
 | Code map | crates/analyzer/LOGIC.md |
 | Нерешённые вопросы | .agents/memory/open-questions.md |

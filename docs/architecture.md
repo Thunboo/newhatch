@@ -55,9 +55,12 @@ its inactivity timer and asymmetric retention limits are specified in
 [Atomic HTTP Sessions](http-sessions.md). Expiry uses analyzer monotonic time;
 capture timestamps remain traffic chronology, including for remote collectors.
 
-Raw TCP/WebSocket incremental FLAG_REGEX scans use a 4 KiB overlap; finalization
-repeats an exact retained-stream scan. HTTP flags are scanned over each emitted
-atomic session's retained C2S/S2C. Store contains_flag, flag_direction
+Raw TCP/WebSocket incremental byte scans use a 4 KiB overlap as an early hint;
+finalization computes exact FLAG_REGEX matches over canonical decoded text.
+HTTP flags use each emitted atomic session's canonical C2S/S2C text.
+[Readable-v1](session-filtering-v2.md#canonical-payload-text) defines decoding,
+display coordinates and startup migration of retained flag metadata.
+Store contains_flag, flag_direction
 (none/c2s/s2c/both) and flag_count. Never scan packets independently to decide
 session flags.
 
@@ -119,6 +122,9 @@ protocol, flag presence, endpoint IP/port and started_after.
 [filtering](session-filtering-v2.md) defines payload lists and limits.
 [Chain queries](session-chains.md#api-and-work-limits) run on demand in bounded
 blocking readers, outside packet workers.
+Source/owner-scoped [known attack rules](session-buckets.md) match ordered HTTP
+events inside full chains in the same bounded readers. They store definitions,
+not payloads or a global session category, and require no ingest reclassification queue.
 User-visible behavior belongs to [MVP UX](mvp.md).
 
 ## Suricata

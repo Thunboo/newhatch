@@ -27,6 +27,9 @@ const SESSION_COLUMNS: &str = "s.id, s.source_id, src.name, s.started_at, s.ende
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ChainSummary {
+    #[serde(skip)]
+    pub(crate) last_started_at: i64,
+    pub known_matches: Vec<crate::attack_rules::RuleMatch>,
     pub id: i64,
     pub collector_id: Option<String>,
     pub source_id: i64,
@@ -42,6 +45,21 @@ pub struct ChainSummary {
     pub suricata_alerts: u64,
     pub incomplete: bool,
     pub snapshot_id: i64,
+}
+
+impl ChainSummary {
+    pub fn contains_session(&self, session: &SessionSummary) -> bool {
+        session.id <= self.snapshot_id
+            && match &self.collector_id {
+                None => self.id == session.id,
+                Some(collector) => {
+                    session.collector_id.as_ref() == Some(collector)
+                        && self.source_id == session.source_id
+                        && self.client_ip == session.client_ip
+                        && (self.started_at..=self.last_started_at).contains(&session.started_at)
+                }
+            }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -99,6 +117,87 @@ pub struct ChainReader {
 }
 
 impl ChainReader {
+    pub fn rules(&self, owner: &str) -> Result<Vec<crate::attack_rules::AttackRule>> {
+        super::rules::read_rules(&self.connection, owner)
+    }
+    /// Classification sees complete unfiltered membership from this reader's
+    /// snapshot, so protocol/search filters cannot manufacture adjacency.
+    pub fn classify(
+        &self,
+        chain: &ChainSummary,
+        rules: &[crate::attack_rules::CompiledRule],
+        data_dir: &Path,
+        budget: &mut usize,
+    ) -> Result<Vec<crate::attack_rules::RuleMatch>> {
+        let rules: Vec<_> = rules
+            .iter()
+            .filter(|r| r.rule.input.source_id == chain.source_id)
+            .collect();
+        if rules.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut states: Vec<_> = rules
+            .into_iter()
+            .map(crate::attack_rules::MatchState::new)
+            .collect();
+        let mut after = None;
+        loop {
+            let members = self.members(chain.id, chain.snapshot_id, after.as_ref(), 200, None)?;
+            if members.is_empty() {
+                break;
+            }
+            for member in members {
+                self.check_classification_budget(*budget)?;
+                *budget -= 1;
+                after = Some(Position {
+                    started_at: member.started_at,
+                    id: member.id,
+                });
+                if member.protocol != crate::domain::SessionProtocol::Http {
+                    for state in &mut states {
+                        state.feed(None);
+                    }
+                    continue;
+                }
+                if let Some(stored) = self.stored_session(member.id)? {
+                    let payload = read_payload(data_dir.to_path_buf(), &stored)?;
+                    let extracted = crate::attack_rules::extract_events(member.id, &payload)?;
+                    if extracted.is_empty() {
+                        for state in &mut states {
+                            state.feed(None);
+                        }
+                    } else {
+                        for event in extracted {
+                            for state in &mut states {
+                                state.feed(Some(&event));
+                            }
+                        }
+                    }
+                } else {
+                    for state in &mut states {
+                        state.feed(None);
+                    }
+                }
+                if states.iter().all(|state| state.matched.is_some()) {
+                    return Ok(states
+                        .into_iter()
+                        .filter_map(|state| state.matched)
+                        .collect());
+                }
+            }
+        }
+        Ok(states
+            .into_iter()
+            .filter_map(|state| state.matched)
+            .collect())
+    }
+
+    fn check_classification_budget(&self, remaining: usize) -> Result<()> {
+        if remaining == 0 || Instant::now() >= self.deadline {
+            bail!("classification budget exceeded; narrow source/client filters");
+        }
+        Ok(())
+    }
     pub fn open(catalog: &Catalog) -> Result<Self> {
         let connection = catalog.connection()?;
         // Keep read work isolated from capture/storage. The deadline and VM budget
@@ -396,6 +495,8 @@ impl ChainReader {
         let mut statement = self.connection.prepare(sql)?;
         let rows = statement.query_map(params_from_iter(values), |row| {
             Ok(ChainSummary {
+                last_started_at: row.get(14)?,
+                known_matches: Vec::new(),
                 id: row.get(0)?,
                 collector_id: row.get(1)?,
                 source_id: row.get(2)?,
@@ -522,7 +623,8 @@ fn aggregate(matched: &str, target: Option<&str>) -> String {
     format!("SELECT MIN(s.id) AS id, s.collector_id, s.source_id, src.name AS source_name, s.client_ip,
         MIN(s.started_at) AS started_at, MAX(s.ended_at) AS ended_at, COUNT(*) AS session_count,
         SUM(s.bytes_c2s) AS bytes_c2s, SUM(s.bytes_s2c) AS bytes_s2c, MAX(s.contains_flag) AS contains_flag,
-        SUM(s.flag_count) AS flag_count, SUM(s.suricata_alerts) AS suricata_alerts, MAX(s.incomplete) AS incomplete
+        SUM(s.flag_count) AS flag_count, SUM(s.suricata_alerts) AS suricata_alerts, MAX(s.incomplete) AS incomplete,
+        MAX(s.started_at) AS last_started_at
         FROM members s JOIN sources src ON src.id=s.source_id{target}
         GROUP BY s.collector_id, s.client_ip, s.source_id, s.legacy_id, s.chain_start HAVING MAX({matched}) != 0")
 }
@@ -631,6 +733,9 @@ mod tests {
         assert_eq!(chain.started_at, 0);
         assert!(chain.contains_flag);
         assert_eq!(chain.flag_count, 1);
+        assert!(chain.contains_session(&f.catalog.get_session(3).unwrap().unwrap().summary));
+        assert!(!chain.contains_session(&f.catalog.get_session(5).unwrap().unwrap().summary));
+        assert!(!chain.contains_session(&f.catalog.get_session(6).unwrap().unwrap().summary));
         assert!(page
             .items
             .iter()
@@ -694,6 +799,43 @@ mod tests {
             no_match.items.is_empty(),
             "all active filters must match the same member"
         );
+    }
+
+    #[test]
+    fn classification_budget_returns_error_instead_of_unknown() {
+        use crate::attack_rules::{
+            AttackRule, CompiledRule, Condition, Field, Operator, RuleInput,
+        };
+        let f = Fixture::new();
+        std::fs::create_dir_all(f.directory.path().join("segments")).unwrap();
+        for id in 1..=3 {
+            f.add(id, id * 100_000, Some("one"), "10.0.0.2", 1, false);
+        }
+        let rule = CompiledRule::new(AttackRule {
+            id: 1,
+            owner: "team".into(),
+            input: RuleInput {
+                source_id: 1,
+                label: "test".into(),
+                enabled: true,
+                adjacent: true,
+                max_gap: 0,
+                steps: vec![vec![Condition {
+                    field: Field::Path,
+                    op: Operator::Equals,
+                    value: "/missing".into(),
+                    name: None,
+                }]],
+            },
+        })
+        .unwrap();
+        let reader = f.reader();
+        let chain = reader.summary(1, 3).unwrap().unwrap();
+        let mut budget = 1;
+        let error = reader
+            .classify(&chain, &[rule], f.directory.path(), &mut budget)
+            .unwrap_err();
+        assert!(error.to_string().contains("classification budget exceeded"));
     }
 
     #[test]

@@ -178,6 +178,11 @@ async fn every_data_route_and_future_route_is_protected() {
         ("GET", "/api/sessions/1/payload/c2s"),
         ("GET", "/api/sessions/1/payload/s2c"),
         ("GET", "/api/sessions/1/flag-matches"),
+        ("GET", "/api/sessions/1/http-events"),
+        ("GET", "/api/attack-rules"),
+        ("POST", "/api/attack-rules"),
+        ("PUT", "/api/attack-rules/1"),
+        ("DELETE", "/api/attack-rules/1"),
         ("GET", "/api/auth/me"),
         ("POST", "/api/auth/logout"),
         ("GET", "/api/future-route"),
@@ -726,5 +731,324 @@ async fn chains_share_auth_boundary_and_validate_filters_and_cursors() {
         .await
         .status(),
         StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn source_scoped_ordered_rules_reclassify_retained_chains_and_keep_raw_payloads() {
+    use newhatch_analyzer::{
+        domain::{CompletedSession, FlagDirection, SessionProtocol, SourceInput},
+        storage::{start_writer, SessionFilter},
+    };
+    let (app, dir) = app("86400s", "false");
+    let catalog = Catalog::open(dir.path().join("index.sqlite")).unwrap();
+    for (name, port) in [("web", 8080), ("other", 9000)] {
+        catalog
+            .create_source(&SourceInput {
+                name: name.into(),
+                port,
+                enabled: true,
+            })
+            .unwrap();
+    }
+    let writer = start_writer(
+        catalog.clone(),
+        dir.path().to_owned(),
+        std::time::Duration::from_secs(1800),
+        3,
+        100,
+    )
+    .unwrap();
+    let targets = [
+        "/register",
+        "/users?id=%2E%2E%2F%2E%2E%2F%2E%2E%2Fetc",
+        "/profile",
+        "/admin",
+        "/users?id=../../../etc",
+        "/profile",
+    ];
+    for (i, target) in targets.iter().enumerate() {
+        let body = if i == 2 || i == 5 {
+            r#"{"result":"root: %46%4C%41%47"}"#
+        } else {
+            "ok"
+        };
+        let request = format!("GET {target} HTTP/1.1\r\nHost: test\r\n\r\n").into_bytes();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .into_bytes();
+        assert!(writer.try_store(CompletedSession {
+            collector_id: "test".into(),
+            source_id: if i < 4 { 1 } else { 2 },
+            started_at: i as i64 * 100_000,
+            ended_at: i as i64 * 100_000 + 1,
+            first_payload_c2s_at: None,
+            first_payload_s2c_at: None,
+            client_ip: "10.0.0.2".parse().unwrap(),
+            client_port: 40000,
+            server_ip: "10.0.0.1".parse().unwrap(),
+            server_port: if i < 4 { 8080 } else { 9000 },
+            protocol: SessionProtocol::Http,
+            c2s: request,
+            s2c: response,
+            flag_direction: FlagDirection::None,
+            flag_count: 0,
+            incomplete: false,
+            http: Default::default(),
+        }));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while catalog
+            .list_sessions(&SessionFilter {
+                limit: 1,
+                ..Default::default()
+            })
+            .unwrap()
+            .first()
+            .is_none_or(|s| s.id != 6)
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    drop(writer);
+    catalog
+        .refresh_flag_metadata(dir.path(), &regex::bytes::Regex::new("FLAG").unwrap())
+        .unwrap();
+    catalog
+        .refresh_flag_metadata(dir.path(), &regex::bytes::Regex::new("FLAG").unwrap())
+        .unwrap();
+    let auth = login(&app, "").await;
+    let auth = cookie(&auth);
+    let get = |path: String| {
+        let app = &app;
+        async move {
+            let response = call(app, "127.0.0.1:1", "GET", &path, auth, "", &[]).await;
+            assert_eq!(response.status(), 200, "{path}");
+            serde_json::from_slice::<serde_json::Value>(
+                &to_bytes(response.into_body(), 100_000).await.unwrap(),
+            )
+            .unwrap()
+        }
+    };
+    for path in ["/api/attack-rules", "/api/sessions/1/http-events"] {
+        assert_eq!(
+            call(&app, "127.0.0.1:1", "GET", path, "", "", &[])
+                .await
+                .status(),
+            401
+        );
+    }
+    assert_eq!(
+        get("/api/sessions?bucket=known".into()).await["items"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        get("/api/chains?bucket=known&limit=1".into()).await["next_cursor"],
+        serde_json::Value::Null
+    );
+    let definition = serde_json::json!({"source_id":1,"label":"Traversal","steps":[[
+        {"field":"method","op":"equals","value":"GET"},
+        {"field":"path","op":"equals","value":"/users"},
+        {"field":"query","name":"id","op":"contains","value":"../../../"}
+    ],[
+        {"field":"path","op":"equals","value":"/profile"},
+        {"field":"status","op":"equals","value":"200"},
+        {"field":"response_body","op":"contains","value":"root:"}
+    ]]});
+    let response = call(
+        &app,
+        "127.0.0.1:1",
+        "POST",
+        "/api/attack-rules",
+        auth,
+        &definition.to_string(),
+        &[],
+    )
+    .await;
+    assert_eq!(response.status(), 201);
+    let rule: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 10_000).await.unwrap()).unwrap();
+    assert_eq!(rule["owner"], "team");
+    let id = rule["id"].as_i64().unwrap();
+    let empty_page = get("/api/sessions?bucket=known&limit=1".into()).await;
+    assert_eq!(empty_page["items"], serde_json::json!([]));
+    assert_eq!(empty_page["next_cursor"], 6);
+    let resumed = get("/api/sessions?bucket=known&limit=1&cursor=5".into()).await;
+    assert_eq!(resumed["items"][0]["id"], 4);
+    let reopened = Catalog::open(dir.path().join("index.sqlite")).unwrap();
+    assert_eq!(
+        reopened.list_rules("team").unwrap()[0].input.label,
+        "Traversal"
+    );
+    let known = get("/api/chains?bucket=known&source_id=1&contains_flag=true".into()).await;
+    assert_eq!(known["items"][0]["session_count"], 4);
+    assert_eq!(
+        known["items"][0]["known_matches"][0]["events"][0]["session_id"],
+        2
+    );
+    assert_eq!(
+        known["items"][0]["known_matches"][0]["events"][1]["session_id"],
+        3
+    );
+    assert_eq!(
+        get("/api/sessions?bucket=known&source_id=1".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert_eq!(
+        get("/api/sessions?bucket=unknown".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let raw = call(
+        &app,
+        "127.0.0.1:1",
+        "GET",
+        "/api/sessions/3/payload/s2c",
+        auth,
+        "",
+        &[],
+    )
+    .await;
+    assert!(
+        String::from_utf8_lossy(&to_bytes(raw.into_body(), 10_000).await.unwrap())
+            .contains("%46%4C%41%47")
+    );
+    let flags = get("/api/sessions/3/flag-matches".into()).await;
+    assert_eq!(flags["representation"], "readable-v1");
+    assert_eq!(flags["s2c"][0]["value"], "FLAG");
+    let search = payload_query(&["FLAG".into()]);
+    assert_eq!(
+        get(format!("/api/sessions?contains_flag=true&payload={search}")).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let events = get("/api/sessions/2/http-events".into()).await;
+    assert_eq!(events[0]["path"], "/users");
+    assert_eq!(events[0]["query_params"][0][1], "../../../etc");
+    let mut invalid = definition.clone();
+    invalid["steps"][0][0]["op"] = "regex".into();
+    invalid["steps"][0][0]["value"] = "[".into();
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "PUT",
+            &format!("/api/attack-rules/{id}"),
+            auth,
+            &invalid.to_string(),
+            &[]
+        )
+        .await
+        .status(),
+        400
+    );
+    let mut changed = definition.clone();
+    // A different identity's rule is neither listed nor editable through this login.
+    let other_rule = catalog
+        .save_rule(
+            "other-user",
+            None,
+            serde_json::from_value(definition.clone()).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        get("/api/attack-rules".into())
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "DELETE",
+            &format!("/api/attack-rules/{}", other_rule.id),
+            auth,
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        404
+    );
+    let duplicate = catalog
+        .save_rule(
+            "team",
+            None,
+            serde_json::from_value(definition.clone()).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        get("/api/chains?bucket=known&source_id=1".into()).await["items"][0]["known_matches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    changed["enabled"] = false.into();
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "PUT",
+            &format!("/api/attack-rules/{id}"),
+            auth,
+            &changed.to_string(),
+            &[]
+        )
+        .await
+        .status(),
+        200
+    );
+    // Disabling one match leaves the other label active; removing the final
+    // active rule restores the retained chain to Unknown.
+    assert_eq!(
+        get("/api/sessions?bucket=known&source_id=1".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert!(catalog.delete_rule("team", duplicate.id).unwrap());
+    assert_eq!(
+        get("/api/sessions?bucket=unknown".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
+    );
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "DELETE",
+            &format!("/api/attack-rules/{id}"),
+            auth,
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        204
+    );
+    assert!(catalog.list_rules("team").unwrap().is_empty());
+    assert_eq!(
+        get("/api/sessions?bucket=known".into()).await["items"],
+        serde_json::json!([])
     );
 }

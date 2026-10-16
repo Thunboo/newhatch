@@ -604,8 +604,8 @@ impl FlowState {
     }
 
     fn make_session(&self, exchange: Exchange, regex: &Regex) -> CompletedSession {
-        let c2s_flags = regex.find_iter(&exchange.c2s).count();
-        let s2c_flags = regex.find_iter(&exchange.s2c).count();
+        let c2s_flags = crate::payload_text::flag_count(regex, &exchange.c2s);
+        let s2c_flags = crate::payload_text::flag_count(regex, &exchange.s2c);
         let (_, http) = protocol::classify(&exchange.c2s, &exchange.s2c);
         CompletedSession {
             collector_id: self.collector_id.clone(),
@@ -662,8 +662,8 @@ impl FlowState {
         {
             return Vec::new();
         }
-        let c2s_flags = regex.find_iter(&c2s).count();
-        let s2c_flags = regex.find_iter(&s2c).count();
+        let c2s_flags = crate::payload_text::flag_count(regex, &c2s);
+        let s2c_flags = crate::payload_text::flag_count(regex, &s2c);
         if c2s_flags != self.c2s_flag_count || s2c_flags != self.s2c_flag_count {
             tracing::debug!(
                 streaming_c2s = self.c2s_flag_count,

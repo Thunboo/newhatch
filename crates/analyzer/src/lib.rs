@@ -1,4 +1,5 @@
 pub mod api;
+pub mod attack_rules;
 pub mod auth;
 pub mod capture;
 pub mod collector;
@@ -8,5 +9,6 @@ pub mod flow;
 mod http_sessions;
 pub mod packet;
 pub mod payload_search;
+pub mod payload_text;
 pub mod protocol;
 pub mod storage;

@@ -32,6 +32,7 @@ import { TrafficFilters } from "./TrafficFilters";
 import type { TrafficFilterProps } from "./TrafficFilters";
 import { useTrafficFilters } from "./useTrafficFilters";
 import { ChainBrowser } from "./ChainBrowser";
+import { RuleManager } from "./RuleManager";
 import type {
   FlagMatches,
   Protocol,
@@ -69,10 +70,10 @@ function captureSessionAnchor(): ScrollAnchor | null {
 }
 
 export function App() {
-  return <AuthGate>{(logout) => <AuthenticatedApp onLogout={logout} />}</AuthGate>;
+  return <AuthGate>{(logout, username) => <AuthenticatedApp onLogout={logout} username={username} />}</AuthGate>;
 }
 
-function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
+function AuthenticatedApp({ onLogout, username }: { onLogout: () => Promise<void>; username: string }) {
   const { t, toggleLanguage } = useI18n();
   const [loggingOut, setLoggingOut] = useState(false);
   const [view, setView] = useState<View>("sessions");
@@ -81,10 +82,11 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
   const [collectors, setCollectors] = useState<Collector[]>([]);
   const [analyzerMode, setAnalyzerMode] = useState<"local" | "remote">("local");
   const [grouped, setGrouped] = useState(false);
+  const [rulesOpen, setRulesOpen] = useState(false);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [olderCursor, setOlderCursorState] = useState<number | null>(null);
   const [selected, setSelected] = useState<Session | null>(null);
-  const { filters, applyEdited, isCurrent, onLoaded, onLoadFailed, chipProps } = useTrafficFilters();
+  const { filters, applyEdited, invalidateRules, isCurrent, onLoaded, onLoadFailed, chipProps } = useTrafficFilters(username);
   const [initialLoading, setInitialLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
@@ -139,7 +141,9 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       const page = await api.listSessions(filters);
       if (generation !== feedGenerationRef.current || !isCurrent(filters)) return;
       if (!liveEdgeRef.current) pendingAnchorRef.current = captureSessionAnchor();
-      setSessions((current) => mergeSessions(current, page.items));
+      // Reconcile the scanned span: new chain members or rule edits can move
+      // already visible sessions to another bucket without deleting traffic.
+      setSessions((current) => mergeSessions(page.next_cursor === null ? [] : current.filter((session) => session.id < page.next_cursor!), page.items));
       setOnline(true);
       onLoaded(filters);
     } catch (caught) {
@@ -332,6 +336,13 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       </aside>
 
       <main className="workspace">
+        {view === "sessions" && <div className="bucket-toolbar">
+          <div className="protocol-tabs" role="tablist" aria-label={t("buckets.title")}>
+            {(["unknown", "known"] as const).map((bucket) => <button key={bucket} role="tab" aria-selected={filters.bucket === bucket} className={filters.bucket === bucket ? "active" : ""}
+              onClick={() => { setSelected(null); applyEdited((current) => ({ ...current, bucket })); }}>{t(bucket === "known" ? "buckets.known" : "buckets.unknown")}</button>)}
+          </div>
+          <button className="secondary-button" onClick={() => setRulesOpen(true)}>{t("rules.title")}</button>
+        </div>}
         {view === "sessions" ? grouped ? (
           <ChainBrowser sources={sources} {...chipProps}
             applyEdited={applyEdited} onLoaded={onLoaded} onLoadFailed={onLoadFailed} isCurrent={isCurrent}
@@ -361,6 +372,7 @@ function AuthenticatedApp({ onLogout }: { onLogout: () => Promise<void> }) {
       </main>
 
       {selected && <SessionDetail session={selected} payloadTerms={filters.payload} onClose={() => setSelected(null)} />}
+      {rulesOpen && <RuleManager sources={sources} onClose={() => setRulesOpen(false)} onChanged={() => { setSelected(null); invalidateRules(); }} />}
     </div>
   );
 }
@@ -466,7 +478,7 @@ function SessionsView(props: SessionsViewProps) {
                 onClick={() => props.onSelect(session)}
               >
                 <td className="mono time-cell">{formatTime(session.started_at, locale)}</td>
-                <td><span className="source-name">{session.source_name}</span></td>
+                <td><span className="source-name">{session.source_name}</span>{session.known_matches?.map((match) => <span className="known-label" key={match.rule_id} title={match.events.map((e) => `#${e.session_id}:${e.transaction + 1}`).join(" → ")}>{match.label}</span>)}</td>
                 <td className="mono endpoint">{formatEndpoint(session.client_ip, session.client_port)}</td>
                 <td className="arrow-cell"><ArrowRight size={14} /></td>
                 <td className="mono endpoint">{formatEndpoint(session.server_ip, session.server_port)}</td>
@@ -661,6 +673,7 @@ function SessionDetail({ session, payloadTerms, onClose }: { session: Session; p
         </div>
       </header>
       <div className="detail-meta">
+        {session.known_matches?.map((match) => <span className="known-label" key={match.rule_id}>{match.label}</span>)}
         <span><small>{t("common.source")}</small>{session.source_name} :{session.server_port}</span>
         <span><small>{t("detail.started")}</small>{formatDateTime(session.started_at, locale)}</span>
         <span><small>{t("detail.traffic")}</small>{formatBytes(session.bytes_c2s + session.bytes_s2c)}</span>

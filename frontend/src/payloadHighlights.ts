@@ -1,4 +1,4 @@
-import { decodePayload, findHttpBodyBoundary, looksLikeJson, MAX_EMBEDDED_JSON_DEPTH } from "./payloadDisplay";
+import { decodePayload, displayPayload, findHttpBodyBoundary, looksLikeJson, MAX_EMBEDDED_JSON_DEPTH, parseDisplayJson } from "./payloadDisplay";
 import type { ByteRange } from "./types";
 
 export type HighlightRange = ByteRange & { kind: "flag" | "payload" | "both" };
@@ -11,15 +11,6 @@ type JsonNode = JsonString
   | { kind: "array"; entries: { value: JsonNode; comma: number }[]; edges: [number, number] };
 const FLAG = 1;
 const PAYLOAD = 2;
-const encoder = new TextEncoder();
-
-function byteString(bytes: Uint8Array): string {
-  const chunks: string[] = [];
-  for (let offset = 0; offset < bytes.length; offset += 8_192) {
-    chunks.push(String.fromCharCode(...bytes.subarray(offset, offset + 8_192)));
-  }
-  return chunks.join("");
-}
 
 function markBytes(marks: Uint8Array, start: number, end: number, kind: number) {
   for (let index = start; index < end; index++) marks[index] |= kind;
@@ -47,36 +38,6 @@ function join(values: MarkedText[]): MarkedText {
   return { text, marks };
 }
 
-// Follow UTF-8 decoder boundaries, including replacement characters. A byte
-// match inside an escape/code point marks its displayed character as a whole.
-function decodeMarked(bytes: Uint8Array, marks: Uint8Array, text = decodePayload(bytes), stripBom = true): MarkedText {
-  const decoded = new Uint8Array(text.length);
-  let character = 0;
-  for (let offset = 0; offset < bytes.length;) {
-    if (stripBom && offset === 0 && bytes[0] === 0xef && bytes[1] === 0xbb && bytes[2] === 0xbf) { offset += 3; continue; }
-    const first = bytes[offset];
-    const size = first < 0x80 ? 1 : first >= 0xc2 && first <= 0xdf ? 2 : first >= 0xe0 && first <= 0xef ? 3 : first >= 0xf0 && first <= 0xf4 ? 4 : 1;
-    let consumed = 1;
-    while (consumed < size) {
-      const byte = bytes[offset + consumed];
-      let lower = 0x80;
-      let upper = 0xbf;
-      if (consumed === 1) {
-        if (first === 0xe0) lower = 0xa0;
-        if (first === 0xed) upper = 0x9f;
-        if (first === 0xf0) lower = 0x90;
-        if (first === 0xf4) upper = 0x8f;
-      }
-      if (byte === undefined || byte < lower || byte > upper) break;
-      consumed++;
-    }
-    const mark = union(marks, offset, offset + consumed);
-    decoded[character++] = mark;
-    if (size === 4 && consumed === size) decoded[character++] = mark;
-    offset += consumed;
-  }
-  return { text, marks: decoded };
-}
 
 function decodeEscapes(value: MarkedText): MarkedText {
   const parts: MarkedText[] = [];
@@ -106,32 +67,11 @@ function decodeEscapes(value: MarkedText): MarkedText {
   return join(parts);
 }
 
-function decodePercent(value: MarkedText): MarkedText {
-  const parts: MarkedText[] = [];
-  let untouched = 0;
-  for (const match of value.text.matchAll(/(?:%[0-9a-fA-F]{2})+/g)) {
-    const start = match.index;
-    const end = start + match[0].length;
-    try {
-      const text = decodeURIComponent(match[0]);
-      const bytes = new Uint8Array(match[0].length / 3);
-      const marks = new Uint8Array(bytes.length);
-      for (let index = 0; index < bytes.length; index++) {
-        bytes[index] = Number.parseInt(match[0].slice(index * 3 + 1, index * 3 + 3), 16);
-        marks[index] = union(value.marks.subarray(start + index * 3, start + index * 3 + 3));
-      }
-      parts.push(slice(value, untouched, start), decodeMarked(bytes, marks, text, false));
-      untouched = end;
-    } catch { /* Invalid percent-encoded UTF-8 remains literal, as in displayPayload. */ }
-  }
-  parts.push(slice(value, untouched));
-  return join(parts);
-}
 
 // JSON.parse validates the input; this small reader retains marks on its tokens
 // so formatting/embedded JSON expansion cannot highlight unrelated equal text.
 function parseJson(source: MarkedText): JsonNode {
-  JSON.parse(source.text);
+  parseDisplayJson(source.text);
   let index = 0;
   const skip = () => { while (" \t\r\n".includes(source.text[index]) && index < source.text.length) index++; };
   const readString = (): JsonString => {
@@ -221,7 +161,7 @@ function stringifyJson(value: JsonNode, pretty: boolean, depth = 0): MarkedText 
 
 function normalizeJson(value: JsonNode, expand: boolean, depth = 0): JsonNode {
   if (value.kind === "string") {
-    const decoded = decodePercent(value.value);
+    const decoded = value.value;
     if (depth < MAX_EMBEDDED_JSON_DEPTH && looksLikeJson(decoded.text)) {
       try {
         const nested = normalizeJson(parseJson(decoded), expand, depth + 1);
@@ -240,23 +180,41 @@ function formatMarked(value: MarkedText, pretty: boolean): MarkedText | null {
 }
 
 export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], flags: ByteRange[], pretty: boolean): { text: string; ranges: HighlightRange[] } {
-  const marks = new Uint8Array(bytes.length);
-  for (const range of flags) markBytes(marks, range.start, range.end, FLAG);
-  const rawBytes = byteString(bytes);
-  for (const term of new Set(terms)) {
-    if (!term) continue;
-    const needle = byteString(encoder.encode(term));
-    for (let start = rawBytes.indexOf(needle); start >= 0; start = rawBytes.indexOf(needle, start + 1)) {
-      markBytes(marks, start, start + needle.length, PAYLOAD);
+  // Match the same canonical compact text as Rust. Formatting maps these marks
+  // into pretty JSON without decoding percent sequences a second time.
+  const rawText = displayPayload(bytes, false);
+  const marks = new Uint8Array(rawText.length);
+  const raw = { text: rawText, marks };
+  for (const range of flags) {
+    const value = range.value ?? decodePayload(bytes.slice(range.start, range.end));
+    for (let start = rawText.indexOf(value); value && start >= 0; start = rawText.indexOf(value, start + value.length)) {
+      markBytes(marks, start, start + value.length, FLAG);
     }
   }
-  const raw = decodeMarked(bytes, marks);
+  for (const term of new Set(terms)) {
+    if (!term) continue;
+    for (let start = rawText.indexOf(term); start >= 0; start = rawText.indexOf(term, start + 1)) {
+      markBytes(marks, start, start + term.length, PAYLOAD);
+    }
+  }
   const boundary = findHttpBodyBoundary(raw.text);
   let displayed: MarkedText;
-  if (boundary) {
-    const body = formatMarked(slice(raw, boundary.bodyStart), pretty);
-    displayed = body ? join([decodePercent(decodeEscapes(slice(raw, 0, boundary.headerEnd))), slice(raw, boundary.headerEnd, boundary.bodyStart), body]) : decodePercent(decodeEscapes(raw));
-  } else displayed = formatMarked(raw, pretty) ?? decodePercent(decodeEscapes(raw));
+  if (!pretty) displayed = raw;
+  else if (boundary) {
+    const body = formatMarked(slice(raw, boundary.bodyStart), true);
+    displayed = body ? join([slice(raw, 0, boundary.bodyStart), body]) : raw;
+  } else displayed = formatMarked(raw, true) ?? raw;
+  // Malformed source JSON can become parseable after loss-tolerant decoding.
+  // Its fallback must still match display/copy/export exactly.
+  if (pretty) {
+    const expected = displayPayload(bytes, true);
+    if (displayed.text !== expected) {
+      displayed = expected === raw.text ? raw : literal(expected);
+      for (const [values, kind] of [[terms, PAYLOAD], [flags.map((f) => f.value ?? decodePayload(bytes.slice(f.start, f.end))), FLAG]] as const) {
+        for (const value of values) for (let start = expected.indexOf(value); value && start >= 0; start = expected.indexOf(value, start + 1)) markBytes(displayed.marks, start, start + value.length, kind);
+      }
+    }
+  }
   const ranges: HighlightRange[] = [];
   for (let start = 0; start < displayed.text.length;) {
     const kind = displayed.marks[start];

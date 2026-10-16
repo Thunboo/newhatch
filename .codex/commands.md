@@ -30,6 +30,14 @@ npm run build
 npm run dev
 ```
 
+From the repository root, check the shared decoded text/highlight/export fixtures:
+
+```bash
+node test/payload_text/frontend.cjs
+```
+
+Contract and coverage: [test/payload_text](../test/payload_text/README.md).
+
 Vite binds loopback and proxies /api to 127.0.0.1:3000.
 
 ## Rust checks without host Cargo — user only

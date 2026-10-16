@@ -18,6 +18,15 @@ filter/cursor regression coverage. The browser image also picks up chain-card
 tests from `session-chains.spec.cjs`; host-only execution is documented in
 [session-chain verification](../session_chains/README.md).
 
+Known/Unsorted coverage checks owned Source-scoped rule CRUD, regex validation,
+ordered transaction matches inside full chains, overlapping rules, disable/delete,
+retained-data reclassification, empty pages with continuation, canonical flag
+metadata and unchanged raw bytes. The rule editor and separate persisted bucket
+filters are exercised by session-buckets.spec.cjs. Shared text/export fixtures and
+focused commands are in [test/payload_text](../payload_text/README.md).
+nginx generation checks keep login/ordinary API bodies at 4 KiB while rule routes
+allow bounded 2 MiB definitions under the same CIDR/authentication boundary.
+
 Session filtering coverage verifies the authenticated limits endpoint and both
 feeds' payload-list validation, stored AND matches, bounded continuation and
 full chain context. `session-filtering.spec.cjs` checks chips, pending/failed

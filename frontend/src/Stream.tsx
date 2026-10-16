@@ -4,7 +4,6 @@ import type { ReactNode } from "react";
 import curlLogoUrl from "./assets/Curl-logo.svg";
 import pythonLogoUrl from "./assets/python-logo.png";
 import { useI18n } from "./i18n";
-import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
 import { payloadHighlights } from "./payloadHighlights";
 import type { HighlightRange } from "./payloadHighlights";
 import { exportCurl, exportPython, parseReplayRequest, replayProblemKeys } from "./requestExport";
@@ -18,10 +17,7 @@ const NO_PAYLOAD_TERMS: readonly string[] = [];
 export function Stream({ title, subtitle, direction, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false, payloadTerms = NO_PAYLOAD_TERMS }: { title: string; subtitle?: string; direction: "c2s" | "s2c"; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean; payloadTerms?: readonly string[] }) {
   const { t } = useI18n();
   const displayed = useMemo(() => {
-    if (payloadTerms.length) return payloadHighlights(bytes, payloadTerms, ranges, formatJson);
-    const text = displayPayload(bytes, formatJson);
-    const matches = ranges.map((range) => decodeDisplayEscapes(decodePayload(bytes.slice(range.start, range.end)))).filter(Boolean);
-    return { text, ranges: locateFlags(text, matches) };
+    return payloadHighlights(bytes, payloadTerms, ranges, formatJson);
   }, [bytes, formatJson, payloadTerms, ranges]);
   const displayedText = displayed.text;
   const text = useMemo(() => mode === "hex" ? toHex(bytes) : displayedText, [bytes, displayedText, mode]);
@@ -62,7 +58,8 @@ export function Stream({ title, subtitle, direction, bytes, ranges, mode, format
 
 function countUniqueFlags(bytes: Uint8Array, ranges: ByteRange[]): number {
   const flags = new Set<string>();
-  for (const { start, end } of ranges) {
+  for (const { start, end, value } of ranges) {
+    if (value !== undefined) { flags.add(value); continue; }
     // One code unit per captured byte preserves identity even for invalid UTF-8.
     // Chunk conversion avoids argument-size limits for a long regex match.
     const chunks: string[] = [];
@@ -84,19 +81,6 @@ function ResponseFlagBadge({ unique, occurrences }: { unique: number; occurrence
     occurrences: t(occurrenceForm === "one" ? "detail.flagOccurrencesOne" : occurrenceForm === "few" ? "detail.flagOccurrencesFew" : "detail.flagOccurrencesOther", { count: occurrences.toLocaleString(locale) }),
   });
   return <span className="stream-flag-count" role="img" aria-label={summary} title={summary} tabIndex={0}><Flag size={13} aria-hidden="true" /><span>{unique.toLocaleString(locale)}</span></span>;
-}
-
-function locateFlags(text: string, matches: string[]): HighlightRange[] {
-  const positions: HighlightRange[] = [];
-  const cursors = new Map<string, number>();
-  for (const match of matches) {
-    const start = text.indexOf(match, cursors.get(match) ?? 0);
-    if (start < 0) continue;
-    positions.push({ start, end: start + match.length, kind: "flag" });
-    cursors.set(match, start + match.length);
-  }
-  positions.sort((left, right) => left.start - right.start);
-  return positions;
 }
 
 function HighlightedText({ text, positions }: { text: string; positions: HighlightRange[] }) {

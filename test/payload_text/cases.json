@@ -1,0 +1,17 @@
+[
+  {"name":"plain Unicode", "raw":"Привет 🦀", "compact":"Привет 🦀", "pretty":"Привет 🦀"},
+  {"name":"escaped Unicode and percent", "raw":"\\u041f\\u0440 %D0%B8%D0%B2%D0%B5%D1%82 %41", "compact":"Пр ивет A", "pretty":"Пр ивет A"},
+  {"name":"malformed percent runs", "raw":"%41%FF %41 %2541 +", "compact":"%41%FF A %41 +", "pretty":"%41%FF A %41 +"},
+  {"name":"surrogate pair", "raw":"\\ud83e\\udd80", "compact":"🦀", "pretty":"🦀"},
+  {"name":"JSON", "raw":"{\"z\":\"\\u0410\",\"a\":\"%41\"}", "compact":"{\"z\":\"А\",\"a\":\"A\"}", "pretty":"{\n  \"z\": \"А\",\n  \"a\": \"A\"\n}"},
+  {"name":"nested JSON", "raw":"{\"data\":\"{\\\"name\\\":\\\"\\\\u0410\\\"}\"}", "compact":"{\"data\":\"{\\\"name\\\":\\\"А\\\"}\"}", "pretty":"{\n  \"data\": {\n    \"name\": \"А\"\n  }\n}"},
+  {"name":"HTTP", "raw":"POST /%41 HTTP/1.1\r\n\r\n{\"x\":\"%41\"}", "compact":"POST /A HTTP/1.1\r\n\r\n{\"x\":\"A\"}", "pretty":"POST /A HTTP/1.1\r\n\r\n{\n  \"x\": \"A\"\n}"},
+  {"name":"BOM", "raw":"﻿%41", "compact":"A", "pretty":"A"},
+  {"name":"JS numbers", "raw":"{\"n\":9007199254740993,\"z\":-0,\"f\":1.00,\"e\":1e-7}", "compact":"{\"n\":9007199254740992,\"z\":0,\"f\":1,\"e\":1e-7}", "pretty":"{\n  \"n\": 9007199254740992,\n  \"z\": 0,\n  \"f\": 1,\n  \"e\": 1e-7\n}"},
+  {"name":"JS key order", "raw":"{\"2\":\"b\",\"1\":\"a\",\"tail\":0,\"01\":1}", "compact":"{\"1\":\"a\",\"2\":\"b\",\"tail\":0,\"01\":1}", "pretty":"{\n  \"1\": \"a\",\n  \"2\": \"b\",\n  \"tail\": 0,\n  \"01\": 1\n}"},
+  {"name":"unpaired surrogate", "raw":"\\ud800 %ED%A0%80", "compact":"� %ED%A0%80", "pretty":"� %ED%A0%80"},
+  {"name":"JSON unpaired surrogate fallback", "raw":"{\"x\":\"\\ud800\"}", "compact":"{\"x\":\"�\"}", "pretty":"{\"x\":\"�\"}"},
+  {"name":"nonfinite JSON fallback", "raw":"{\"n\":1e400}", "compact":"{\"n\":1e400}", "pretty":"{\"n\":1e400}"},
+  {"name":"NEL is not browser whitespace", "raw":"\u0085{\"x\":1}", "compact":"\u0085{\"x\":1}", "pretty":"\u0085{\"x\":1}"},
+  {"name":"invalid UTF-8", "bytes":[225,128,65,255,65,239,191,189], "compact":"�A�A�", "pretty":"�A�A�"}
+]

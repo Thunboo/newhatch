@@ -9,6 +9,7 @@ import type {
   SourceInput,
   CollectorsResponse,
   PayloadSearchLimits,
+  AttackRule, RuleInput, HttpEvent,
 } from "./types";
 
 export class ApiError extends Error {
@@ -44,6 +45,11 @@ async function request<T>(path: string, init?: RequestInit, anonymous = false): 
 }
 
 export const api = {
+  listRules: () => request<AttackRule[]>("/api/attack-rules"),
+  saveRule: (input: RuleInput, id?: number) => request<AttackRule>(id ? `/api/attack-rules/${id}` : "/api/attack-rules", {
+    method: id ? "PUT" : "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(input),
+  }),
+  deleteRule: (id: number) => request<void>(`/api/attack-rules/${id}`, { method: "DELETE" }),
   me: () => request<{ authenticated: true; username: string }>("/api/auth/me", undefined, true),
 
   login: async (username: string, password: string) => {
@@ -85,6 +91,7 @@ export const api = {
 
   listSessions: (filters: SessionFilters = {}) => {
     const params = new URLSearchParams({ limit: "100" });
+    if (filters.bucket) params.set("bucket", filters.bucket);
     if (filters.sourceId) params.set("source_id", String(filters.sourceId));
     if (filters.containsFlag) params.set("contains_flag", "true");
     if (filters.protocol) params.set("protocol", filters.protocol);
@@ -95,6 +102,7 @@ export const api = {
 
   listChains: (filters: SessionFilters = {}, cursor?: string, signal?: AbortSignal) => {
     const params = new URLSearchParams({ limit: "100" });
+    if (filters.bucket) params.set("bucket", filters.bucket);
     if (filters.sourceId) params.set("source_id", String(filters.sourceId));
     if (filters.containsFlag) params.set("contains_flag", "true");
     if (filters.protocol) params.set("protocol", filters.protocol);
@@ -110,6 +118,7 @@ export const api = {
   },
 
   getSession: (id: number) => request<Session>(`/api/sessions/${id}`),
+  getHttpEvents: (id: number, signal?: AbortSignal) => request<HttpEvent[]>(`/api/sessions/${id}/http-events`, { signal }),
 
   getPayload: async (id: number, direction: "c2s" | "s2c", signal?: AbortSignal) => {
     const response = await fetchApi(

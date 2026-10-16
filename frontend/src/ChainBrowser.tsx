@@ -185,7 +185,7 @@ export function ChainBrowser(props: TrafficFilterProps & {
         className={[chain.contains_flag ? "flag-row" : "", selected?.chain.id === chain.id ? "selected-row" : ""].filter(Boolean).join(" ")}
         onClick={() => openChain(chain)}>
         <td className="mono time-cell">{formatTime(chain.started_at, locale)}</td>
-        <td><span className="source-name">{chain.source_name}</span></td><td className="mono endpoint">{chain.client_ip}</td>
+        <td><span className="source-name">{chain.source_name}</span>{chain.known_matches?.map((match) => <span className="known-label" key={match.rule_id} title={match.events.map((e) => `#${e.session_id}:${e.transaction + 1}`).join(" → ")}>{match.label}</span>)}</td><td className="mono endpoint">{chain.client_ip}</td>
         <td>{chain.collector_id ?? t("chains.unknown")}</td><td className="mono">{chain.session_count}</td>
         <td className="mono">{((chain.ended_at - chain.started_at) / 1_000_000).toFixed(3)} s</td>
         <td className="mono">{formatBytes(chain.bytes_c2s + chain.bytes_s2c)}</td>
@@ -306,7 +306,7 @@ function ChainDetail({ chain, cache, payloadTerms, onClose }: { chain: Chain; ca
     <header className="detail-header"><div><span className="eyebrow">{t("chains.title", { count: chain.session_count })}</span><h2>{chain.source_name} · {chain.client_ip}</h2></div>
       <div className="detail-close"><span className="close-hint"><kbd>Esc</kbd> {t("detail.closeHint")}</span><button className="icon-button" title={t("detail.close")} aria-label={t("detail.close")} onClick={onClose}><X size={18} /></button></div>
     </header>
-    <div className="detail-meta"><span><small>{t("chains.collector")}</small>{chain.collector_id ?? t("chains.unknown")}</span><span><small>{t("detail.started")}</small>{formatDateTime(chain.started_at, locale)}</span><span><small>{t("detail.traffic")}</small>{formatBytes(chain.bytes_c2s + chain.bytes_s2c)}</span><span><small>{t("chains.steps")}</small>{chain.session_count}</span></div>
+    <div className="detail-meta"><span><small>{t("chains.collector")}</small>{chain.collector_id ?? t("chains.unknown")}</span><span><small>{t("detail.started")}</small>{formatDateTime(chain.started_at, locale)}</span><span><small>{t("detail.traffic")}</small>{formatBytes(chain.bytes_c2s + chain.bytes_s2c)}</span><span><small>{t("chains.steps")}</small>{chain.session_count}</span>{chain.known_matches?.map((match) => <span className="known-label" key={match.rule_id}>{match.label}</span>)}</div>
     {chain.contains_flag && <div className="flag-banner"><Flag size={16} /><strong>{t("detail.flagMatches", { count: chain.flag_count })}</strong></div>}
     <div className="payload-toolbar"><label className={mode === "text" ? "json-toggle" : "json-toggle disabled"}><input type="checkbox" checked={formatJson} disabled={mode !== "text"} onChange={(event) => setFormatJson(event.target.checked)} />{t("detail.formatJson")}</label>
       <PayloadCopyButton className="chain-export-action" label={t("chains.copyPython")} disabledReason={mode === "hex" ? t("detail.exportHex") : undefined} loadingLabel={t("chains.exportProgress", { count: exportProgress, total: chain.session_count })} getText={exportPython} onError={exportFailed}>

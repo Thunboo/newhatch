@@ -31,6 +31,8 @@ async fn main() -> anyhow::Result<()> {
     let auth = AuthConfig::from_env()?;
     let config = Config::from_env()?;
     let catalog = Catalog::open(config.sqlite_path())?;
+    let flag_regex = Regex::new(&config.flag_regex).context("compile FLAG_REGEX")?;
+    catalog.refresh_flag_metadata(&config.data_dir, &flag_regex)?;
     let storage = storage::start_writer(
         catalog.clone(),
         config.data_dir.clone(),
@@ -38,7 +40,6 @@ async fn main() -> anyhow::Result<()> {
         config.segment_retention_count,
         config.storage_queue_capacity,
     )?;
-    let flag_regex = Regex::new(&config.flag_regex).context("compile FLAG_REGEX")?;
     let flows = flow::start_workers(
         FlowOptions {
             workers: config.flow_workers,

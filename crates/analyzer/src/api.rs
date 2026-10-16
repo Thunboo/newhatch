@@ -7,7 +7,7 @@ use axum::{
     http::{header, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
     routing::{get, put},
-    Json, Router,
+    Extension, Json, Router,
 };
 use serde::{Deserialize, Serialize};
 use tokio::sync::watch;
@@ -34,7 +34,78 @@ pub struct ApiState {
     pub analyzer_mode: AnalyzerMode,
 }
 
+#[derive(Clone)]
+struct RuleOwner(String);
+
+#[derive(Clone, Copy, Debug, Deserialize)]
+#[serde(rename_all = "snake_case")]
+enum Bucket {
+    Known,
+    Unknown,
+}
+impl Bucket {
+    fn accepts(self, known: bool) -> bool {
+        matches!(self, Self::Known) == known
+    }
+}
+
+async fn list_rules(
+    State(state): State<Arc<ApiState>>,
+    Extension(owner): Extension<RuleOwner>,
+) -> Result<Json<Vec<crate::attack_rules::AttackRule>>, ApiError> {
+    Ok(Json(
+        blocking(move || state.catalog.list_rules(&owner.0)).await?,
+    ))
+}
+async fn create_rule(
+    State(state): State<Arc<ApiState>>,
+    Extension(owner): Extension<RuleOwner>,
+    Json(input): Json<crate::attack_rules::RuleInput>,
+) -> Result<(StatusCode, Json<crate::attack_rules::AttackRule>), ApiError> {
+    let rule = blocking(move || state.catalog.save_rule(&owner.0, None, input))
+        .await?
+        .ok_or_else(|| ApiError::not_found("rule not found"))?;
+    Ok((StatusCode::CREATED, Json(rule)))
+}
+async fn update_rule(
+    State(state): State<Arc<ApiState>>,
+    Extension(owner): Extension<RuleOwner>,
+    Path(id): Path<i64>,
+    Json(input): Json<crate::attack_rules::RuleInput>,
+) -> Result<Json<crate::attack_rules::AttackRule>, ApiError> {
+    let rule = blocking(move || state.catalog.save_rule(&owner.0, Some(id), input))
+        .await?
+        .ok_or_else(|| ApiError::not_found("rule not found"))?;
+    Ok(Json(rule))
+}
+async fn delete_rule(
+    State(state): State<Arc<ApiState>>,
+    Extension(owner): Extension<RuleOwner>,
+    Path(id): Path<i64>,
+) -> Result<StatusCode, ApiError> {
+    if !blocking(move || state.catalog.delete_rule(&owner.0, id)).await? {
+        return Err(ApiError::not_found("rule not found"));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+async fn get_http_events(
+    State(state): State<Arc<ApiState>>,
+    Path(id): Path<i64>,
+) -> Result<Json<Vec<crate::attack_rules::HttpEvent>>, ApiError> {
+    let catalog = state.catalog.clone();
+    let stored = blocking(move || catalog.get_session(id))
+        .await?
+        .ok_or_else(|| ApiError::not_found("session not found"))?;
+    Ok(Json(
+        blocking(move || {
+            crate::attack_rules::extract_events(id, &read_payload(state.data_dir.clone(), &stored)?)
+        })
+        .await?,
+    ))
+}
+
 pub fn router(state: ApiState, config: AuthConfig) -> Router {
+    let owner = RuleOwner(config.username().to_owned());
     let app = Router::new()
         .route("/api/sources", get(list_sources).post(create_source))
         .route("/api/collectors", get(list_collectors))
@@ -49,6 +120,13 @@ pub fn router(state: ApiState, config: AuthConfig) -> Router {
         .route("/api/sessions/{id}", get(get_session))
         .route("/api/sessions/{id}/payload/{direction}", get(get_payload))
         .route("/api/sessions/{id}/flag-matches", get(get_flag_matches))
+        .route("/api/sessions/{id}/http-events", get(get_http_events))
+        .route("/api/attack-rules", get(list_rules).post(create_rule))
+        .route(
+            "/api/attack-rules/{id}",
+            put(update_rule).delete(delete_rule),
+        )
+        .layer(Extension(owner))
         .with_state(Arc::new(state));
     auth::protect(app, config)
 }
@@ -127,6 +205,7 @@ async fn delete_source(
 
 #[derive(Debug, Deserialize)]
 struct SessionQuery {
+    bucket: Option<Bucket>,
     source_id: Option<i64>,
     contains_flag: Option<bool>,
     protocol: Option<String>,
@@ -188,6 +267,7 @@ impl SessionQuery {
 
 async fn list_chains(
     State(state): State<Arc<ApiState>>,
+    Extension(owner): Extension<RuleOwner>,
     Query(query): Query<SessionQuery>,
 ) -> Result<Json<ChainPage>, ApiError> {
     let filter = query.filter()?;
@@ -205,7 +285,34 @@ async fn list_chains(
     let data_dir = state.data_dir.clone();
     Ok(Json(
         chain_blocking(move || {
-            ChainReader::open(&catalog)?.list(&filter, cursor, &search, &data_dir)
+            let reader = ChainReader::open(&catalog)?;
+            let rules = if query.bucket.is_some() {
+                crate::attack_rules::compile(reader.rules(&owner.0)?)?
+            } else {
+                Vec::new()
+            };
+            if matches!(query.bucket, Some(Bucket::Known))
+                && !rules.iter().any(|rule| {
+                    filter
+                        .source_id
+                        .is_none_or(|source| rule.rule.input.source_id == source)
+                })
+            {
+                return Ok(ChainPage {
+                    items: Vec::new(),
+                    next_cursor: None,
+                });
+            }
+            let mut page = reader.list(&filter, cursor, &search, &data_dir)?;
+            if let Some(bucket) = query.bucket {
+                let mut budget = 2_000;
+                for chain in &mut page.items {
+                    chain.known_matches = reader.classify(chain, &rules, &data_dir, &mut budget)?;
+                }
+                page.items
+                    .retain(|chain| bucket.accepts(!chain.known_matches.is_empty()));
+            }
+            Ok(page)
         })
         .await?,
     ))
@@ -251,13 +358,14 @@ async fn list_chain_members(
 
 async fn list_sessions(
     State(state): State<Arc<ApiState>>,
+    Extension(owner): Extension<RuleOwner>,
     Query(query): Query<SessionQuery>,
 ) -> Result<Json<SessionPage>, ApiError> {
     let base_filter = query.filter()?;
 
     let search = PayloadSearch::new(query.payload).map_err(ApiError::bad_request)?;
     let page = if !search.is_empty() {
-        search_payload(state, base_filter, search).await?
+        search_payload(state.clone(), base_filter, search).await?
     } else {
         let catalog = state.catalog.clone();
         let requested = base_filter.limit;
@@ -270,6 +378,52 @@ async fn list_sessions(
             next_cursor,
         }
     };
+    let mut page = page;
+    if let Some(bucket) = query.bucket {
+        let catalog = state.catalog.clone();
+        let data_dir = state.data_dir.clone();
+        page = chain_blocking(move || {
+            let reader = ChainReader::open(&catalog)?;
+            let snapshot = reader.snapshot()?;
+            let rules = crate::attack_rules::compile(reader.rules(&owner.0)?)?;
+            if rules.is_empty() {
+                if matches!(bucket, Bucket::Known) {
+                    page.items.clear();
+                    page.next_cursor = None;
+                }
+                return Ok(page);
+            }
+            let mut cache: Vec<(
+                crate::storage::chains::ChainSummary,
+                Vec<crate::attack_rules::RuleMatch>,
+            )> = Vec::new();
+            let mut budget = 2_000;
+            for session in &mut page.items {
+                if !rules
+                    .iter()
+                    .any(|r| r.rule.input.source_id == session.source_id)
+                {
+                    continue;
+                }
+                if let Some((_, matches)) = cache
+                    .iter()
+                    .find(|(chain, _)| chain.contains_session(session))
+                {
+                    session.known_matches = matches.clone();
+                    continue;
+                }
+                if let Some(chain) = reader.summary(session.id, snapshot)? {
+                    let matches = reader.classify(&chain, &rules, &data_dir, &mut budget)?;
+                    session.known_matches = matches.clone();
+                    cache.push((chain, matches));
+                }
+            }
+            page.items
+                .retain(|session| bucket.accepts(!session.known_matches.is_empty()));
+            Ok(page)
+        })
+        .await?;
+    }
     Ok(Json(page))
 }
 
@@ -366,6 +520,7 @@ async fn get_payload(
 
 #[derive(Serialize)]
 struct FlagMatches {
+    representation: &'static str,
     c2s: Vec<ByteRange>,
     s2c: Vec<ByteRange>,
 }
@@ -374,6 +529,7 @@ struct FlagMatches {
 struct ByteRange {
     start: usize,
     end: usize,
+    value: String,
 }
 
 async fn get_flag_matches(
@@ -391,15 +547,28 @@ async fn get_flag_matches(
     let matches = blocking(move || {
         let payload = read_payload(data_dir, &stored)?;
         let ranges = |bytes: &[u8]| {
+            let text = crate::payload_text::display(bytes, false);
             regex
-                .find_iter(bytes)
-                .map(|found| ByteRange {
-                    start: found.start(),
-                    end: found.end(),
+                .find_iter(text.as_bytes())
+                .map(|found| {
+                    let mut start = found.start();
+                    let mut end = found.end();
+                    while !text.is_char_boundary(start) {
+                        start -= 1;
+                    }
+                    while !text.is_char_boundary(end) {
+                        end += 1;
+                    }
+                    ByteRange {
+                        start: found.start(),
+                        end: found.end(),
+                        value: text[start..end].to_owned(),
+                    }
                 })
                 .collect()
         };
         Ok(FlagMatches {
+            representation: crate::payload_text::VERSION,
             c2s: ranges(&payload.c2s),
             s2c: ranges(&payload.s2c),
         })
@@ -486,6 +655,24 @@ impl ApiError {
     }
 
     fn internal(error: anyhow::Error) -> Self {
+        if error
+            .downcast_ref::<crate::attack_rules::RuleValidationError>()
+            .is_some()
+        {
+            return Self::bad_request(error.to_string());
+        }
+        if matches!(
+            error.to_string().as_str(),
+            "source not found" | "at most 100 rules per user"
+        ) {
+            return Self::bad_request(error.to_string());
+        }
+        if error.to_string().contains("classification budget exceeded") {
+            return Self {
+                status: StatusCode::SERVICE_UNAVAILABLE,
+                message: error.to_string(),
+            };
+        }
         tracing::error!(error = ?error, "API request failed");
         if crate::storage::chains::is_interrupted(&error) {
             return Self {

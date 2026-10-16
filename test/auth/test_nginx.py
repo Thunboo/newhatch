@@ -69,6 +69,16 @@ class IngressConfigTests(unittest.TestCase):
         self.assertIn("location ~* \\.(sqlite|sqlite3|db|seg)(/|$)", rendered)
         self.assertGreaterEqual(rendered.count("return 404;"), 3)
 
+    def test_only_rule_routes_allow_larger_json_bodies(self):
+        rendered = self.rules("")
+        self.assertIn("client_max_body_size 4k;", rendered)
+        self.assertEqual(rendered.count("client_max_body_size 2m;"), 2)
+        for location in ["location = /api/attack-rules", "location /api/attack-rules/"]:
+            block = rendered.partition(location)[2].partition("}")[0]
+            self.assertIn("client_max_body_size 2m;", block)
+            self.assertIn("proxy_pass http://127.0.0.1:3000;", block)
+            self.assertNotIn("allow all", block)
+
     def test_frontend_has_no_data_volume(self):
         frontend = COMPOSE.partition("\n  frontend:")[2].partition("\n  suricata:")[0]
         self.assertTrue(frontend, "frontend service block not found")

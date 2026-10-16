@@ -7,11 +7,12 @@ import { useI18n } from "./i18n";
 
 type AuthState = "loading" | "authenticated" | "unauthenticated" | "unavailable";
 
-export function AuthGate({ children }: { children: (logout: () => Promise<void>) => ReactNode }) {
+export function AuthGate({ children }: { children: (logout: () => Promise<void>, username: string) => ReactNode }) {
   const { t } = useI18n();
   const [state, setState] = useState<AuthState>("loading");
   const [attempt, setAttempt] = useState(0);
   const [username, setUsername] = useState("");
+  const [identity, setIdentity] = useState("");
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -25,8 +26,8 @@ export function AuthGate({ children }: { children: (logout: () => Promise<void>)
   useEffect(() => {
     let current = true;
     setState("loading");
-    api.me().then(() => {
-      if (current) setState("authenticated");
+    api.me().then((user) => {
+      if (current) { setIdentity(user.username); setState("authenticated"); }
     }).catch((caught) => {
       if (current) setState(caught instanceof ApiError && caught.status === 401 ? "unauthenticated" : "unavailable");
     });
@@ -38,7 +39,8 @@ export function AuthGate({ children }: { children: (logout: () => Promise<void>)
     setBusy(true);
     setError("");
     try {
-      await api.login(username, password);
+      const user = await api.login(username, password);
+      setIdentity(user.username);
       setPassword("");
       setState("authenticated");
     } catch (caught) {
@@ -56,7 +58,7 @@ export function AuthGate({ children }: { children: (logout: () => Promise<void>)
     setState("unauthenticated");
   }
 
-  if (state === "authenticated") return children(logout);
+  if (state === "authenticated") return children(logout, identity);
 
   return (
     <main className="auth-screen">

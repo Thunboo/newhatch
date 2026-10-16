@@ -9,19 +9,48 @@ export type PayloadChip = { id: number; term: string };
 const equalTerms = (a: string[] = [], b: string[] = []) =>
   a.length === b.length && a.every((term, index) => term === b[index]);
 
-export function useTrafficFilters() {
+function readBucketFilters(key: string): Record<string, SessionFilters> {
+  try {
+    const text = localStorage.getItem(key);
+    if (!text || text.length > 20_000) return {};
+    const data = JSON.parse(text);
+    const result: Record<string, SessionFilters> = {};
+    for (const bucket of ["known", "unknown"] as const) {
+      const value = data?.[bucket];
+      if (!value || typeof value !== "object") continue;
+      result[bucket] = { bucket,
+        sourceId: Number.isSafeInteger(value.sourceId) && value.sourceId > 0 ? value.sourceId : undefined,
+        protocol: ["http", "raw_tcp", "websocket"].includes(value.protocol) ? value.protocol : undefined,
+        containsFlag: value.containsFlag === true || undefined,
+        payload: Array.isArray(value.payload) && value.payload.length <= 100 ? value.payload.filter((s: unknown): s is string => typeof s === "string" && !!s.trim()) : [],
+      };
+    }
+    return result;
+  } catch { return {}; }
+}
+
+export function useTrafficFilters(username: string) {
   const { t } = useI18n();
-  const [filters, setFilters] = useState<SessionFilters>({});
+  const storageKey = `newhatch_session_buckets_v1:${encodeURIComponent(username)}`;
+  const [saved] = useState(() => readBucketFilters(storageKey));
+  const [filters, setFilters] = useState<SessionFilters>(() => ({ ...saved.unknown, bucket: "unknown" }));
   const applied = useRef(filters);
-  const [chips, setChips] = useState<PayloadChip[]>([]);
+  const [chips, setChips] = useState<PayloadChip[]>(() => (filters.payload ?? []).map((term, id) => ({ id, term })));
   const edited = useRef(chips);
-  const nextId = useRef(0);
+  const nextId = useRef(chips.length);
   const [searchValue, setSearchValue] = useState("");
   const awaitingApplication = useRef(false);
   const [applicationFailed, setApplicationFailed] = useState(false);
   const [limits, setLimits] = useState<PayloadSearchLimits | null>(null);
   const [limitsError, setLimitsError] = useState<string | null>(null);
   const [validationError, setValidationError] = useState<"count" | "length" | null>(null);
+  useEffect(() => {
+    saved[filters.bucket ?? "unknown"] = { ...filters, cursor: undefined, rulesRevision: undefined };
+    try {
+      if (Object.values(saved).some((value) => value.sourceId || value.protocol || value.containsFlag || value.payload?.length)) localStorage.setItem(storageKey, JSON.stringify(saved));
+      else localStorage.removeItem(storageKey);
+    } catch { /* In-memory filters remain usable. */ }
+  }, [filters, saved, storageKey]);
 
   const loadLimits = useCallback(() => {
     setLimitsError(null);
@@ -43,10 +72,18 @@ export function useTrafficFilters() {
 
   const applyEdited = useCallback((updater?: (current: SessionFilters) => SessionFilters) => {
     const current = applied.current;
-    const next = updater ? updater(current) : current;
-    const terms = edited.current.map((chip) => chip.term);
+    let next = updater ? updater(current) : current;
+    let terms = edited.current.map((chip) => chip.term);
+    if (next.bucket !== current.bucket) {
+      saved[current.bucket ?? "unknown"] = { ...current, cursor: undefined, rulesRevision: undefined };
+      next = { ...saved[next.bucket ?? "unknown"], bucket: next.bucket, rulesRevision: current.rulesRevision };
+      terms = next.payload ?? [];
+      const nextChips = terms.map((term) => ({ id: nextId.current++, term }));
+      edited.current = nextChips; setChips(nextChips); setSearchValue(""); setValidationError(null);
+    }
     if (next.sourceId === current.sourceId && next.protocol === current.protocol
-      && next.containsFlag === current.containsFlag && equalTerms(terms, current.payload)) return false;
+      && next.containsFlag === current.containsFlag && next.bucket === current.bucket
+      && next.rulesRevision === current.rulesRevision && equalTerms(terms, current.payload)) return false;
     const snapshot = { ...next, payload: terms };
     if (!equalTerms(terms, current.payload)) awaitingApplication.current = true;
     setApplicationFailed(false);
@@ -54,7 +91,7 @@ export function useTrafficFilters() {
     applied.current = snapshot;
     setFilters(snapshot);
     return true;
-  }, []);
+  }, [saved]);
 
   const onSearch = (event: FormEvent) => {
     event.preventDefault();
@@ -78,8 +115,14 @@ export function useTrafficFilters() {
     setValidationError(null);
   };
 
+  const invalidateRules = useCallback(() => {
+    const snapshot = { ...applied.current, rulesRevision: (applied.current.rulesRevision ?? 0) + 1 };
+    applied.current = snapshot;
+    setFilters(snapshot);
+  }, []);
+
   return {
-    filters, applyEdited, isCurrent, onLoaded, onLoadFailed,
+    filters, applyEdited, invalidateRules, isCurrent, onLoaded, onLoadFailed,
     chipProps: {
       filters, chips, searchValue, limits, limitsError,
       filterError: validationError && limits ? t(validationError === "count" ? "filters.countLimit" : "filters.lengthLimit",

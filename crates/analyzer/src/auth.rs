@@ -29,6 +29,9 @@ pub struct AuthConfig {
 }
 
 impl AuthConfig {
+    pub fn username(&self) -> &str {
+        &self.username
+    }
     pub fn from_env() -> anyhow::Result<Self> {
         Self::parse(
             env::var("NEWHATCH_USERNAME").map_err(|_| {

@@ -122,6 +122,7 @@ pub struct CompletedSession {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct SessionSummary {
+    pub known_matches: Vec<crate::attack_rules::RuleMatch>,
     pub collector_id: Option<String>,
     pub first_payload_c2s_at: Option<i64>,
     pub first_payload_s2c_at: Option<i64>,

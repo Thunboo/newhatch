@@ -7,6 +7,16 @@ type Variables = Record<string, string | number>;
 const STORAGE_KEY = "newhatch_language";
 
 const en = {
+  "buckets.title": "Session buckets", "buckets.unknown": "Unsorted", "buckets.known": "Known",
+  "rules.title": "Known attack rules", "rules.description": "Match characteristic HTTP transactions inside a chain. All conditions in a step must match. Traffic remains available in Known.",
+  "rules.close": "Close rules", "rules.new": "New rule", "rules.loading": "Loading rules…", "rules.empty": "No rules yet", "rules.disabled": "disabled",
+  "rules.delete": "Delete rule {label}", "rules.label": "Label", "rules.source": "Source", "rules.chooseSource": "Choose a source", "rules.enabled": "Enabled",
+  "rules.adjacent": "Steps must be adjacent", "rules.maxGap": "Maximum intervening events between steps", "rules.then": "THEN", "rules.step": "Step {count}",
+  "rules.removeStep": "Remove step", "rules.field": "Field", "rules.operator": "Operator", "rules.queryName": "Parameter name (optional)", "rules.value": "Value",
+  "rules.removeCondition": "Remove condition", "rules.and": "+ AND condition", "rules.addStep": "+ THEN step", "rules.saving": "Saving…", "rules.save": "Save rule",
+  "rules.field.method": "Request method", "rules.field.path": "Request path", "rules.field.target": "Path + query", "rules.field.query": "Query parameters",
+  "rules.field.request_body": "Request body", "rules.field.status": "Response status", "rules.field.response_body": "Response body",
+  "rules.op.equals": "equals", "rules.op.contains": "contains", "rules.op.regex": "regex",
   "chains.group": "Group into chains",
   "chains.loaded": "{count} loaded chains",
   "chains.collector": "Collector",
@@ -152,6 +162,16 @@ const en = {
 type TranslationKey = keyof typeof en;
 
 const ru: Record<TranslationKey, string> = {
+  "buckets.title": "Бакеты сессий", "buckets.unknown": "Неотсортированные", "buckets.known": "Известные",
+  "rules.title": "Правила известных атак", "rules.description": "Ищите характерные HTTP-транзакции внутри цепочки. Все условия шага должны совпасть. Трафик остаётся доступным в «Известных».",
+  "rules.close": "Закрыть правила", "rules.new": "Новое правило", "rules.loading": "Загрузка правил…", "rules.empty": "Правил пока нет", "rules.disabled": "выключено",
+  "rules.delete": "Удалить правило {label}", "rules.label": "Метка", "rules.source": "Источник", "rules.chooseSource": "Выберите источник", "rules.enabled": "Включено",
+  "rules.adjacent": "Шаги идут подряд", "rules.maxGap": "Максимум промежуточных событий между шагами", "rules.then": "ЗАТЕМ", "rules.step": "Шаг {count}",
+  "rules.removeStep": "Удалить шаг", "rules.field": "Поле", "rules.operator": "Оператор", "rules.queryName": "Имя параметра (необязательно)", "rules.value": "Значение",
+  "rules.removeCondition": "Удалить условие", "rules.and": "+ И условие", "rules.addStep": "+ ЗАТЕМ шаг", "rules.saving": "Сохранение…", "rules.save": "Сохранить правило",
+  "rules.field.method": "Метод запроса", "rules.field.path": "Путь запроса", "rules.field.target": "Путь + query", "rules.field.query": "Query-параметры",
+  "rules.field.request_body": "Тело запроса", "rules.field.status": "Статус ответа", "rules.field.response_body": "Тело ответа",
+  "rules.op.equals": "равно", "rules.op.contains": "содержит", "rules.op.regex": "regex",
   "chains.group": "Группировать в цепочки",
   "chains.loaded": "Загружено цепочек: {count}",
   "chains.collector": "Коллектор",
