@@ -104,6 +104,37 @@ async fn get_http_events(
     ))
 }
 
+#[derive(Deserialize)]
+struct RuleHighlightQuery {
+    selection: String,
+}
+
+async fn get_rule_highlights(
+    State(state): State<Arc<ApiState>>,
+    Extension(owner): Extension<RuleOwner>,
+    Path(id): Path<i64>,
+    Query(query): Query<RuleHighlightQuery>,
+) -> Result<Json<crate::attack_rules::RuleHighlights>, ApiError> {
+    if query.selection.len() > 16_384 {
+        return Err(ApiError::bad_request("rule selection is too large"));
+    }
+    let selection: Vec<crate::attack_rules::RuleSelection> = serde_json::from_str(&query.selection)
+        .map_err(|_| ApiError::bad_request("invalid rule selection"))?;
+    crate::attack_rules::validate_selection(&selection).map_err(ApiError::bad_request_error)?;
+    Ok(Json(
+        chain_blocking(move || {
+            let stored = state
+                .catalog
+                .get_session(id)?
+                .ok_or_else(|| anyhow!(crate::attack_rules::StaleRuleMatch))?;
+            let rules = crate::attack_rules::compile(state.catalog.list_rules(&owner.0)?)?;
+            let payload = read_payload(state.data_dir.clone(), &stored)?;
+            crate::attack_rules::explain(id, stored.summary.source_id, &payload, &rules, &selection)
+        })
+        .await?,
+    ))
+}
+
 pub fn router(state: ApiState, config: AuthConfig) -> Router {
     let owner = RuleOwner(config.username().to_owned());
     let app = Router::new()
@@ -121,6 +152,7 @@ pub fn router(state: ApiState, config: AuthConfig) -> Router {
         .route("/api/sessions/{id}/payload/{direction}", get(get_payload))
         .route("/api/sessions/{id}/flag-matches", get(get_flag_matches))
         .route("/api/sessions/{id}/http-events", get(get_http_events))
+        .route("/api/sessions/{id}/rule-matches", get(get_rule_highlights))
         .route("/api/attack-rules", get(list_rules).post(create_rule))
         .route(
             "/api/attack-rules/{id}",
@@ -305,9 +337,8 @@ async fn list_chains(
             }
             let mut page = reader.list(&filter, cursor, &search, &data_dir)?;
             if let Some(bucket) = query.bucket {
-                let mut budget = 2_000;
                 for chain in &mut page.items {
-                    chain.known_matches = reader.classify(chain, &rules, &data_dir, &mut budget)?;
+                    chain.known_matches = reader.classify(chain, &rules, &data_dir)?;
                 }
                 page.items
                     .retain(|chain| bucket.accepts(!chain.known_matches.is_empty()));
@@ -393,29 +424,24 @@ async fn list_sessions(
                 }
                 return Ok(page);
             }
-            let mut cache: Vec<(
-                crate::storage::chains::ChainSummary,
-                Vec<crate::attack_rules::RuleMatch>,
-            )> = Vec::new();
-            let mut budget = 2_000;
-            for session in &mut page.items {
-                if !rules
-                    .iter()
-                    .any(|r| r.rule.input.source_id == session.source_id)
-                {
-                    continue;
-                }
-                if let Some((_, matches)) = cache
-                    .iter()
-                    .find(|(chain, _)| chain.contains_session(session))
+            let anchors: Vec<_> = page
+                .items
+                .iter()
+                .filter(|session| {
+                    rules
+                        .iter()
+                        .any(|r| r.rule.input.source_id == session.source_id)
+                })
+                .map(|session| session.id)
+                .collect();
+            for chain in reader.summaries_for_sessions(&anchors, snapshot)? {
+                let matches = reader.classify(&chain, &rules, &data_dir)?;
+                for session in page
+                    .items
+                    .iter_mut()
+                    .filter(|session| chain.contains_session(session))
                 {
                     session.known_matches = matches.clone();
-                    continue;
-                }
-                if let Some(chain) = reader.summary(session.id, snapshot)? {
-                    let matches = reader.classify(&chain, &rules, &data_dir, &mut budget)?;
-                    session.known_matches = matches.clone();
-                    cache.push((chain, matches));
                 }
             }
             page.items
@@ -656,6 +682,15 @@ impl ApiError {
 
     fn internal(error: anyhow::Error) -> Self {
         if error
+            .downcast_ref::<crate::attack_rules::StaleRuleMatch>()
+            .is_some()
+        {
+            return Self {
+                status: StatusCode::CONFLICT,
+                message: error.to_string(),
+            };
+        }
+        if error
             .downcast_ref::<crate::attack_rules::RuleValidationError>()
             .is_some()
         {
@@ -667,7 +702,10 @@ impl ApiError {
         ) {
             return Self::bad_request(error.to_string());
         }
-        if error.to_string().contains("classification budget exceeded") {
+        if error
+            .to_string()
+            .contains("classification deadline exceeded")
+        {
             return Self {
                 status: StatusCode::SERVICE_UNAVAILABLE,
                 message: error.to_string(),

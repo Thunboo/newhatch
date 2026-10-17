@@ -39,7 +39,7 @@ fn json_text(text: &str, pretty: bool) -> Option<String> {
 
 // JSON.stringify uses IEEE-754 numbers and enumerates array-index keys before
 // other object keys. serde_json's default serializer has different rules.
-fn stringify(value: &Value, pretty: bool, depth: usize) -> String {
+pub(crate) fn stringify(value: &Value, pretty: bool, depth: usize) -> String {
     match value {
         Value::Number(number) => {
             let number = number.as_f64().unwrap_or(f64::NAN);

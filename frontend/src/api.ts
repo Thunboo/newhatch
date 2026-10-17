@@ -9,7 +9,7 @@ import type {
   SourceInput,
   CollectorsResponse,
   PayloadSearchLimits,
-  AttackRule, RuleInput, HttpEvent,
+  AttackRule, RuleInput, HttpEvent, RuleHighlights,
 } from "./types";
 
 export class ApiError extends Error {
@@ -119,6 +119,8 @@ export const api = {
 
   getSession: (id: number) => request<Session>(`/api/sessions/${id}`),
   getHttpEvents: (id: number, signal?: AbortSignal) => request<HttpEvent[]>(`/api/sessions/${id}/http-events`, { signal }),
+  getRuleHighlights: (id: number, selection: string, signal?: AbortSignal) =>
+    request<RuleHighlights>(`/api/sessions/${id}/rule-matches?${new URLSearchParams({ selection })}`, { signal }),
 
   getPayload: async (id: number, direction: "c2s" | "s2c", signal?: AbortSignal) => {
     const response = await fetchApi(

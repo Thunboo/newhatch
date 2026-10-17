@@ -7,6 +7,8 @@ type Variables = Record<string, string | number>;
 const STORAGE_KEY = "newhatch_language";
 
 const en = {
+  "rules.highlightsChanged": "Rule matches changed. Refresh the list and reopen the session.",
+  "rules.matches": "Matched rules: {count}", "rules.matchedRules": "Matched rules", "rules.highlightError": "Could not load rule highlights", "rules.highlightLoading": "Loading rule highlights…",
   "buckets.title": "Session buckets", "buckets.unknown": "Unsorted", "buckets.known": "Known",
   "rules.title": "Known attack rules", "rules.description": "Match characteristic HTTP transactions inside a chain. All conditions in a step must match. Traffic remains available in Known.",
   "rules.close": "Close rules", "rules.new": "New rule", "rules.loading": "Loading rules…", "rules.empty": "No rules yet", "rules.disabled": "disabled",
@@ -162,6 +164,8 @@ const en = {
 type TranslationKey = keyof typeof en;
 
 const ru: Record<TranslationKey, string> = {
+  "rules.highlightsChanged": "Совпадения правил изменились. Обновите список и откройте сессию заново.",
+  "rules.matches": "Совпавших правил: {count}", "rules.matchedRules": "Совпавшие правила", "rules.highlightError": "Не удалось загрузить подсветку правил", "rules.highlightLoading": "Загружаем подсветку правил…",
   "buckets.title": "Бакеты сессий", "buckets.unknown": "Неотсортированные", "buckets.known": "Известные",
   "rules.title": "Правила известных атак", "rules.description": "Ищите характерные HTTP-транзакции внутри цепочки. Все условия шага должны совпасть. Трафик остаётся доступным в «Известных».",
   "rules.close": "Закрыть правила", "rules.new": "Новое правило", "rules.loading": "Загрузка правил…", "rules.empty": "Правил пока нет", "rules.disabled": "выключено",

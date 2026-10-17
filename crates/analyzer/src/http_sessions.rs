@@ -23,6 +23,8 @@ impl CaptureTimes {
 }
 
 pub(crate) struct Exchange {
+    pub request_offset: usize,
+    pub response_offset: usize,
     pub c2s: Vec<u8>,
     pub s2c: Vec<u8>,
     pub request_times: CaptureTimes,
@@ -55,6 +57,7 @@ enum Head {
 }
 
 struct Message {
+    offset: usize,
     bytes: Vec<u8>,
     times: CaptureTimes,
     head: Option<Head>,
@@ -65,6 +68,7 @@ struct Message {
 impl Message {
     fn new() -> Self {
         Self {
+            offset: 0,
             bytes: Vec::new(),
             times: CaptureTimes::default(),
             head: None,
@@ -112,6 +116,7 @@ enum Chunk {
 }
 
 struct Decoder {
+    consumed: usize,
     role: Role,
     limit: usize,
     message: Message,
@@ -121,6 +126,7 @@ struct Decoder {
 impl Decoder {
     fn new(role: Role, limit: usize) -> Self {
         Self {
+            consumed: 0,
             role,
             limit,
             message: Message::new(),
@@ -130,7 +136,10 @@ impl Decoder {
 
     fn take(&mut self) -> Message {
         self.body = Body::Headers;
-        std::mem::replace(&mut self.message, Message::new())
+        let mut message = std::mem::replace(&mut self.message, Message::new());
+        message.offset = self.consumed;
+        self.consumed = self.consumed.saturating_add(message.total as usize);
+        message
     }
 
     fn feed(
@@ -636,6 +645,8 @@ impl HttpSessions {
         ) && (200..300).contains(&status);
         if !request.dropped {
             let mut exchange = Exchange {
+                request_offset: request.offset,
+                response_offset: response.offset,
                 c2s: request.bytes,
                 s2c: response.bytes,
                 request_times: request.times,

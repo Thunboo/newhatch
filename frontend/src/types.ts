@@ -104,7 +104,9 @@ export type Chain = {
 export type ChainPage = { items: Chain[]; next_cursor: string | null };
 export type ChainMemberPage = { chain: Chain; items: Session[]; next_cursor: string | null };
 
-export type RuleMatch = { rule_id: number; label: string; events: { session_id: number; transaction: number }[] };
+export type RuleMatch = { rule_id: number; label: string; version?: string; events: { session_id: number; transaction: number }[] };
+export type WindowRule = { rule_id: number; label: string; ranges: ByteRange[]; pretty_ranges: ByteRange[] };
+export type RuleHighlights = { representation: "readable-v1"; c2s: WindowRule[]; s2c: WindowRule[] };
 export type RuleField = "method" | "path" | "target" | "query" | "request_body" | "status" | "response_body";
 export type RuleCondition = { field: RuleField; op: "equals" | "contains" | "regex"; value: string; name?: string };
 export type RuleInput = { source_id: number; label: string; enabled: boolean; adjacent: boolean; max_gap: number; steps: RuleCondition[][] };

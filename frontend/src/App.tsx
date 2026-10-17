@@ -33,6 +33,8 @@ import type { TrafficFilterProps } from "./TrafficFilters";
 import { useTrafficFilters } from "./useTrafficFilters";
 import { ChainBrowser } from "./ChainBrowser";
 import { RuleManager } from "./RuleManager";
+import { RuleLabels } from "./RuleLabels";
+import { useRuleHighlights } from "./useRuleHighlights";
 import type {
   FlagMatches,
   Protocol,
@@ -478,7 +480,7 @@ function SessionsView(props: SessionsViewProps) {
                 onClick={() => props.onSelect(session)}
               >
                 <td className="mono time-cell">{formatTime(session.started_at, locale)}</td>
-                <td><span className="source-name">{session.source_name}</span>{session.known_matches?.map((match) => <span className="known-label" key={match.rule_id} title={match.events.map((e) => `#${e.session_id}:${e.transaction + 1}`).join(" → ")}>{match.label}</span>)}</td>
+                <td><RuleLabels source={session.source_name} matches={session.known_matches} /></td>
                 <td className="mono endpoint">{formatEndpoint(session.client_ip, session.client_port)}</td>
                 <td className="arrow-cell"><ArrowRight size={14} /></td>
                 <td className="mono endpoint">{formatEndpoint(session.server_ip, session.server_port)}</td>
@@ -625,6 +627,7 @@ function SessionDetail({ session, payloadTerms, onClose }: { session: Session; p
   const [formatJson, setFormatJson] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const panelRef = useRef<HTMLElement>(null);
+  const rules = useRuleHighlights(session.id, session.known_matches, !!payloads);
 
   useEffect(() => {
     const panel = panelRef.current;
@@ -673,7 +676,7 @@ function SessionDetail({ session, payloadTerms, onClose }: { session: Session; p
         </div>
       </header>
       <div className="detail-meta">
-        {session.known_matches?.map((match) => <span className="known-label" key={match.rule_id}>{match.label}</span>)}
+        {!!session.known_matches?.length && <div className="detail-rule-summary"><small>{t("rules.matchedRules")}</small><RuleLabels matches={session.known_matches} /></div>}
         <span><small>{t("common.source")}</small>{session.source_name} :{session.server_port}</span>
         <span><small>{t("detail.started")}</small>{formatDateTime(session.started_at, locale)}</span>
         <span><small>{t("detail.traffic")}</small>{formatBytes(session.bytes_c2s + session.bytes_s2c)}</span>
@@ -681,6 +684,7 @@ function SessionDetail({ session, payloadTerms, onClose }: { session: Session; p
       </div>
       {session.contains_flag && <div className="flag-banner"><Flag size={16} /><strong>{t("detail.flagMatches", { count: session.flag_count })}</strong><span>{session.flag_direction.toUpperCase()}</span></div>}
       {error && <div className="error-strip"><AlertTriangle size={16} /> {error}</div>}
+      {rules.status}
       <div className="payload-toolbar">
         <label className={mode === "text" ? "json-toggle" : "json-toggle disabled"}>
           <input
@@ -698,8 +702,8 @@ function SessionDetail({ session, payloadTerms, onClose }: { session: Session; p
       </div>
       {!payloads ? <div className="payload-loading"><RefreshCw className="spin" size={17} /></div> : (
         <div className="streams">
-          <Stream payloadTerms={payloadTerms} direction="c2s" replayTarget={{ host: session.server_ip, port: session.server_port }} title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
-          <Stream payloadTerms={payloadTerms} direction="s2c" title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
+          <Stream rules={rules.data.c2s} payloadTerms={payloadTerms} direction="c2s" replayTarget={{ host: session.server_ip, port: session.server_port }} title={t("detail.clientToServer")} bytes={payloads.c2s} ranges={matches.c2s} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "c2s" || session.flag_direction === "both"} />
+          <Stream rules={rules.data.s2c} payloadTerms={payloadTerms} direction="s2c" title={t("detail.serverToClient")} bytes={payloads.s2c} ranges={matches.s2c} mode={mode} formatJson={formatJson} flagged={session.flag_direction === "s2c" || session.flag_direction === "both"} />
         </div>
       )}
     </aside>

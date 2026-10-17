@@ -20,12 +20,27 @@ tests from `session-chains.spec.cjs`; host-only execution is documented in
 
 Known/Unsorted coverage checks owned Source-scoped rule CRUD, regex validation,
 ordered transaction matches inside full chains, overlapping rules, disable/delete,
-retained-data reclassification, empty pages with continuation, canonical flag
-metadata and unchanged raw bytes. The rule editor and separate persisted bucket
-filters are exercised by session-buckets.spec.cjs. Shared text/export fixtures and
-focused commands are in [test/payload_text](../payload_text/README.md).
+retained-data reclassification, classification beyond 2,000 members in one chain
+and across a 100-chain page in both feeds, empty pages with continuation,
+canonical flag metadata and unchanged raw bytes. The rule editor and separate
+persisted bucket filters are exercised by session-buckets.spec.cjs. Shared
+text/export fixtures and focused commands are in [test/payload_text](../payload_text/README.md).
+Rule explanation coverage includes authenticated/owner-scoped reads, stale rule
+definitions, field-local UTF-8 ranges, named query parameters, informational
+responses, legacy transaction ordinals, chunk boundaries, JSON expansion and
+empty/zero-width matches. Browser checks cover adaptive labels at notebook and
+ultrawide widths, popup hover/focus/click/Escape, direction-local marks and labels,
+unmarked context members, Text/Hex/JSON stability and failed explanation retry
+while payload remains inspectable.
 nginx generation checks keep login/ordinary API bodies at 4 KiB while rule routes
 allow bounded 2 MiB definitions under the same CIDR/authentication boundary.
+
+Run the bucket classification volume regression without Docker when host Cargo
+is available:
+
+```bash
+cargo test -p newhatch-analyzer --test auth buckets_classify_more_than_2000_members_per_chain_and_per_page -- --exact
+```
 
 Session filtering coverage verifies the authenticated limits endpoint and both
 feeds' payload-list validation, stored AND matches, bounded continuation and

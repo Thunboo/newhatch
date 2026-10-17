@@ -9,16 +9,18 @@ import type { HighlightRange } from "./payloadHighlights";
 import { exportCurl, exportPython, parseReplayRequest, replayProblemKeys } from "./requestExport";
 import { ExportLogo, PayloadCopyButton } from "./PayloadCopyButton";
 import type { ReplayTarget } from "./requestExport";
-import type { ByteRange } from "./types";
+import type { ByteRange, WindowRule } from "./types";
+import { RuleLabels } from "./RuleLabels";
 import { formatBytes } from "./format";
 export type PayloadMode = "text" | "hex";
 const NO_PAYLOAD_TERMS: readonly string[] = [];
+const NO_RULES: readonly WindowRule[] = [];
 
-export function Stream({ title, subtitle, direction, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false, payloadTerms = NO_PAYLOAD_TERMS }: { title: string; subtitle?: string; direction: "c2s" | "s2c"; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean; payloadTerms?: readonly string[] }) {
+export function Stream({ title, subtitle, direction, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false, payloadTerms = NO_PAYLOAD_TERMS, rules = NO_RULES }: { title: string; subtitle?: string; direction: "c2s" | "s2c"; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean; payloadTerms?: readonly string[]; rules?: readonly WindowRule[] }) {
   const { t } = useI18n();
   const displayed = useMemo(() => {
-    return payloadHighlights(bytes, payloadTerms, ranges, formatJson);
-  }, [bytes, formatJson, payloadTerms, ranges]);
+    return payloadHighlights(bytes, payloadTerms, ranges, formatJson, rules.flatMap((rule) => formatJson ? rule.pretty_ranges : rule.ranges));
+  }, [bytes, formatJson, payloadTerms, ranges, rules]);
   const displayedText = displayed.text;
   const text = useMemo(() => mode === "hex" ? toHex(bytes) : displayedText, [bytes, displayedText, mode]);
   const replay = useMemo(
@@ -33,7 +35,7 @@ export function Stream({ title, subtitle, direction, bytes, ranges, mode, format
     <section className={["stream", flagged || uniqueFlags > 0 ? "flagged" : "", uniqueFlags > 0 ? "response-flagged" : ""].filter(Boolean).join(" ")}>
       <header>
         <span className="stream-title">
-          <span className="stream-title-line"><span className="stream-title-text">{title}</span>{uniqueFlags > 0 && <ResponseFlagBadge unique={uniqueFlags} occurrences={ranges.length} />}</span>
+          <span className="stream-title-line"><span className="stream-title-text">{title}</span>{uniqueFlags > 0 && <ResponseFlagBadge unique={uniqueFlags} occurrences={ranges.length} />}{rules.length > 0 && <RuleLabels matches={rules} />}</span>
           {subtitle && <small>{subtitle}</small>}
         </span>
         <span className="stream-actions">

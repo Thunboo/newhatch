@@ -179,7 +179,7 @@ function formatMarked(value: MarkedText, pretty: boolean): MarkedText | null {
   catch { return null; }
 }
 
-export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], flags: ByteRange[], pretty: boolean): { text: string; ranges: HighlightRange[] } {
+export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], flags: ByteRange[], pretty: boolean, ruleRanges: readonly ByteRange[] = []): { text: string; ranges: HighlightRange[] } {
   // Match the same canonical compact text as Rust. Formatting maps these marks
   // into pretty JSON without decoding percent sequences a second time.
   const rawText = displayPayload(bytes, false);
@@ -214,6 +214,17 @@ export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], f
         for (const value of values) for (let start = expected.indexOf(value); value && start >= 0; start = expected.indexOf(value, start + 1)) markBytes(displayed.marks, start, start + value.length, kind);
       }
     }
+  }
+  // Backend rule spans address this exact display representation in UTF-8.
+  // Walk Unicode scalars once; offsets must never be treated as UTF-16 indices
+  // or searched again by value (equal text in another field is unrelated).
+  const selected = [...ruleRanges].filter((range) => range.end > range.start).sort((a, b) => a.start - b.start);
+  let byte = 0; let unit = 0; let rangeIndex = 0;
+  for (const character of displayed.text) {
+    const length = character.codePointAt(0)! <= 0x7f ? 1 : character.codePointAt(0)! <= 0x7ff ? 2 : character.length === 2 ? 4 : 3;
+    while (rangeIndex < selected.length && selected[rangeIndex].end <= byte) rangeIndex++;
+    if (rangeIndex < selected.length && selected[rangeIndex].start < byte + length) markBytes(displayed.marks, unit, unit + character.length, PAYLOAD);
+    byte += length; unit += character.length;
   }
   const ranges: HighlightRange[] = [];
   for (let start = 0; start < displayed.text.length;) {

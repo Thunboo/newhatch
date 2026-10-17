@@ -2,6 +2,10 @@
 use anyhow::{ensure, Result};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
+use std::hash::{Hash, Hasher};
+
+mod highlights;
+pub use highlights::{explain, validate_selection, RuleHighlights, RuleSelection, StaleRuleMatch};
 
 use crate::{
     domain::{Direction, SessionPayload},
@@ -67,6 +71,7 @@ pub enum Operator {
 pub struct CompiledRule {
     pub rule: AttackRule,
     steps: Vec<Vec<(Condition, Option<Regex>)>>,
+    version: String,
 }
 
 pub struct MatchState<'a> {
@@ -118,6 +123,7 @@ impl<'a> MatchState<'a> {
             path.push(event.reference.clone());
             if step + 1 == self.rule.steps.len() {
                 self.matched = Some(RuleMatch {
+                    version: self.rule.version(),
                     rule_id: self.rule.rule.id,
                     label: self.rule.rule.input.label.clone(),
                     events: path,
@@ -133,6 +139,7 @@ impl<'a> MatchState<'a> {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct RuleMatch {
+    pub version: String,
     pub rule_id: i64,
     pub label: String,
     pub events: Vec<EventRef>,
@@ -158,6 +165,9 @@ pub struct HttpEvent {
 }
 
 impl CompiledRule {
+    pub fn version(&self) -> String {
+        self.version.clone()
+    }
     pub fn new(rule: AttackRule) -> Result<Self> {
         let input = &rule.input;
         ensure!(input.source_id > 0, "source_id must be positive");
@@ -210,7 +220,14 @@ impl CompiledRule {
             }
             steps.push(conditions);
         }
-        Ok(Self { rule, steps })
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        serde_json::to_string(&rule.input).unwrap().hash(&mut hash);
+        let version = format!("{:016x}", hash.finish());
+        Ok(Self {
+            rule,
+            steps,
+            version,
+        })
     }
 
     fn step_matches(&self, step: usize, event: &HttpEvent) -> bool {
@@ -252,8 +269,20 @@ impl CompiledRule {
 /// Reuse the ingest framer for retained multi-request streams. Never split on
 /// decoded content, guess response pairing or turn payload data into messages.
 pub fn extract_events(id: i64, payload: &SessionPayload) -> Result<Vec<HttpEvent>> {
+    let exchanges = retained_exchanges(payload);
+    let mut events = Vec::new();
+    for (transaction, exchange) in exchanges.into_iter().enumerate() {
+        let Some(event) = extract_event(id, transaction, &exchange) else {
+            return Ok(Vec::new());
+        };
+        events.push(event);
+    }
+    Ok(events)
+}
+
+fn retained_exchanges(payload: &SessionPayload) -> Vec<crate::http_sessions::Exchange> {
     if payload.c2s.is_empty() || payload.s2c.is_empty() {
-        return Ok(Vec::new());
+        return Vec::new();
     }
     let mut parser = HttpSessions::new(payload.c2s.len().max(payload.s2c.len()));
     parser.feed(Direction::C2s, &payload.c2s, 0);
@@ -262,49 +291,53 @@ pub fn extract_events(id: i64, payload: &SessionPayload) -> Result<Vec<HttpEvent
     // Unsupported/ambiguous retained streams remain opaque barriers. Do not let
     // one legacy record make every list request for its source fail.
     if parser.failed || parser.discarded_requests > 0 {
-        return Ok(Vec::new());
+        return Vec::new();
     }
-    let mut events = Vec::new();
-    for (transaction, exchange) in exchanges.into_iter().enumerate() {
-        if exchange.protocol != crate::domain::SessionProtocol::Http {
-            return Ok(Vec::new());
-        }
-        let metadata = crate::protocol::classify(&exchange.c2s, &exchange.s2c).1;
-        let (Some(method), Some(target), Some(status)) =
-            (metadata.method, metadata.path, metadata.status)
-        else {
-            return Ok(Vec::new());
-        };
-        // Only origin-form paths are eligible; host:port is never a rule field.
-        if !target.starts_with('/') {
-            return Ok(Vec::new());
-        }
-        let (path, query) = target.split_once('?').unwrap_or((&target, ""));
-        let query_params = query
-            .split('&')
-            .filter(|s| !s.is_empty())
-            .map(|param| {
-                let (name, value) = param.split_once('=').unwrap_or((param, ""));
-                (payload_text::decode(name), payload_text::decode(value))
-            })
-            .collect();
-        let request_body = body(&exchange.c2s);
-        events.push(HttpEvent {
-            reference: EventRef {
-                session_id: id,
-                transaction,
-            },
-            method,
-            path: payload_text::decode(path),
-            target: payload_text::decode(&target),
-            query: payload_text::decode(query),
-            query_params,
-            request_body,
-            status: status.to_string(),
-            response_body: body(&exchange.s2c),
-        });
+    exchanges
+}
+
+fn extract_event(
+    id: i64,
+    transaction: usize,
+    exchange: &crate::http_sessions::Exchange,
+) -> Option<HttpEvent> {
+    if exchange.protocol != crate::domain::SessionProtocol::Http {
+        return None;
     }
-    Ok(events)
+    let metadata = crate::protocol::classify(&exchange.c2s, &exchange.s2c).1;
+    let (Some(method), Some(target), Some(status)) =
+        (metadata.method, metadata.path, metadata.status)
+    else {
+        return None;
+    };
+    // Only origin-form paths are eligible; host:port is never a rule field.
+    if !target.starts_with('/') {
+        return None;
+    }
+    let (path, query) = target.split_once('?').unwrap_or((&target, ""));
+    let query_params = query
+        .split('&')
+        .filter(|s| !s.is_empty())
+        .map(|param| {
+            let (name, value) = param.split_once('=').unwrap_or((param, ""));
+            (payload_text::decode(name), payload_text::decode(value))
+        })
+        .collect();
+    let request_body = body(&exchange.c2s);
+    Some(HttpEvent {
+        reference: EventRef {
+            session_id: id,
+            transaction,
+        },
+        method,
+        path: payload_text::decode(path),
+        target: payload_text::decode(&target),
+        query: payload_text::decode(query),
+        query_params,
+        request_body,
+        status: status.to_string(),
+        response_body: body(&exchange.s2c),
+    })
 }
 
 fn body(message: &[u8]) -> Option<String> {

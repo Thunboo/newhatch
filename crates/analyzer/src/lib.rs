@@ -8,6 +8,7 @@ pub mod domain;
 pub mod flow;
 mod http_sessions;
 pub mod packet;
+mod payload_origins;
 pub mod payload_search;
 pub mod payload_text;
 pub mod protocol;

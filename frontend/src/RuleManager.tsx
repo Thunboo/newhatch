@@ -93,7 +93,7 @@ export function RuleManager({ sources, onChanged, onClose }: { sources: Source[]
                 : <input aria-label={t("rules.value")} placeholder={t("rules.value")} required={value.op !== "equals"} maxLength={2048} value={value.value} onChange={(e) => updateCondition(step, index, { value: e.target.value })} />}
               {conditions.length > 1 && <button type="button" aria-label={t("rules.removeCondition")} onClick={() => setDraft({ ...draft, steps: draft.steps.map((items, s) => s === step ? items.filter((_, c) => c !== index) : items) })}><X size={14} /></button>}
             </div>)}
-            <button type="button" disabled={conditions.length >= 12} onClick={() => setDraft({ ...draft, steps: draft.steps.map((items, s) => s === step ? [...items, condition()] : items) })}>{t("rules.and")}</button>
+            <button className="secondary-button" type="button" disabled={conditions.length >= 12} onClick={() => setDraft({ ...draft, steps: draft.steps.map((items, s) => s === step ? [...items, condition()] : items) })}>{t("rules.and")}</button>
           </section>)}
           <footer><button className="secondary-button" type="button" disabled={draft.steps.length >= 8} onClick={() => setDraft({ ...draft, steps: [...draft.steps, [condition()]] })}>{t("rules.addStep")}</button>
             <button className="primary-button" disabled={!draft.source_id} type="submit">{busy ? t("rules.saving") : t("rules.save")}</button></footer>
