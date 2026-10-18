@@ -168,7 +168,7 @@ async function highlightSetup(page, grouped) {
     known_matches: definitions, http: { method: 'GET', path: '/needle' } });
   const members = [41, 42, 43].map(metadata);
   const chain = { ...members[0], session_count: 3, snapshot_id: 43 };
-  const state = { reads: [], fail: 0 };
+  const state = { reads: [], fail: 0, highlighting: true };
   await page.route('**/api/**', (route) => {
     const url = new URL(route.request().url());
     const send = (body, status = 200) => route.fulfill({ status, contentType: 'application/json', body: JSON.stringify(body) });
@@ -189,8 +189,9 @@ async function highlightSetup(page, grouped) {
         const selected = JSON.parse(url.searchParams.get('selection'));
         expect(selected.map(([rule]) => rule)).toEqual(id === 41 ? [7, 8, 9] : [7]);
         expect(selected[0][2]).toEqual(id === 41 ? [[0, 0]] : [[1, 0]]);
-        return send({ representation: 'readable-v1', c2s: id === 41 ? definitions.map((rule) => ({ ...rule, ranges: ranges(c2s, '/needle').map((r) => ({ start: r.start + 1, end: r.end })), pretty_ranges: ranges(c2s, '/needle').map((r) => ({ start: r.start + 1, end: r.end })) })) : [],
-          s2c: id === 42 ? [{ ...definitions[0], ranges: ranges(compact, 'root:'), pretty_ranges: ranges(pretty, 'root:') }] : [] });
+        const marks = (text, term) => state.highlighting ? ranges(text, term) : [];
+        return send({ representation: 'readable-v1', c2s: id === 41 ? definitions.map((rule) => ({ ...rule, ranges: marks(c2s, '/needle').map((r) => ({ start: r.start + 1, end: r.end })), pretty_ranges: marks(c2s, '/needle').map((r) => ({ start: r.start + 1, end: r.end })) })) : [],
+          s2c: id === 42 ? [{ ...definitions[0], ranges: marks(compact, 'root:'), pretty_ranges: marks(pretty, 'root:') }] : [] });
       }
       return route.fulfill({ status: 200, contentType: 'application/octet-stream', body: match[3] === 'c2s' ? c2s : s2c });
     }
@@ -204,6 +205,30 @@ async function highlightSetup(page, grouped) {
 }
 
 for (const grouped of [false, true]) {
+  test(`${grouped ? 'chains' : 'sessions'}: disabled rule highlighting keeps labels, search and flags`, async ({ page }) => {
+    const fixture = await highlightSetup(page, grouped);
+    fixture.state.highlighting = false;
+    // Search marks remain independent of the rule explanation response.
+    const search = page.getByRole('textbox', { name: 'Search reconstructed payload' });
+    await search.fill('needle');
+    await search.press('Enter');
+    await fixture.row.locator('td').first().click();
+    const request = fixture.pair(41).locator('.stream').first();
+    await expect(request.locator('.rule-label-trigger')).toHaveAttribute('aria-label', 'Matched rules: 3');
+    await expect(request.locator('mark.payload-match')).toHaveText(['needle', 'needle', 'needle']);
+    if (grouped) await fixture.pair(42).scrollIntoViewIfNeeded();
+    else { await page.keyboard.press('Escape'); await page.locator('tr[data-session-id="42"] td').first().click(); }
+    const response = fixture.pair(42).locator('.stream').last();
+    await expect(response.locator('.rule-label-trigger')).toHaveAttribute('aria-label', 'Matched rules: 1');
+    await expect(response.locator('mark.payload-match')).toHaveCount(0);
+    await expect(response.locator('mark.flag-match')).toHaveText('FLAG{root:}');
+    await page.getByRole('checkbox', { name: 'Format JSON' }).check();
+    await expect(response.locator('mark.flag-match')).toHaveText('FLAG{root:}');
+    await page.getByRole('button', { name: 'Hex', exact: true }).click();
+    await expect(response.locator('.rule-label-trigger')).toBeVisible();
+    await expect(page.locator('.rule-evidence-status')).toHaveCount(0);
+  });
+
   test(`${grouped ? 'chains' : 'sessions'}: adaptive labels and popup survive narrow and ultrawide layouts`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width: 1280, height: 800 });
     const { row } = await highlightSetup(page, grouped);

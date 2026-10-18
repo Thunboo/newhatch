@@ -5,7 +5,9 @@ use serde::{Deserialize, Serialize};
 use std::hash::{Hash, Hasher};
 
 mod highlights;
-pub use highlights::{explain, validate_selection, RuleHighlights, RuleSelection, StaleRuleMatch};
+pub use highlights::{
+    explain, validate_selection, window_labels, RuleHighlights, RuleSelection, StaleRuleMatch,
+};
 
 use crate::{
     domain::{Direction, SessionPayload},
@@ -36,6 +38,14 @@ pub struct AttackRule {
     pub owner: String,
     #[serde(flatten)]
     pub input: RuleInput,
+}
+
+impl AttackRule {
+    fn version(&self) -> String {
+        let mut hash = std::collections::hash_map::DefaultHasher::new();
+        serde_json::to_string(&self.input).unwrap().hash(&mut hash);
+        format!("{:016x}", hash.finish())
+    }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -220,9 +230,7 @@ impl CompiledRule {
             }
             steps.push(conditions);
         }
-        let mut hash = std::collections::hash_map::DefaultHasher::new();
-        serde_json::to_string(&rule.input).unwrap().hash(&mut hash);
-        let version = format!("{:016x}", hash.finish());
+        let version = rule.version();
         Ok(Self {
             rule,
             steps,

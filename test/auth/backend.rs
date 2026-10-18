@@ -14,6 +14,14 @@ use std::net::SocketAddr;
 use tower::ServiceExt;
 
 fn app(expiration: &str, secure: &str) -> (Router, tempfile::TempDir) {
+    app_with_highlighting(expiration, secure, true)
+}
+
+fn app_with_highlighting(
+    expiration: &str,
+    secure: &str,
+    rule_highlighting_enabled: bool,
+) -> (Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let state = ApiState {
         catalog: Catalog::open(dir.path().join("index.sqlite")).unwrap(),
@@ -22,6 +30,7 @@ fn app(expiration: &str, secure: &str) -> (Router, tempfile::TempDir) {
         flag_regex: regex::bytes::Regex::new("FLAG").unwrap(),
         collectors: Default::default(),
         analyzer_mode: newhatch_analyzer::config::AnalyzerMode::Local,
+        rule_highlighting_enabled,
     };
     (
         router(
@@ -867,11 +876,20 @@ async fn buckets_classify_more_than_2000_members_per_chain_and_per_page() {
 
 #[tokio::test]
 async fn source_scoped_ordered_rules_reclassify_retained_chains_and_keep_raw_payloads() {
+    check_owned_rules(true).await;
+}
+
+#[tokio::test]
+async fn disabled_rule_highlighting_keeps_buckets_and_labels_without_payload_reads() {
+    check_owned_rules(false).await;
+}
+
+async fn check_owned_rules(highlighting_enabled: bool) {
     use newhatch_analyzer::{
         domain::{CompletedSession, FlagDirection, SessionProtocol, SourceInput},
         storage::{start_writer, SessionFilter},
     };
-    let (app, dir) = app("86400s", "false");
+    let (app, dir) = app_with_highlighting("86400s", "false", highlighting_enabled);
     let catalog = Catalog::open(dir.path().join("index.sqlite")).unwrap();
     for (name, port) in [("web", 8080), ("other", 9000)] {
         catalog
@@ -1024,10 +1042,20 @@ async fn source_scoped_ordered_rules_reclassify_retained_chains_and_keep_raw_pay
     let explanation = get(highlight_url.clone()).await;
     assert_eq!(explanation["representation"], "readable-v1");
     assert_eq!(explanation["c2s"][0]["label"], "Traversal");
-    assert!(!explanation["c2s"][0]["ranges"]
-        .as_array()
-        .unwrap()
-        .is_empty());
+    assert_eq!(
+        explanation["c2s"][0]["ranges"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        !highlighting_enabled
+    );
+    assert_eq!(
+        explanation["c2s"][0]["pretty_ranges"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        !highlighting_enabled
+    );
     assert_eq!(explanation["s2c"], serde_json::json!([]));
     assert_eq!(
         call(&app, "127.0.0.1:1", "GET", &highlight_url, "", "", &[])
@@ -1100,6 +1128,25 @@ async fn source_scoped_ordered_rules_reclassify_retained_chains_and_keep_raw_pay
     let events = get("/api/sessions/2/http-events".into()).await;
     assert_eq!(events[0]["path"], "/users");
     assert_eq!(events[0]["query_params"][0][1], "../../../etc");
+    if !highlighting_enabled {
+        // Even an unavailable segment must not prevent label-only explanations.
+        // Step 1 contains both request- and response-side conditions.
+        let stored = catalog.get_session(3).unwrap().unwrap();
+        let segment = dir.path().join("segments").join(&stored.segment_filename);
+        let hidden = segment.with_extension("unavailable");
+        std::fs::rename(&segment, &hidden).unwrap();
+        let selected = encode_query(&serde_json::json!([[id, version, [[1, 0]]]]).to_string());
+        let labels = get(format!("/api/sessions/3/rule-matches?selection={selected}")).await;
+        std::fs::rename(&hidden, &segment).unwrap();
+        for direction in ["c2s", "s2c"] {
+            assert_eq!(
+                labels[direction],
+                serde_json::json!([{
+                    "rule_id": id, "label": "Traversal", "ranges": [], "pretty_ranges": []
+                }])
+            );
+        }
+    }
     let mut invalid = definition.clone();
     invalid["steps"][0][0]["op"] = "regex".into();
     invalid["steps"][0][0]["value"] = "[".into();

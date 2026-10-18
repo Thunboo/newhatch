@@ -32,6 +32,7 @@ pub struct ApiState {
     pub flag_regex: regex::bytes::Regex,
     pub collectors: CollectorRegistry,
     pub analyzer_mode: AnalyzerMode,
+    pub rule_highlighting_enabled: bool,
 }
 
 #[derive(Clone)]
@@ -121,18 +122,30 @@ async fn get_rule_highlights(
     let selection: Vec<crate::attack_rules::RuleSelection> = serde_json::from_str(&query.selection)
         .map_err(|_| ApiError::bad_request("invalid rule selection"))?;
     crate::attack_rules::validate_selection(&selection).map_err(ApiError::bad_request_error)?;
-    Ok(Json(
-        chain_blocking(move || {
-            let stored = state
-                .catalog
-                .get_session(id)?
-                .ok_or_else(|| anyhow!(crate::attack_rules::StaleRuleMatch))?;
-            let rules = crate::attack_rules::compile(state.catalog.list_rules(&owner.0)?)?;
-            let payload = read_payload(state.data_dir.clone(), &stored)?;
-            crate::attack_rules::explain(id, stored.summary.source_id, &payload, &rules, &selection)
-        })
-        .await?,
-    ))
+    let highlighting_enabled = state.rule_highlighting_enabled;
+    let read = move || {
+        let stored = state
+            .catalog
+            .get_session(id)?
+            .ok_or_else(|| anyhow!(crate::attack_rules::StaleRuleMatch))?;
+        let rules = state.catalog.list_rules(&owner.0)?;
+        if !highlighting_enabled {
+            return crate::attack_rules::window_labels(
+                stored.summary.source_id,
+                &rules,
+                &selection,
+            );
+        }
+        let rules = crate::attack_rules::compile(rules)?;
+        let payload = read_payload(state.data_dir.clone(), &stored)?;
+        crate::attack_rules::explain(id, stored.summary.source_id, &payload, &rules, &selection)
+    };
+    // Label-only reads need neither payload access nor a heavy chain-reader slot.
+    Ok(Json(if highlighting_enabled {
+        chain_blocking(read).await?
+    } else {
+        blocking(read).await?
+    }))
 }
 
 pub fn router(state: ApiState, config: AuthConfig) -> Router {

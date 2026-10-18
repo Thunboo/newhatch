@@ -1,5 +1,5 @@
 //! Explanations of the first occurrence selected by the list classifier. Only
-//! the opened record is read; no chain scan or browser-side regex is needed.
+//! the opened record is read; label-only mode needs no payload or regex work.
 use std::{
     collections::HashSet,
     ops::Range,
@@ -9,7 +9,7 @@ use std::{
 use anyhow::{ensure, Result};
 use serde::{Deserialize, Serialize};
 
-use super::{CompiledRule, Condition, Field, Operator};
+use super::{AttackRule, CompiledRule, Condition, Field, Operator};
 use crate::{
     domain::SessionPayload,
     http_sessions::Exchange,
@@ -67,6 +67,54 @@ pub fn validate_selection(selection: &[RuleSelection]) -> Result<()> {
         }
     }
     Ok(())
+}
+
+/// Preserve labels from the classifier's selected steps without re-reading
+/// payloads, compiling regexes or constructing per-byte provenance maps.
+pub fn window_labels(
+    source_id: i64,
+    rules: &[AttackRule],
+    selection: &[RuleSelection],
+) -> Result<RuleHighlights> {
+    let mut result = RuleHighlights {
+        representation: crate::payload_text::VERSION,
+        ..Default::default()
+    };
+    for RuleSelection(rule_id, version, steps) in selection {
+        let rule = rules
+            .iter()
+            .find(|r| {
+                r.id == *rule_id
+                    && r.input.enabled
+                    && r.input.source_id == source_id
+                    && r.version() == *version
+            })
+            .ok_or(StaleRuleMatch)?;
+        let mut has_c2s = false;
+        let mut has_s2c = false;
+        for (step, _) in steps {
+            for condition in rule.input.steps.get(*step).ok_or(StaleRuleMatch)? {
+                if matches!(condition.field, Field::Status | Field::ResponseBody) {
+                    has_s2c = true;
+                } else {
+                    has_c2s = true;
+                }
+            }
+        }
+        let label = || WindowRule {
+            rule_id: *rule_id,
+            label: rule.input.label.clone(),
+            ranges: Vec::new(),
+            pretty_ranges: Vec::new(),
+        };
+        if has_c2s {
+            result.c2s.push(label());
+        }
+        if has_s2c {
+            result.s2c.push(label());
+        }
+    }
+    Ok(result)
 }
 
 pub fn explain(
@@ -443,6 +491,37 @@ mod tests {
             body.len()
         )
         .into_bytes()
+    }
+
+    #[test]
+    fn rule_highlighting_labels_use_selected_steps_and_reject_stale_definitions() {
+        let compiled = rule(serde_json::json!([
+            [{"field":"path","op":"regex","value":"/hit"}],
+            [{"field":"status","op":"equals","value":"200"},
+             {"field":"response_body","op":"contains","value":"root:"}]
+        ]));
+        let selection = selected(&compiled, vec![(0, 0)]);
+        let rules = vec![compiled.rule.clone()];
+        let labels = window_labels(1, &rules, &selection).unwrap();
+        assert_eq!(labels.c2s.len(), 1);
+        assert_eq!(labels.c2s[0].label, "Traversal");
+        assert!(labels.c2s[0].ranges.is_empty());
+        assert!(labels.c2s[0].pretty_ranges.is_empty());
+        assert!(labels.s2c.is_empty());
+        let labels = window_labels(1, &rules, &selected(&compiled, vec![(1, 0)])).unwrap();
+        assert!(labels.c2s.is_empty());
+        assert_eq!(labels.s2c.len(), 1);
+        let labels = window_labels(1, &rules, &selected(&compiled, vec![(0, 0), (1, 1)])).unwrap();
+        assert_eq!(labels.c2s.len(), 1);
+        assert_eq!(labels.s2c.len(), 1);
+        assert!(window_labels(2, &rules, &selection).is_err());
+        assert!(window_labels(1, &rules, &selected(&compiled, vec![(2, 0)])).is_err());
+        let mut changed = rules.clone();
+        changed[0].input.enabled = false;
+        assert!(window_labels(1, &changed, &selection).is_err());
+        changed[0].input.enabled = true;
+        changed[0].input.label = "Changed".into();
+        assert!(window_labels(1, &changed, &selection).is_err());
     }
 
     #[test]

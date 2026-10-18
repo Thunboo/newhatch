@@ -101,24 +101,43 @@ not capture groups. Named query conditions mark only matching values of that
 decoded parameter, not other parameters with equal text. Empty equals and
 zero-width regex matches keep their direction label without coloring characters.
 
+`RULE_HIGHLIGHTING_ENABLED` defaults to `true`. Setting it to `false` disables
+only rule-match text highlighting globally; bucket classification, rule CRUD,
+all rule labels (including C2S/S2C headers), ordinary search marks and flag marks
+remain available. The existing explanation route then reads only metadata and
+the owner's stored rule definitions. It validates Source, enabled ownership,
+definition versions and selected step indices, derives directions from those
+steps, and returns labels with empty compact/pretty ranges. It does not read
+payload segments, compile/run rule regexes, extract HTTP events or build
+provenance maps. These lightweight requests use ordinary blocking reads rather
+than heavy chain-reader admission. The selected transaction sequence comes from
+the list classifier and is not rechecked against payloads in this mode.
+
+The analyzer accepts only literal `true` and `false`; invalid values fail startup.
+Compose defaults an unset or empty setting to `true` and passes the setting in
+both local and remote analyzer modes. After changing
+`.env`, recreate the analyzer container and refresh the browser to clear loaded
+explanations. Frontend rebuilding is not required to switch the setting.
+
 Rule marks use search green (`#86D9A0`). Flag intersections retain yellow with a
 green underline. Text and Format JSON preserve exact field provenance through
 UTF-8 replacement, percent/JSON decoding, embedded JSON expansion, legacy
 transactions, informational responses and chunk framing. Hex keeps header labels
 but has no text marks. Copy/export text and captured bytes are unchanged.
 
-The authenticated explanation read loads only the opened record and the owner's
-current rules. List matches include a definition version and the selected
-session/transaction sequence; the frontend sends only this record's step indices
-and transaction ordinals. The server validates Source, enabled ownership, version
-and step conditions and returns separate UTF-8 byte ranges in compact and pretty
+With highlighting enabled, the authenticated explanation read loads only the
+opened record and the owner's current rules. List matches include a definition
+version and the selected session/transaction sequence; the frontend sends only
+this record's step indices and transaction ordinals. The server validates Source,
+enabled ownership, version and step conditions and returns separate UTF-8 byte
+ranges in compact and pretty
 `readable-v1` text. It never searches other records for another occurrence, and
 the browser never reruns rule regex or searches by equal text to place marks.
 
-Explanation reads share the two-reader admission limit and check a two-second
-deadline between conditions/projections. One normalization or scan can overrun
-that checkpoint. They are lazy alongside payload windows; successful chain
-explanations share the card's existing three-second cache lifetime. Mode changes
+Enabled explanation reads share the two-reader admission limit and check a
+two-second deadline between conditions/projections. One normalization or scan
+can overrun that checkpoint. They are lazy alongside payload windows; successful
+chain explanations share the card's existing three-second cache lifetime. Mode changes
 need no new reads. A failed/stale explanation leaves payload/copy/export usable,
 shows an error with Retry and supplies no guessed marks. Definition changes
 return 409 and require refreshing the list; normal rule-editor invalidation
@@ -186,6 +205,8 @@ transaction ordinals use the retained HTTP parser's 256-event bound. Definition
 versions are opaque 16-character strings. Ranges use exclusive ends and address
 the indicated display representation, not raw wire offsets. Empty ranges still
 carry the matched window label.
+When `RULE_HIGHLIGHTING_ENABLED=false`, this same response contains only labels
+with empty `ranges` and `pretty_ranges`; it does not validate transaction content.
 
 RuleInput example:
 
