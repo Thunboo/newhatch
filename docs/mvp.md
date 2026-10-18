@@ -112,6 +112,9 @@ UI exposes Source, Protocol, Flags-only and accumulated literal AND payload chip
 [Session filtering](session-filtering-v2.md) owns matching, edited/applied state,
 Enter/Add/Refresh/polling behavior, notices, backend limits, the array API and
 green Text highlighting of applied terms alongside yellow flag highlighting.
+Planned personal Known/Unsorted rules and folders persist in the browser;
+their [#29 specification](session-filtering-v2.md#planned-personal-classification-29)
+is separate from the currently implemented search controls.
 
 Endpoint IP/port and started_after are API-only; there is no upper/end-time bound.
 Session pages cap at 200 and a payload request scans at most 2,000 prefiltered

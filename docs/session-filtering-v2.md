@@ -3,6 +3,8 @@
 Current contract for [#25](https://github.com/Thunboo/newhatch/issues/25) and
 [#22](https://github.com/Thunboo/newhatch/issues/22), shared by sessions and chains.
 Text highlighting is defined by [#33](https://github.com/Thunboo/newhatch/issues/33).
+Planned browser-local classification for [#29](https://github.com/Thunboo/newhatch/issues/29)
+is specified [below](#planned-personal-classification-29); it is not implemented yet.
 
 ## Matching
 
@@ -14,9 +16,9 @@ directions, but never join bytes across the C2S/S2C boundary.
 
 An empty applied list adds no payload constraint; metadata filters still apply.
 Duplicates remain separate chips and consume separate limit slots.
-LogsQL, regex, field expressions and OR are unsupported; operator-looking text
-is literal. A chain matches only when one member satisfies all payload and
-metadata conditions. Opening it retains all available members as context.
+Payload chips do not support LogsQL, regex, field expressions or OR;
+operator-looking text is literal. A chain matches only when one member satisfies
+all payload and metadata conditions. Opening it retains all available members as context.
 
 ## Text highlighting
 
@@ -114,6 +116,63 @@ Unicode lists that exceed its usual 8 KiB buffer.
 SQLite prefilters metadata; the analyzer loads each candidate payload once and
 evaluates the whole list over stored streams. Preserve bounded scans, continuation,
 chain snapshots and query budgets; frontend-only filtering is insufficient.
+
+## Planned personal classification (#29)
+
+Keep the existing shared installation login and SQLite catalog. Personal
+classification belongs to a browser profile, without separate player accounts
+or server-side user ownership. [#35](https://github.com/Thunboo/newhatch/issues/35)
+is not a prerequisite for this version of #29.
+
+### Rules and folders
+
+Provide **Unsorted / Неотсортированные** as the default view and
+**Known / Известные** for sessions matching the browser's saved rules.
+Known sessions remain available for inspection. Support creating, editing and
+deleting personal rules. Each rule belongs to a Source and matches a regex
+against the HTTP request's stored `path?query`, excluding scheme, host and port.
+Validate expressions on the backend and show understandable validation errors.
+
+Store personal rules and folder definitions in versioned `localStorage`.
+Any personal session-to-folder assignments also belong to this browser state,
+rather than a shared category on a session row. Different browser profiles can
+classify the same captured session differently. Detailed custom-folder and
+manual-assignment choices are tracked in
+[open questions](../.agents/memory/open-questions.md).
+
+### Persistence and restoration
+
+Save every accepted rule/folder change immediately and restore saved state
+before the first session/chain list request. F5, closing a tab and restarting
+the browser must preserve the classification settings at the same origin in
+the same ordinary browser profile. Restoring the UI alone is insufficient:
+the first request must already use the restored classification.
+
+Clearing site data removes these settings. Another browser, profile, device
+or origin has independent settings; automatic synchronization is outside this
+version. If local persistence is unavailable or fails, show that changes are
+not saved instead of silently promising restoration. Store no credentials,
+authentication tokens or captured payloads in this classification state.
+This requirement does not change the existing draft/applied payload-chip
+contract or require persisting ordinary search chips.
+
+### Backend evaluation and acceptance
+
+Send the browser's applied classification snapshot with list requests,
+including pagination and polling. Evaluate it on the backend over stored HTTP
+metadata before selecting the result page. Apply current rules to both retained
+and newly captured sessions; adding, editing or deleting a rule changes the
+view without mass updates of shared session categories or changes to capture.
+
+Preserve bounded work, continuation and existing chain membership/context.
+Invalidate list cursors/results when classification changes; ignore stale
+responses. Exact request encoding and classification limits remain to be
+defined before implementation; see the open questions linked above.
+
+Acceptance must cover two browser profiles with independent rules over the
+same catalog, restoration after reload/reopening, classification of old/new
+sessions after rule edits/deletion, regex validation, pagination and unchanged
+ingest. Personal settings must not be overwritten by another browser's rules.
 
 ## Checks
 
