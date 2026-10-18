@@ -170,6 +170,7 @@ impl Docker {
             desired,
             containers,
             status_table: process::clean_text(&table),
+            file_settings: self.project.env_settings()?,
         })
     }
 

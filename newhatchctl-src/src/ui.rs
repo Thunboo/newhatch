@@ -21,7 +21,7 @@ fn block(title: &str, focused: bool) -> Block<'_> {
         .border_style(Style::default().fg(if focused { ACCENT } else { Color::DarkGray }))
 }
 
-pub fn draw(frame: &mut Frame, app: &App) {
+pub fn draw(frame: &mut Frame, app: &mut App) {
     let area = frame.area();
     if area.width < 80 || area.height < 24 {
         frame.render_widget(
@@ -54,6 +54,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
     let help = match app.view {
         View::Dashboard if app.focus == Focus::Bulk => "Tab focus · ↑↓ action · Enter execute · Esc components · q quit",
+        View::Dashboard if app.focus == Focus::Settings => "Tab focus · ↑↓ / PgUp/PgDn scroll · Home/End · F5 refresh · q quit",
         View::Dashboard => "Tab focus · ↑↓ component/scroll · ←→ action/scroll · Enter select · s/r/x/l · F5 refresh · q quit",
         View::Logs => "↑↓ / PgUp/PgDn scroll · ←→ horizontal · Home oldest · End follow · Esc back · q quit",
         View::Output if app.busy() => "Operation in progress · ↑↓ scroll · Ctrl+C cancels the CLI and exits",
@@ -102,7 +103,7 @@ pub fn draw(frame: &mut Frame, app: &App) {
     }
 }
 
-fn dashboard(frame: &mut Frame, app: &App, area: Rect) {
+fn dashboard(frame: &mut Frame, app: &mut App, area: Rect) {
     let sections = Layout::vertical([Constraint::Min(13), Constraint::Length(7)]).split(area);
     let columns =
         Layout::horizontal([Constraint::Length(38), Constraint::Min(40)]).split(sections[0]);
@@ -201,8 +202,15 @@ fn dashboard(frame: &mut Frame, app: &App, area: Rect) {
         let mut lines = Vec::new();
         for setting in snapshot.settings() {
             lines.push(Line::from(vec![
-                Span::styled(format!("{} = ", setting.key), Style::default().fg(ACCENT)),
-                Span::raw(quoted(&setting.desired)),
+                Span::styled(
+                    clean_text(&format!("{} = ", setting.key)),
+                    Style::default().fg(ACCENT),
+                ),
+                Span::raw(if setting.raw {
+                    clean_text(&setting.desired).replace('\n', "\\n")
+                } else {
+                    quoted(&setting.desired)
+                }),
             ]));
             for (service, active) in setting.active {
                 lines.push(Line::from(vec![
@@ -219,16 +227,18 @@ fn dashboard(frame: &mut Frame, app: &App, area: Rect) {
     } else {
         vec![Line::from("Waiting for Docker / Compose...")]
     };
-    frame.render_widget(
-        Paragraph::new(settings)
-            .wrap(Wrap { trim: false })
-            .block(block(
-                " Settings · read only · ↑↓ scroll ",
-                app.focus == Focus::Settings,
-            ))
-            .scroll((app.settings_scroll, 0)),
-        columns[1],
-    );
+    let settings = Paragraph::new(settings)
+        .wrap(Wrap { trim: false })
+        .block(block(
+            " Settings · read only · ↑↓ scroll ",
+            app.focus == Focus::Settings,
+        ));
+    app.settings_max_scroll = settings
+        .line_count(columns[1].width)
+        .saturating_sub(usize::from(columns[1].height))
+        .min(usize::from(u16::MAX)) as u16;
+    app.settings_scroll = app.settings_scroll.min(app.settings_max_scroll);
+    frame.render_widget(settings.scroll((app.settings_scroll, 0)), columns[1]);
     let table = app
         .snapshot
         .as_ref()
@@ -289,6 +299,50 @@ mod tests {
     use std::{collections::BTreeMap, ffi::OsStr};
 
     #[test]
+    fn settings_scroll_to_the_last_file_value_and_clamp_after_refresh() {
+        use crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+
+        let mut app = App::new(Docker::with_executable(
+            Project {
+                directory: "/unused".into(),
+            },
+            OsStr::new("/unused"),
+        ));
+        let mut file_settings: Vec<_> = (0..60)
+            .map(|index| (format!("CUSTOM_{index}"), format!("value_{index}")))
+            .collect();
+        file_settings.push((
+            "LONG_VALUE".into(),
+            format!("{}last-value-marker", "word ".repeat(200)),
+        ));
+        app.snapshot = Some(Snapshot {
+            file_settings,
+            ..Snapshot::default()
+        });
+        app.focus = Focus::Settings;
+        let mut terminal = Terminal::new(TestBackend::new(80, 24)).unwrap();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert!(app.settings_max_scroll > 20);
+        app.key(KeyEvent::new(KeyCode::PageDown, KeyModifiers::NONE));
+        assert_eq!(app.settings_scroll, 10);
+        app.key(KeyEvent::new(KeyCode::End, KeyModifiers::NONE));
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        let text = terminal
+            .backend()
+            .buffer()
+            .content
+            .iter()
+            .map(|cell| cell.symbol())
+            .collect::<String>();
+        assert!(text.contains("last-value-marker"));
+        app.key(KeyEvent::new(KeyCode::Down, KeyModifiers::NONE));
+        assert_eq!(app.settings_scroll, app.settings_max_scroll);
+        app.snapshot.as_mut().unwrap().file_settings.clear();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
+        assert_eq!(app.settings_scroll, 0);
+    }
+
+    #[test]
     fn dashboard_renders_status_headers_and_restart_annotations() {
         let mut app = App::new(Docker::with_executable(
             Project {
@@ -312,7 +366,7 @@ mod tests {
             ..Snapshot::default()
         });
         let mut terminal = Terminal::new(TestBackend::new(140, 35)).unwrap();
-        terminal.draw(|frame| draw(frame, &app)).unwrap();
+        terminal.draw(|frame| draw(frame, &mut app)).unwrap();
         let buffer = terminal.backend().buffer();
         let text = buffer
             .content

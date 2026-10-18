@@ -117,6 +117,7 @@ new tag. The publishing job uses the repository's `GITHUB_TOKEN` with
 | Enter | Open the selected component's actions or execute the selected action |
 | `s` / `r` / `x` / `l` | Start / recreate / stop / logs for the selected component |
 | F5 | Refresh status and settings |
+| PageUp / PageDown, Home / End in Settings | Scroll the full settings list |
 | Escape | Cancel a confirmation or return from logs/completed output |
 | `q` / Ctrl+C | Exit; an in-progress CLI command is terminated |
 
@@ -154,11 +155,21 @@ re-read state; stale status cannot bypass dependency confirmation.
 ## Settings and logs
 
 The read-only settings panel displays `CAPTURE_INTERFACE`, `FLAG_REGEX`,
-`FRONTEND_PORT`, `ANALYZER` and `AUTH_ALLOWED_SUBNETS`. Desired values come from
-resolved Compose configuration, including `.env`, defaults and host environment
-overrides. A single container `docker inspect` reads applied values for all
-existing managed containers on each refresh. Only these five environment fields
-are retained in the panel's snapshot.
+`FRONTEND_PORT`, `ANALYZER` and `AUTH_ALLOWED_SUBNETS` first, using resolved Compose
+values including defaults and host environment overrides. All remaining variables
+from the project's `.env` follow in file order, including custom variables,
+credentials and settings not passed to managed containers. `NEWHATCH_PASSWORD`
+always displays `*****`, keeping its variable name visible. Other values use the
+literal file syntax, preserving quotes, interpolation expressions and inline
+comments; multiline values display `\n`. Blank lines and standalone comments are
+omitted. The file is reread on each refresh and is never modified or executed.
+A missing `.env` leaves the five Compose-derived settings visible.
+
+A single container `docker inspect` reads applied values for all existing managed
+containers on each refresh. Only the five compared environment fields are retained
+from inspection. Additional file variables have no restart annotations. Use Tab
+to focus Settings, then arrows, PageUp/PageDown or Home/End to scroll; the scroll
+range accounts for wrapped values and the current terminal size.
 
 Differences add `ACTIVE (service): "applied value" [Needs Restart]`. Equal values
 and absent containers have no annotation. Capture interface is compared for
@@ -192,7 +203,9 @@ drift and terminal rendering. Integration tests inject a stateful Python CLI
 replacement to check command selection, single-request inspection, recreation,
 backend failure/early exit, shutdown order and colored-log cleanup. The PTY
 smoke test uses the same replacement to exercise keyboard navigation, dialogs,
-restart, logs and terminal restoration. Python 3 is required for these tests.
+restart, logs, full-file settings scrolling/refresh and terminal restoration.
+Settings tests use temporary `.env` fixtures, including custom variables and
+literal quoted/multiline values. Python 3 is required for these tests.
 
 Installer tests use local archives and command stubs; downloads, sudo and Docker
 are never invoked for real. They cover all platforms, Bash stdin execution,

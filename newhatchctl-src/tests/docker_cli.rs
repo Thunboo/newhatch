@@ -91,6 +91,47 @@ impl Fixture {
 }
 
 #[test]
+fn settings_include_all_file_variables_and_refresh_without_inspection_secrets() {
+    let fixture = Fixture::new(&[("collector", "running")]);
+    let path = fixture.directory.path().join(".env");
+    let content = concat!(
+        "CAPTURE_INTERFACE=eth9\n",
+        "SEGMENT_DURATION=30m\n",
+        "NEWHATCH_PASSWORD='local-file-secret'\n",
+        "SURICATA_BPF_FILTER=tcp and (port 8080)\n",
+        "FUTURE_OPTION=${CUSTOM:-value}\n",
+    );
+    fs::write(&path, content).unwrap();
+    let snapshot = fixture.snapshot();
+    let settings = snapshot.settings();
+    assert_eq!(settings.len(), 9);
+    assert_eq!(settings[0].key, "CAPTURE_INTERFACE");
+    assert_eq!(settings[0].desired, "eth0");
+    assert!(!settings[0].raw);
+    assert_eq!(settings[5].key, "SEGMENT_DURATION");
+    assert_eq!(settings[6].key, "NEWHATCH_PASSWORD");
+    assert_eq!(settings[6].desired, "*****");
+    assert!(!format!("{snapshot:?}").contains("local-file-secret"));
+    assert_eq!(settings[7].key, "SURICATA_BPF_FILTER");
+    assert_eq!(settings[8].desired, "${CUSTOM:-value}");
+    assert!(settings[5..]
+        .iter()
+        .all(|setting| setting.raw && setting.active.is_empty()));
+    assert!(snapshot
+        .containers
+        .iter()
+        .all(|container| !container.environment.contains_key("NEWHATCH_PASSWORD")));
+    assert_eq!(fs::read_to_string(&path).unwrap(), content);
+
+    fs::write(&path, "RENAMED_RETENTION=4\n").unwrap();
+    let refreshed = fixture.snapshot().settings();
+    assert_eq!(refreshed.len(), 6);
+    assert_eq!(refreshed[5].key, "RENAMED_RETENTION");
+    assert_eq!(refreshed[5].desired, "4");
+    assert!(fixture.mutations().is_empty());
+}
+
+#[test]
 fn snapshot_inspects_only_managed_containers_once_and_keeps_standard_headers() {
     let fixture = Fixture::new(&[
         ("collector", "running"),

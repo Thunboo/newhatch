@@ -47,6 +47,7 @@ pub struct Snapshot {
     pub desired: BTreeMap<Service, BTreeMap<String, String>>,
     pub containers: Vec<Container>,
     pub status_table: String,
+    pub file_settings: Vec<(String, String)>,
 }
 
 impl Snapshot {
@@ -71,7 +72,7 @@ impl Snapshot {
     }
 
     pub fn settings(&self) -> Vec<Setting> {
-        SETTINGS
+        let mut settings: Vec<_> = SETTINGS
             .iter()
             .map(|key| {
                 let owner = match *key {
@@ -98,12 +99,25 @@ impl Snapshot {
                     })
                     .collect();
                 Setting {
-                    key,
+                    key: (*key).to_owned(),
                     desired,
                     active,
+                    raw: false,
                 }
             })
-            .collect()
+            .collect();
+        settings.extend(
+            self.file_settings
+                .iter()
+                .filter(|(key, _)| !SETTINGS.contains(&key.as_str()))
+                .map(|(key, value)| Setting {
+                    key: key.clone(),
+                    desired: value.clone(),
+                    active: Vec::new(),
+                    raw: true,
+                }),
+        );
+        settings
     }
 
     pub fn plan(&self, action: Action, confirmed: bool) -> Result<Decision> {
@@ -201,9 +215,10 @@ impl Snapshot {
 
 #[derive(Clone, Debug)]
 pub struct Setting {
-    pub key: &'static str,
+    pub key: String,
     pub desired: String,
     pub active: Vec<(Service, String)>,
+    pub raw: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

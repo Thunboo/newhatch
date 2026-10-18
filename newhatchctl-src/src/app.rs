@@ -154,6 +154,7 @@ pub struct App {
     pub log_buffer: TextBuffer,
     pub log_service: Option<Service>,
     pub settings_scroll: u16,
+    pub settings_max_scroll: u16,
     pub status_scroll: (u16, u16),
     task: Option<Task>,
     operating: bool,
@@ -182,6 +183,7 @@ impl App {
             log_buffer: TextBuffer::default(),
             log_service: None,
             settings_scroll: 0,
+            settings_max_scroll: 0,
             status_scroll: (0, 0),
             task: None,
             operating: false,
@@ -468,7 +470,23 @@ impl App {
                 self.settings_scroll = self.settings_scroll.saturating_sub(1)
             }
             KeyCode::Down if self.focus == Focus::Settings => {
-                self.settings_scroll = self.settings_scroll.saturating_add(1).min(20)
+                self.settings_scroll = self
+                    .settings_scroll
+                    .saturating_add(1)
+                    .min(self.settings_max_scroll)
+            }
+            KeyCode::PageUp if self.focus == Focus::Settings => {
+                self.settings_scroll = self.settings_scroll.saturating_sub(10)
+            }
+            KeyCode::PageDown if self.focus == Focus::Settings => {
+                self.settings_scroll = self
+                    .settings_scroll
+                    .saturating_add(10)
+                    .min(self.settings_max_scroll)
+            }
+            KeyCode::Home if self.focus == Focus::Settings => self.settings_scroll = 0,
+            KeyCode::End if self.focus == Focus::Settings => {
+                self.settings_scroll = self.settings_max_scroll
             }
             KeyCode::Up if self.focus == Focus::Status => {
                 self.status_scroll.0 = self.status_scroll.0.saturating_sub(1)
@@ -570,7 +588,7 @@ pub fn run(docker: Docker) -> Result<()> {
     app.refresh();
     loop {
         app.tick();
-        terminal.draw(|frame| ui::draw(frame, &app))?;
+        terminal.draw(|frame| ui::draw(frame, &mut app))?;
         if event::poll(Duration::from_millis(100))? {
             if let TerminalEvent::Key(key) = event::read()? {
                 let size = terminal.size()?;

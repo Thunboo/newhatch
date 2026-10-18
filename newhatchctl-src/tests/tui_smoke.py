@@ -82,6 +82,13 @@ with tempfile.TemporaryDirectory(prefix="newhatchctl-tui-") as temporary:
     project = root / "newhatch"
     project.mkdir()
     shutil.copy(repository / "compose.yaml", project / "compose.yaml")
+    env_file = project / ".env"
+    env_file.write_text(
+        "NEWHATCH_PASSWORD=fixture-password-never-display\n"
+        "SEGMENT_DURATION=30m\n"
+        + "".join(f"CUSTOM_{index}=value_{index}\n" for index in range(60))
+        + "LAST_ENV_SETTING=before-refresh\n"
+    )
     bin_dir = root / "bin"
     bin_dir.mkdir()
     shutil.copy(Path(__file__).with_name("fake_docker.py"), bin_dir / "docker")
@@ -148,6 +155,23 @@ with tempfile.TemporaryDirectory(prefix="newhatchctl-tui-") as temporary:
 
     try:
         wait_for(lambda: "FLAG_REGEX" in screen.text(), "loaded dashboard")
+        send(b"\t\t\t")
+        wait_for(lambda: "Home/End" in screen.text(), "settings focus")
+        assert "NEWHATCH_PASSWORD = *****" in screen.text(), "Password mask missing"
+        assert b"fixture-password-never-display" not in output, "Password leaked into terminal output"
+        send(b"\x1b[F")
+        wait_for(lambda: "LAST_ENV_SETTING" in screen.text(), "last .env setting")
+        assert "before-refresh" in screen.text()
+        env_file.write_text(env_file.read_text().replace("before-refresh", "after-refresh"))
+        send(b"\x1b[15~")
+        wait_for(lambda: "after-refresh" in screen.text(), "refreshed .env value")
+        env_file.write_text("")
+        send(b"\x1b[15~")
+        wait_for(lambda: "FLAG_REGEX" in screen.text() and "LAST_ENV_SETTING" not in screen.text(),
+                 "settings scroll clamped after file change")
+        assert not mutations(), "viewing .env must not mutate containers"
+        send(b"\x1b")
+        wait_for(lambda: "component/scroll" in screen.text(), "component focus")
         offset = len(output)
         send(b"r")
         wait_for(lambda: text_since(offset, "Operation completed"), "collector recreation")
@@ -200,6 +224,7 @@ with tempfile.TemporaryDirectory(prefix="newhatchctl-tui-") as temporary:
         assert process.poll() == 0, "TUI did not exit successfully"
         pump()
         assert b"\x1b[?1049l" in output, "Alternate screen was not restored"
+        assert b"fixture-password-never-display" not in output, "Password leaked into terminal output"
         try:
             restored_mode = termios.tcgetattr(slave)
         except termios.error as error:
@@ -209,7 +234,7 @@ with tempfile.TemporaryDirectory(prefix="newhatchctl-tui-") as temporary:
                 raise
         else:
             assert restored_mode[3] & termios.ICANON == original_mode[3] & termios.ICANON
-        print("PASS: keyboard TUI, recreation, dependency dialogs, live logs, process cleanup and terminal restoration")
+        print("PASS: full .env settings, scrolling/refresh, keyboard TUI, recreation, dependency dialogs, live logs, process cleanup and terminal restoration")
     finally:
         if process.poll() is None:
             os.killpg(process.pid, signal.SIGKILL)

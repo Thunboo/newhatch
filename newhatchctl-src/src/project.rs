@@ -4,7 +4,7 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context, Result};
 use serde_yaml::Value;
 
 #[derive(Clone, Debug)]
@@ -13,6 +13,40 @@ pub struct Project {
 }
 
 impl Project {
+    pub fn env_settings(&self) -> Result<Vec<(String, String)>> {
+        let text = match fs::read_to_string(self.directory.join(".env")) {
+            Ok(text) => text,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(error) => return Err(error).context("Cannot read .env"),
+        };
+        let mut settings = Vec::new();
+        let mut lines = text.trim_start_matches('\u{feff}').lines();
+        while let Some(line) = lines.next() {
+            let line = line.trim();
+            if line.is_empty() || line.starts_with('#') {
+                continue;
+            }
+            let line = line
+                .strip_prefix("export")
+                .filter(|rest| rest.starts_with(char::is_whitespace))
+                .unwrap_or(line)
+                .trim_start();
+            let (key, value) = line.split_once(['=', ':']).unwrap_or((line, ""));
+            let mut value = value.trim().to_owned();
+            while !quoted_value_ends(&value) {
+                let Some(next) = lines.next() else { break };
+                value.push('\n');
+                value.push_str(next);
+            }
+            let key = key.trim();
+            if key == "NEWHATCH_PASSWORD" {
+                value = "*****".to_owned();
+            }
+            settings.push((key.to_owned(), value));
+        }
+        Ok(settings)
+    }
+
     pub fn resolve(current: &Path, fallback: Option<&OsStr>) -> Result<Self> {
         for directory in std::iter::once(current.to_path_buf())
             .chain(fallback.filter(|path| !path.is_empty()).map(PathBuf::from))
@@ -25,6 +59,23 @@ impl Project {
         }
         bail!("Unknown Newhatch location")
     }
+}
+
+fn quoted_value_ends(value: &str) -> bool {
+    let Some(quote @ ('\'' | '"')) = value.chars().next() else {
+        return true;
+    };
+    let mut escaped = false;
+    for character in value.chars().skip(1) {
+        if escaped {
+            escaped = false;
+        } else if character == '\\' {
+            escaped = true;
+        } else if character == quote {
+            return true;
+        }
+    }
+    false
 }
 
 fn is_newhatch(directory: &Path) -> bool {
@@ -52,6 +103,71 @@ mod tests {
             include_str!("../../compose.yaml"),
         )
         .unwrap();
+    }
+
+    #[test]
+    fn env_values_preserve_file_syntax_without_expansion() {
+        let directory = tempfile::tempdir().unwrap();
+        let project = Project {
+            directory: directory.path().to_owned(),
+        };
+        assert!(project.env_settings().unwrap().is_empty());
+        let text = concat!(
+            "\u{feff}# Settings\r\n\r\n",
+            "FLAG_REGEX=FLAG\\{[^}\\r\\n]+\\}\r\n",
+            "export\tCUSTOM = \"value=a # literal\" # comment\r\n",
+            "MULTILINE='first\r\n# second\r\nFAKE=value\r\nlast'\r\n",
+            "EMPTY=\r\nUNSET\r\nCOLON: value\r\n",
+            "FUTURE=${UNKNOWN:-fallback}\r\n",
+            "COMMAND=$(touch should-not-exist)\r\n",
+        );
+        let path = directory.path().join(".env");
+        fs::write(&path, text).unwrap();
+        assert_eq!(
+            project.env_settings().unwrap(),
+            vec![
+                ("FLAG_REGEX".into(), r"FLAG\{[^}\r\n]+\}".into()),
+                ("CUSTOM".into(), r#""value=a # literal" # comment"#.into()),
+                (
+                    "MULTILINE".into(),
+                    "'first\n# second\nFAKE=value\nlast'".into()
+                ),
+                ("EMPTY".into(), "".into()),
+                ("UNSET".into(), "".into()),
+                ("COLON".into(), "value".into()),
+                ("FUTURE".into(), "${UNKNOWN:-fallback}".into()),
+                ("COMMAND".into(), "$(touch should-not-exist)".into()),
+            ]
+        );
+        assert_eq!(fs::read_to_string(path).unwrap(), text);
+        assert!(!directory.path().join("should-not-exist").exists());
+    }
+
+    #[test]
+    fn env_password_is_masked_without_modifying_file() {
+        let directory = tempfile::tempdir().unwrap();
+        let project = Project {
+            directory: directory.path().to_owned(),
+        };
+        let path = directory.path().join(".env");
+        for value in [
+            "fixture-secret",
+            "'fixture-secret'",
+            "\"fixture-secret\"",
+            "'fixture-secret\nFAKE=hidden\nlast'",
+            "",
+        ] {
+            let text = format!("export NEWHATCH_PASSWORD = {value}\nNEWHATCH_LOGIN=admin\n");
+            fs::write(&path, &text).unwrap();
+            assert_eq!(
+                project.env_settings().unwrap(),
+                vec![
+                    ("NEWHATCH_PASSWORD".into(), "*****".into()),
+                    ("NEWHATCH_LOGIN".into(), "admin".into()),
+                ]
+            );
+            assert_eq!(fs::read_to_string(&path).unwrap(), text);
+        }
     }
 
     #[test]
