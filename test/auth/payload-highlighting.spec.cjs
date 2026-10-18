@@ -65,8 +65,8 @@ for (const grouped of [false, true]) {
     const request = fixture.streams.first();
     const response = fixture.streams.last();
     await expect(request.locator("mark.payload-match")).toHaveCount(3);
-    await expect(response.locator("mark.payload-match")).toHaveCount(3);
-    await expect(response.locator("mark.payload-match:not(.flag-match)")).toHaveCount(2);
+    await expect(response.locator("mark.payload-match")).toHaveCount(4);
+    await expect(response.locator("mark.payload-match:not(.flag-match)")).toHaveCount(3);
     const overlap = response.locator("mark.flag-match.payload-match");
     await expect(overlap).toHaveText("needle");
     const colors = await overlap.evaluate((node) => {
@@ -79,10 +79,11 @@ for (const grouped of [false, true]) {
     const compact = await fixture.streams.locator("pre").allTextContents();
     const reads = fixture.reads();
     await page.getByRole("checkbox", { name: "Format JSON" }).check();
-    await expect(response.locator("mark.payload-match")).toHaveCount(3);
+    await expect(response.locator("mark.payload-match")).toHaveCount(4);
     expect(await response.locator("pre").textContent()).toBe(fixture.s2c.slice(0, fixture.s2c.indexOf("\r\n\r\n") + 4) + JSON.stringify({ value: "needle needle", flag: "FLAG{needle}", encoded: "needle" }, null, 2));
     await response.locator(".stream-actions button").last().click();
-    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(await response.locator("pre").textContent());
+    // Windows clipboard uses CRLF for every line; compare logical text lines.
+    expect((await page.evaluate(() => navigator.clipboard.readText())).replace(/\r\n/g, "\n")).toBe((await response.locator("pre").textContent()).replace(/\r\n/g, "\n"));
     await page.getByRole("button", { name: "Hex", exact: true }).click();
     await expect(fixture.streams.locator("mark")).toHaveCount(0);
     await page.getByRole("button", { name: "Text", exact: true }).click();
@@ -107,12 +108,12 @@ for (const grouped of [false, true]) {
     await expect(fixture.streams.locator("mark.payload-match")).toHaveCount(0);
     await fixture.input.press("Enter");
     if (grouped) await fixture.open();
-    await expect(fixture.streams.last().locator("mark.payload-match")).toHaveCount(3);
+    await expect(fixture.streams.last().locator("mark.payload-match")).toHaveCount(4);
     const reads = fixture.reads();
     await fixture.input.fill("unfinished");
     await page.getByRole("button", { name: "Remove filter: needle", exact: true }).click();
     await expect(page.locator(".filter-notice")).toBeVisible();
-    await expect(fixture.streams.last().locator("mark.payload-match")).toHaveCount(3);
+    await expect(fixture.streams.last().locator("mark.payload-match")).toHaveCount(4);
     expect(fixture.reads()).toBe(reads);
     await page.keyboard.press("Escape");
     await page.getByRole("button", { name: "Refresh sessions", exact: true }).click();
@@ -123,7 +124,7 @@ for (const grouped of [false, true]) {
 }
 
 for (const pretty of [false, true]) {
-  test(`raw match projection preserves payload formatting and source identity; Format JSON=${pretty}`, async ({ page }) => {
+  test(`canonical matching preserves payload formatting; Format JSON=${pretty}`, async ({ page }) => {
     await page.route("**/api/**", (route) => route.fulfill({ status: 401, body: "{}" }));
     await page.goto("/");
     const results = await page.evaluate(async (pretty) => {
@@ -156,16 +157,16 @@ for (const pretty of [false, true]) {
       });
     }, pretty);
     for (const result of results) expect(result.text).toBe(result.expected);
-    expect(results[0].marked).toEqual([{ text: "A", start: 2, kind: "payload" }]);
-    expect(results[1].marked).toEqual([{ text: "A", start: 0, kind: "payload" }, { text: "A", start: 4, kind: "payload" }]);
-    expect(results[2].marked.map((range) => range.text)).toEqual(["П", "🦀"]);
-    expect(results[3].marked.map((range) => range.text)).toEqual(["П", "🦀"]);
+    expect(results[0].marked).toEqual([0, 2, 4].map((start) => ({ text: "A", start, kind: "payload" })));
+    expect(results[1].marked).toEqual([]);
+    expect(results[2].marked).toEqual([]);
+    expect(results[3].marked.map((range) => range.text)).toEqual(["П", "П", "🦀", "🦀"]);
     expect(results[4].marked.map((range) => range.text)).toEqual([pretty ? '"a": 1' : '"a":1']);
     expect(results[6].marked.map((range) => range.text)).toEqual(["ABABA", "A.*B"]);
   });
 }
 
-test("raw UTF-8 matching does not highlight decoder replacements and scales to a large loaded stream", async ({ page }) => {
+test("canonical UTF-8 matching includes decoder replacements and scales to a large loaded stream", async ({ page }) => {
   await page.route("**/api/**", (route) => route.fulfill({ status: 401, body: "{}" }));
   await page.goto("/");
   const result = await page.evaluate(async () => {
@@ -178,7 +179,7 @@ test("raw UTF-8 matching does not highlight decoder replacements and scales to a
     return { replacement, expected: displayPayload(malformed, false), largeText: large.text === displayPayload(data, false), large: large.ranges };
   });
   expect(result.replacement.text).toBe(result.expected);
-  expect(result.replacement.ranges).toEqual([{ start: 4, end: 5, kind: "payload" }]);
+  expect(result.replacement.ranges).toEqual([0, 2, 4].map((start) => ({ start, end: start + 1, kind: "payload" })));
   expect(result.largeText).toBe(true);
   expect(result.large).toEqual([{ start: 3 * 1024 * 1024, end: 3 * 1024 * 1024 + 6, kind: "payload" }]);
 });

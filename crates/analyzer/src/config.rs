@@ -23,6 +23,7 @@ pub struct Config {
     pub flow_idle_timeout: Duration,
     pub max_active_flows_per_worker: usize,
     pub max_stream_bytes: usize,
+    pub rule_highlighting_enabled: bool,
     pub analyzer_mode: AnalyzerMode,
     pub collector_listen_addr: SocketAddr,
     pub collector_allowed_ips: Vec<IpAddr>,
@@ -96,6 +97,7 @@ impl Config {
             flow_idle_timeout: parse_duration_env("FLOW_IDLE_TIMEOUT", "15s")?,
             max_active_flows_per_worker: parse_env("MAX_ACTIVE_FLOWS_PER_WORKER", 16_384usize)?,
             max_stream_bytes: parse_size_env("MAX_STREAM_BYTES", "16MiB")?,
+            rule_highlighting_enabled: parse_env("RULE_HIGHLIGHTING_ENABLED", true)?,
             analyzer_mode,
             collector_listen_addr,
             collector_allowed_ips,
@@ -209,7 +211,7 @@ fn parse_size_env(name: &str, default: &str) -> Result<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_duration, parse_size_env, resolve_ip_list, resolve_socket_addr};
+    use super::{parse_duration, parse_env, parse_size_env, resolve_ip_list, resolve_socket_addr};
     use std::time::Duration;
 
     #[test]
@@ -230,6 +232,22 @@ mod tests {
             parse_size_env("NEWHATCH_TEST_SIZE", "16MiB").unwrap(),
             16 * 1_024 * 1_024
         );
+    }
+
+    #[test]
+    fn rule_highlighting_setting_defaults_on_and_rejects_invalid_values() {
+        const KEY: &str = "NEWHATCH_TEST_RULE_HIGHLIGHTING";
+        std::env::remove_var(KEY);
+        assert!(parse_env(KEY, true).unwrap());
+        std::env::set_var(KEY, "false");
+        assert!(!parse_env(KEY, true).unwrap());
+        std::env::set_var(KEY, "true");
+        assert!(parse_env(KEY, true).unwrap());
+        for value in ["", "0", "1", "yes", "False"] {
+            std::env::set_var(KEY, value);
+            assert!(parse_env(KEY, true).unwrap_err().to_string().contains(KEY));
+        }
+        std::env::remove_var(KEY);
     }
 
     #[test]

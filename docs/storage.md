@@ -108,6 +108,19 @@ capture times in Unix microseconds. Legacy NULL values remain unknown, and
 collector-less records stay singleton chains. Migration does not rewrite segment
 files or their direct record pointers.
 
+### Rule and representation metadata
+
+`attack_rules(id, owner, source_id, definition)` stores bounded, validated rule
+definitions and an owner/ID index. IDs are AUTOINCREMENT so deleting a rule cannot
+reuse its identity. Source deletion stays soft and does not remove retained rules.
+Buckets are derived by the bounded readers; sessions have no global category.
+See [rule semantics and limits](session-buckets.md).
+
+`catalog_settings(key, value)` records the completed canonical flag-text version
+and FLAG_REGEX. The [startup flag rebuild](session-filtering-v2.md#canonical-payload-text)
+updates only session metadata in 200-row batches when that revision changes.
+There are no stored decoded payloads or per-event body rows.
+
 ## Indexes
 
 Keep indexes justified by query patterns:

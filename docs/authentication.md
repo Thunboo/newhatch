@@ -40,7 +40,9 @@ Production Compose uses Linux host networking for both nginx and analyzer. nginx
 
 The frontend container has no `/data` volume. nginx explicitly returns 404 for dotfiles, `data`/`segments` paths and SQLite/database/segment filename extensions. These rules are defense in depth against a future image or mount mistake; SQLite and reconstructed payload segments remain analyzer-only files and are never web resources.
 
-The JSON body limit is 4 KiB. Search-list request-line buffers and validation
+The nginx JSON body limit is 4 KiB except for authenticated attack-rule routes,
+which allow 2 MiB to fit the bounded rule definition, including JSON escaping.
+The analyzer also limits login JSON to 4 KiB. Search-list request-line buffers and validation
 are described in [session filtering](session-filtering-v2.md).
 
 No forwarded/client-IP header grants access, and nginx Real-IP rewriting is not enabled. Do not add Docker gateway CIDRs to make a NAT-collapsed deployment work. Docker Desktop/VM forwarding and additional reverse proxies can hide browser IPs: verify the actual ingress addresses on the target Linux host. If another TLS proxy is added, it must preserve the source address or become a separately reviewed ingress boundary; do not simply trust its forwarded headers.
@@ -56,6 +58,12 @@ Successful login explicitly cycles the session ID and revokes the previous ID. L
 The frontend checks `/api/auth/me` before mounting any traffic views. Loading, sign-in, authenticated and connection-error states are separate. A protected JSON or raw-payload 401 unmounts traffic views, stops polling and shows sign-in. No token goes into browser storage. API requests use same-origin cookies. Vite binds loopback and proxies `/api` to `127.0.0.1:3000`; it is not a team-facing deployment server.
 
 No permissive CORS is enabled. Mutations use POST/PUT/DELETE. When present, `Origin` must match the request authority, and Fetch Metadata rejects cross-site/same-site mutations from other origins. Strict cookies and JSON login prevent ambient cross-site login; non-browser clients without these headers remain supported. API responses are `no-store`. Do not log credentials, hashes, cookies, session IDs or complete authentication headers.
+
+Bucket filter preferences are stored per username in localStorage; they may
+contain payload search terms and persist after logout. Rule definitions stay in
+SQLite under the server-assigned authenticated owner. Shared login credentials
+share that owner's rules; this adds no registration or roles. See
+[session buckets](session-buckets.md).
 
 HTTP does not encrypt passwords, session cookies or captured payloads. Use the current HTTP mode only on an isolated trusted network; for untrusted transport, configure HTTPS and `AUTH_COOKIE_SECURE=true`. The subnet allowlist does not replace encryption. Local processes are inside the transport trust boundary but still need credentials.
 

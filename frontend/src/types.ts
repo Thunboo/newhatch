@@ -39,6 +39,7 @@ export type HttpMetadata = {
 };
 
 export type Session = {
+  known_matches?: RuleMatch[];
   collector_id: string | null;
   first_payload_c2s_at: number | null;
   first_payload_s2c_at: number | null;
@@ -67,10 +68,12 @@ export type SessionPage = {
   next_cursor: number | null;
 };
 
-export type ByteRange = { start: number; end: number };
-export type FlagMatches = { c2s: ByteRange[]; s2c: ByteRange[] };
+export type ByteRange = { start: number; end: number; value?: string };
+export type FlagMatches = { representation?: "readable-v1"; c2s: ByteRange[]; s2c: ByteRange[] };
 
 export type SessionFilters = {
+  bucket?: "known" | "unknown";
+  rulesRevision?: number;
   sourceId?: number;
   containsFlag?: boolean;
   protocol?: Protocol;
@@ -81,6 +84,7 @@ export type SessionFilters = {
 export type PayloadSearchLimits = { max_terms: number; max_term_chars: number };
 
 export type Chain = {
+  known_matches?: RuleMatch[];
   id: number;
   collector_id: string | null;
   source_id: number;
@@ -99,3 +103,16 @@ export type Chain = {
 };
 export type ChainPage = { items: Chain[]; next_cursor: string | null };
 export type ChainMemberPage = { chain: Chain; items: Session[]; next_cursor: string | null };
+
+export type RuleMatch = { rule_id: number; label: string; version?: string; events: { session_id: number; transaction: number }[] };
+export type WindowRule = { rule_id: number; label: string; ranges: ByteRange[]; pretty_ranges: ByteRange[] };
+export type RuleHighlights = { representation: "readable-v1"; c2s: WindowRule[]; s2c: WindowRule[] };
+export type RuleField = "method" | "path" | "target" | "query" | "request_body" | "status" | "response_body";
+export type RuleCondition = { field: RuleField; op: "equals" | "contains" | "regex"; value: string; name?: string };
+export type RuleInput = { source_id: number; label: string; enabled: boolean; adjacent: boolean; max_gap: number; steps: RuleCondition[][] };
+export type AttackRule = RuleInput & { id: number; owner: string };
+export type HttpEvent = {
+  session_id: number; transaction: number; method: string; path: string; target: string;
+  query: string; query_params: [string, string][]; request_body: string | null;
+  status: string; response_body: string | null;
+};

@@ -47,6 +47,7 @@ These documents are authoritative; do not replace their agreed rules with a new 
 | Whole-session correlation, card behavior, snapshots and chain export preparation | [Session chains](session-chains.md) |
 | Python destination/Host override, actual response output and cookies | [Python replay](python-replay.md) |
 | Literal AND chips, edited/applied state, limits and stale-response handling | [Session filtering](session-filtering-v2.md) |
+| Source/owner-scoped known/unsorted triage and ordered HTTP rules | [Session buckets](session-buckets.md) |
 
 Resource priorities are low vulnbox overhead, high ingest/reassembly throughput,
 bounded memory, responsive browsing, no work for unmonitored traffic, correct

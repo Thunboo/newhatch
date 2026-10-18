@@ -27,6 +27,9 @@ const SESSION_COLUMNS: &str = "s.id, s.source_id, src.name, s.started_at, s.ende
 
 #[derive(Clone, Debug, Serialize)]
 pub struct ChainSummary {
+    #[serde(skip)]
+    pub(crate) last_started_at: i64,
+    pub known_matches: Vec<crate::attack_rules::RuleMatch>,
     pub id: i64,
     pub collector_id: Option<String>,
     pub source_id: i64,
@@ -42,6 +45,21 @@ pub struct ChainSummary {
     pub suricata_alerts: u64,
     pub incomplete: bool,
     pub snapshot_id: i64,
+}
+
+impl ChainSummary {
+    pub fn contains_session(&self, session: &SessionSummary) -> bool {
+        session.id <= self.snapshot_id
+            && match &self.collector_id {
+                None => self.id == session.id,
+                Some(collector) => {
+                    session.collector_id.as_ref() == Some(collector)
+                        && self.source_id == session.source_id
+                        && self.client_ip == session.client_ip
+                        && (self.started_at..=self.last_started_at).contains(&session.started_at)
+                }
+            }
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -99,6 +117,95 @@ pub struct ChainReader {
 }
 
 impl ChainReader {
+    pub fn rules(&self, owner: &str) -> Result<Vec<crate::attack_rules::AttackRule>> {
+        super::rules::read_rules(&self.connection, owner)
+    }
+    /// Classification sees complete unfiltered membership from this reader's
+    /// snapshot, so protocol/search filters cannot manufacture adjacency.
+    pub fn classify(
+        &self,
+        chain: &ChainSummary,
+        rules: &[crate::attack_rules::CompiledRule],
+        data_dir: &Path,
+    ) -> Result<Vec<crate::attack_rules::RuleMatch>> {
+        let rules: Vec<_> = rules
+            .iter()
+            .filter(|r| r.rule.input.source_id == chain.source_id)
+            .collect();
+        if rules.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut states: Vec<_> = rules
+            .into_iter()
+            .map(crate::attack_rules::MatchState::new)
+            .collect();
+        // The summary already resolved complete membership in this transaction.
+        // Reuse its key/start range instead of recalculating window functions for
+        // every 200 members. Stream rows so long chains do not grow reader memory.
+        let mut values = vec![Value::Integer(chain.snapshot_id)];
+        let scope = if let Some(collector) = &chain.collector_id {
+            let collector = bind(&mut values, collector.clone());
+            let client = bind(&mut values, Value::Blob(ip_to_blob(chain.client_ip)));
+            let source = bind(&mut values, chain.source_id);
+            let start = bind(&mut values, chain.started_at);
+            let end = bind(&mut values, chain.last_started_at);
+            format!("s.collector_id={collector} AND s.client_ip={client} AND s.source_id={source} AND s.started_at BETWEEN {start} AND {end}")
+        } else {
+            format!("s.id={}", bind(&mut values, chain.id))
+        };
+        let mut statement = self.connection.prepare(&format!(
+            "SELECT s.id, s.protocol FROM sessions s WHERE s.id<=?1
+             AND (s.protocol!=0 OR s.bytes_c2s!=0 OR s.bytes_s2c!=0)
+             AND {scope} ORDER BY s.started_at, s.id"
+        ))?;
+        let mut members = statement.query(params_from_iter(values))?;
+        while let Some(member) = members.next()? {
+            self.check_classification_deadline()?;
+            let id = member.get(0)?;
+            if member.get::<_, i64>(1)? != crate::domain::SessionProtocol::Http as i64 {
+                for state in &mut states {
+                    state.feed(None);
+                }
+                continue;
+            }
+            if let Some(stored) = self.stored_session(id)? {
+                let payload = read_payload(data_dir.to_path_buf(), &stored)?;
+                let extracted = crate::attack_rules::extract_events(id, &payload)?;
+                if extracted.is_empty() {
+                    for state in &mut states {
+                        state.feed(None);
+                    }
+                } else {
+                    for event in extracted {
+                        for state in &mut states {
+                            state.feed(Some(&event));
+                        }
+                    }
+                }
+            } else {
+                for state in &mut states {
+                    state.feed(None);
+                }
+            }
+            if states.iter().all(|state| state.matched.is_some()) {
+                return Ok(states
+                    .into_iter()
+                    .filter_map(|state| state.matched)
+                    .collect());
+            }
+        }
+        Ok(states
+            .into_iter()
+            .filter_map(|state| state.matched)
+            .collect())
+    }
+
+    fn check_classification_deadline(&self) -> Result<()> {
+        if Instant::now() >= self.deadline {
+            bail!("classification deadline exceeded; narrow source/client filters");
+        }
+        Ok(())
+    }
     pub fn open(catalog: &Catalog) -> Result<Self> {
         let connection = catalog.connection()?;
         // Keep read work isolated from capture/storage. The deadline and VM budget
@@ -387,6 +494,32 @@ impl ChainReader {
             .next())
     }
 
+    /// Resolve a bounded session page together, keeping full unfiltered chains.
+    /// Prune only complete keys before gap detection, then select chains that
+    /// contain an anchor. This avoids one catalog window scan per page row.
+    pub fn summaries_for_sessions(&self, ids: &[i64], snapshot: i64) -> Result<Vec<ChainSummary>> {
+        if ids.is_empty() {
+            return Ok(Vec::new());
+        }
+        let mut values = vec![Value::Integer(snapshot)];
+        let anchors = ids
+            .iter()
+            .map(|id| bind(&mut values, *id))
+            .collect::<Vec<_>>()
+            .join(",");
+        let scope = format!(
+            " AND ((collector_id, client_ip, source_id) IN
+                (SELECT collector_id, client_ip, source_id FROM sessions WHERE id IN ({anchors}))
+                OR (collector_id IS NULL AND id IN ({anchors})))"
+        );
+        let sql = format!(
+            "{} {}",
+            membership_cte(&scope),
+            aggregate(&format!("s.id IN ({anchors})"), None)
+        );
+        self.query_summaries(&sql, values, snapshot)
+    }
+
     fn query_summaries(
         &self,
         sql: &str,
@@ -396,6 +529,8 @@ impl ChainReader {
         let mut statement = self.connection.prepare(sql)?;
         let rows = statement.query_map(params_from_iter(values), |row| {
             Ok(ChainSummary {
+                last_started_at: row.get(14)?,
+                known_matches: Vec::new(),
                 id: row.get(0)?,
                 collector_id: row.get(1)?,
                 source_id: row.get(2)?,
@@ -522,7 +657,8 @@ fn aggregate(matched: &str, target: Option<&str>) -> String {
     format!("SELECT MIN(s.id) AS id, s.collector_id, s.source_id, src.name AS source_name, s.client_ip,
         MIN(s.started_at) AS started_at, MAX(s.ended_at) AS ended_at, COUNT(*) AS session_count,
         SUM(s.bytes_c2s) AS bytes_c2s, SUM(s.bytes_s2c) AS bytes_s2c, MAX(s.contains_flag) AS contains_flag,
-        SUM(s.flag_count) AS flag_count, SUM(s.suricata_alerts) AS suricata_alerts, MAX(s.incomplete) AS incomplete
+        SUM(s.flag_count) AS flag_count, SUM(s.suricata_alerts) AS suricata_alerts, MAX(s.incomplete) AS incomplete,
+        MAX(s.started_at) AS last_started_at
         FROM members s JOIN sources src ON src.id=s.source_id{target}
         GROUP BY s.collector_id, s.client_ip, s.source_id, s.legacy_id, s.chain_start HAVING MAX({matched}) != 0")
 }
@@ -631,11 +767,26 @@ mod tests {
         assert_eq!(chain.started_at, 0);
         assert!(chain.contains_flag);
         assert_eq!(chain.flag_count, 1);
+        assert!(chain.contains_session(&f.catalog.get_session(3).unwrap().unwrap().summary));
+        assert!(!chain.contains_session(&f.catalog.get_session(5).unwrap().unwrap().summary));
+        assert!(!chain.contains_session(&f.catalog.get_session(6).unwrap().unwrap().summary));
         assert!(page
             .items
             .iter()
             .filter(|chain| chain.collector_id.is_none())
             .all(|chain| chain.session_count == 1));
+        let mut batch = f
+            .reader()
+            .summaries_for_sessions(&[3, 5, 6, 7, 8, 9, 10], 10)
+            .unwrap();
+        batch.sort_by_key(|chain| chain.id);
+        assert_eq!(
+            batch
+                .iter()
+                .map(|chain| (chain.id, chain.session_count))
+                .collect::<Vec<_>>(),
+            vec![(1, 4), (5, 1), (6, 1), (7, 1), (8, 1), (9, 1), (10, 1)]
+        );
     }
 
     #[test]
@@ -697,6 +848,45 @@ mod tests {
     }
 
     #[test]
+    fn classification_deadline_returns_error_instead_of_unknown() {
+        use crate::attack_rules::{
+            AttackRule, CompiledRule, Condition, Field, Operator, RuleInput,
+        };
+        let f = Fixture::new();
+        std::fs::create_dir_all(f.directory.path().join("segments")).unwrap();
+        for id in 1..=3 {
+            f.add(id, id * 100_000, Some("one"), "10.0.0.2", 1, false);
+        }
+        let rule = CompiledRule::new(AttackRule {
+            id: 1,
+            owner: "team".into(),
+            input: RuleInput {
+                source_id: 1,
+                label: "test".into(),
+                enabled: true,
+                adjacent: true,
+                max_gap: 0,
+                steps: vec![vec![Condition {
+                    field: Field::Path,
+                    op: Operator::Equals,
+                    value: "/missing".into(),
+                    name: None,
+                }]],
+            },
+        })
+        .unwrap();
+        let mut reader = f.reader();
+        let chain = reader.summary(1, 3).unwrap().unwrap();
+        reader.deadline = Instant::now();
+        let error = reader
+            .classify(&chain, &[rule], f.directory.path())
+            .unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("classification deadline exceeded"));
+    }
+
+    #[test]
     fn late_bridge_merges_chains_but_snapshot_pagination_stays_stable() {
         let f = Fixture::new();
         std::fs::create_dir_all(f.directory.path().join("segments")).unwrap();
@@ -724,6 +914,13 @@ mod tests {
         assert_eq!(refreshed.items.len(), 1);
         assert_eq!(refreshed.items[0].session_count, 3);
         assert_eq!(refreshed.items[0].started_at, 0);
+        let old_batch = f.reader().summaries_for_sessions(&[1, 2], 2).unwrap();
+        assert_eq!(old_batch.len(), 2);
+        assert!(old_batch.iter().all(|chain| chain.session_count == 1));
+        let batch = f.reader().summaries_for_sessions(&[2], 3).unwrap();
+        assert_eq!(batch.len(), 1);
+        assert_eq!(batch[0].id, 1);
+        assert_eq!(batch[0].session_count, 3);
         let members = f.reader().member_page(1, None, None, 20).unwrap().unwrap();
         assert_eq!(
             members

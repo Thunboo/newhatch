@@ -1,6 +1,7 @@
 mod catalog;
 pub mod chains;
 mod record;
+pub(crate) mod rules;
 mod schema;
 mod segment;
 

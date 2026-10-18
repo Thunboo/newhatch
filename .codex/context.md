@@ -10,7 +10,8 @@ atomic HTTP sessions or raw/WebSocket streams → SQLite metadata plus payload
 segments → authenticated API/UI.
 
 Local and split capture, source management, session/chain browsing, literal
-AND filter chips, EN/RU UI and HTTP cURL/Python export are implemented.
+AND filter chips over shared readable text, Known/Unsorted buckets with ordered
+HTTP rules, EN/RU UI and HTTP cURL/Python export are implemented.
 Detailed behavior belongs to docs/, not this file.
 
 Open areas include WebSocket frames, Suricata EVE correlation, crash recovery,

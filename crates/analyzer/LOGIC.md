@@ -8,7 +8,7 @@ This document is a code-oriented map of `crates/analyzer`. Product and architect
 AuthConfig::from_env + Config::from_env
                   |
                   v
-        Catalog::open -> SQLite migration
+        Catalog::open -> SQLite migration -> canonical flag metadata rebuild
                   |
                   +-> storage writer thread
                   +-> flow worker tasks
@@ -89,8 +89,9 @@ The transport is neither encrypted nor application-authenticated. Per-collector 
 
 Hashes `CollectorId + FlowKey` into worker-local flow tables so equal endpoint tuples from different collectors cannot merge. `StreamAssembler` orders payload by TCP sequence number, trims retransmitted overlap and buffers out-of-order ranges within configured limits.
 
-Raw TCP/WebSocket flags are scanned incrementally with overlap and counted exactly
-again at finalization. Connection records finalize on RST, both-direction FIN,
+Raw TCP/WebSocket byte scans provide incremental hints; finalization counts exact
+flags over payload_text.rs canonical text. HTTP records use the same canonical
+scan per atomic exchange. Connection records finalize on RST, both-direction FIN,
 idle timeout or worker shutdown. HTTP records are emitted incrementally instead.
 TCP sequence anchors, wraparound, pending overlaps and FIN gaps are handled before
 HTTP association. Idle scheduling uses monotonic analyzer time.
@@ -119,6 +120,8 @@ in `http_sessions.rs`.
 One blocking writer thread drains batches of up to 500 completed sessions. It rejects empty sessions, appends versioned C2S/S2C records to rotating segment files, syncs segment data, then commits metadata to SQLite. Payload retrieval uses segment filename, byte offset and record length and validates record identity, lengths and CRC32.
 
 `schema.rs` migrates collector/first-payload fields without rewriting segments.
+`rules.rs` stores owner-scoped rule definitions and rebuilds retained canonical
+flag metadata in short batches before capture/API start when its revision changes.
 `chains.rs` computes sliding one-second groups with SQLite window queries,
 filter-independent membership, snapshot cursors and resumable payload search.
 Legacy NULL collector IDs partition as singletons. Each reader has an isolated
@@ -129,10 +132,17 @@ transaction, a 2 MiB cache, file-backed sorting and SQL progress interruption.
 `auth.rs` implements startup Argon2id credential hashing, bounded in-memory server-side sessions and local-peer/origin checks. `api.rs` provides minimal public health, login/logout/current-user endpoints, Source CRUD, cursor-based session listing, metadata filters, bounded payload substring search, directional payload retrieval, flag-match ranges and collector status. Blocking SQLite and file operations run through `spawn_blocking`.
 
 `payload_search.rs` validates a list of literal AND terms, owns the 10-term and
-128-code-point limits, and matches each term in either stored direction of one
+128-code-point limits, and matches each term in either canonical direction of one
 session. Sessions and chains reuse it after one payload read per candidate.
 `api.rs` accepts the list as a JSON-encoded `payload` query value and exposes the
 same limits through authenticated `GET /api/payload-search/limits`.
+
+`payload_text.rs` and frontend payloadDisplay.ts share readable-v1 golden fixtures.
+`attack_rules.rs` reuses HTTP framing for transaction fields and streams events
+through bounded ordered matchers. ChainReader classifies full unfiltered chains
+inside its read snapshot and exposes evidence/labels to both bucket feeds.
+The [bucket contract](../../docs/session-buckets.md) defines validation, ownership,
+pagination and read budgets; classification never runs in packet workers.
 
 Authenticated chain list/member routes use at most two concurrent blocking reads;
 excess or interrupted requests return 503. See `docs/session-chains.md` for limits.

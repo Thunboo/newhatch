@@ -62,6 +62,11 @@ New HTTP traffic uses [atomic sessions](docs/http-sessions.md): each stored
 session has one request and its corresponding response, including on keep-alive
 connections.
 
+To disable rule-match text highlighting, set `RULE_HIGHLIGHTING_ENABLED=false`
+in `.env`, recreate the analyzer with `docker compose up -d --force-recreate analyzer`,
+then refresh the browser. Bucket classification and labels remain enabled.
+See [rule highlighting](docs/session-buckets.md#labels-and-rule-explanations).
+
 C2S windows offer cURL/Python export; the chain-toolbar Python action exports all
 supported requests. Run `python3 replay.py` for captured destinations or
 `python3 replay.py <IP/FQDN>` to replace hosts while preserving ports.

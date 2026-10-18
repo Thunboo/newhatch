@@ -18,6 +18,42 @@ filter/cursor regression coverage. The browser image also picks up chain-card
 tests from `session-chains.spec.cjs`; host-only execution is documented in
 [session-chain verification](../session_chains/README.md).
 
+Known/Unsorted coverage checks owned Source-scoped rule CRUD, regex validation,
+ordered transaction matches inside full chains, overlapping rules, disable/delete,
+retained-data reclassification, classification beyond 2,000 members in one chain
+and across a 100-chain page in both feeds, empty pages with continuation,
+canonical flag metadata and unchanged raw bytes. The rule editor and separate
+persisted bucket filters are exercised by session-buckets.spec.cjs. Shared
+text/export fixtures and focused commands are in [test/payload_text](../payload_text/README.md).
+Rule explanation coverage includes authenticated/owner-scoped reads, stale rule
+definitions, field-local UTF-8 ranges, named query parameters, informational
+responses, legacy transaction ordinals, chunk boundaries, JSON expansion and
+empty/zero-width matches. Browser checks cover adaptive labels at notebook and
+ultrawide widths, popup hover/focus/click/Escape, direction-local marks and labels,
+unmarked context members, Text/Hex/JSON stability and failed explanation retry
+while payload remains inspectable.
+The enabled/disabled explanation modes share bucket, ownership and stale-rule
+checks. Disabled-mode coverage removes access to a payload segment and still
+expects direction-local labels with empty ranges. Browser cases in both feeds
+check that labels, search marks and flag marks remain usable without rule marks.
+nginx generation checks keep login/ordinary API bodies at 4 KiB while rule routes
+allow bounded 2 MiB definitions under the same CIDR/authentication boundary.
+
+Run the bucket classification volume regression without Docker when host Cargo
+is available:
+
+```bash
+cargo test -p newhatch-analyzer --test auth buckets_classify_more_than_2000_members_per_chain_and_per_page -- --exact
+```
+
+Run the rule-highlighting configuration and API checks in the existing Rust test
+container (no host Cargo is required):
+
+```bash
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --locked -p newhatch-analyzer rule_highlighting -- --test-threads=1
+docker run --rm -v "${PWD}:/workspace" -v newhatch-cargo-registry:/usr/local/cargo/registry -v newhatch-cargo-target:/workspace/target -w /workspace rust:1.85-bookworm cargo test --locked -p newhatch-analyzer --test auth source_scoped_ordered_rules -- --test-threads=1
+```
+
 Session filtering coverage verifies the authenticated limits endpoint and both
 feeds' payload-list validation, stored AND matches, bounded continuation and
 full chain context. `session-filtering.spec.cjs` checks chips, pending/failed

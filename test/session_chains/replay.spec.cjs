@@ -43,14 +43,14 @@ function runPython(code, args = [], onOutput = () => {}) {
   return new Promise((resolve, reject) => {
     const child = spawn(process.env.NEWHATCH_TEST_PYTHON || "python3", ["-", ...args], {
       stdio: ["pipe", "pipe", "pipe"],
-      env: { ...process.env, PYTHONUNBUFFERED: "", NO_PROXY: "127.0.0.1,localhost,::1,service.example", no_proxy: "127.0.0.1,localhost,::1,service.example" },
+      env: { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUNBUFFERED: "", NO_PROXY: "127.0.0.1,localhost,::1,service.example", no_proxy: "127.0.0.1,localhost,::1,service.example" },
     });
     let stdout = "", stderr = "";
     const timeout = setTimeout(() => { child.kill(); reject(new Error("Python replay timed out")); }, 15_000);
     child.stdout.on("data", (data) => { stdout += data; onOutput(stdout, child); });
     child.stderr.on("data", (data) => { stderr += data; });
     child.on("error", (error) => { clearTimeout(timeout); reject(error); });
-    child.on("close", (status) => { clearTimeout(timeout); resolve({ status, stdout, stderr }); });
+    child.on("close", (status) => { clearTimeout(timeout); resolve({ status, stdout: stdout.replace(/\r\n/g, "\n"), stderr }); });
     child.stdin.end(code);
   });
 }

@@ -1,5 +1,6 @@
 const utf8Decoder = new TextDecoder("utf-8", { fatal: false });
 export const MAX_EMBEDDED_JSON_DEPTH = 4;
+export const PAYLOAD_TEXT_VERSION = "readable-v1";
 
 export function decodePayload(bytes: Uint8Array): string {
   return utf8Decoder.decode(bytes);
@@ -39,11 +40,26 @@ export function findHttpBodyBoundary(text: string): { headerEnd: number; bodySta
 
 function serializeJsonText(text: string, pretty: boolean, expandEmbeddedJson: boolean): string | null {
   try {
-    const parsed: unknown = JSON.parse(text.trim());
+    const parsed = parseDisplayJson(text);
     return JSON.stringify(normalizeJsonValue(parsed, 0, expandEmbeddedJson), null, pretty ? 2 : undefined);
   } catch {
     return null;
   }
+}
+
+export function parseDisplayJson(text: string): unknown {
+  const parsed: unknown = JSON.parse(text.trim());
+  validateJson(parsed);
+  return parsed;
+}
+
+// Keep parser fallbacks identical to Rust for non-finite JSON numbers, lone
+// surrogates and excessive structure depth. Raw/Hex always retain the input.
+function validateJson(value: unknown, depth = 0): void {
+  if (depth > 64 || (typeof value === "number" && !Number.isFinite(value))
+    || (typeof value === "string" && /[\uD800-\uDFFF]/u.test(value))) throw new Error("unsupported JSON value");
+  if (Array.isArray(value)) value.forEach((item) => validateJson(item, depth + 1));
+  else if (value !== null && typeof value === "object") Object.entries(value).forEach(([key, item]) => { validateJson(key); validateJson(item, depth + 1); });
 }
 
 function normalizeJsonValue(value: unknown, depth: number, expandEmbeddedJson: boolean): unknown {
@@ -51,7 +67,8 @@ function normalizeJsonValue(value: unknown, depth: number, expandEmbeddedJson: b
     const decoded = decodePercentEncoding(value);
     if (depth >= MAX_EMBEDDED_JSON_DEPTH || !looksLikeJson(decoded)) return decoded;
     try {
-      const normalized = normalizeJsonValue(JSON.parse(decoded), depth + 1, expandEmbeddedJson);
+      const parsed = parseDisplayJson(decoded);
+      const normalized = normalizeJsonValue(parsed, depth + 1, expandEmbeddedJson);
       // Decode embedded Unicode in both modes; compact view keeps string fields.
       return expandEmbeddedJson ? normalized : JSON.stringify(normalized);
     } catch {
@@ -137,5 +154,5 @@ function decodeJsonEscapes(text: string): string {
 
     decoded += text[index];
   }
-  return decoded;
+  return decoded.replace(/[\uD800-\uDFFF]/gu, "\ufffd");
 }

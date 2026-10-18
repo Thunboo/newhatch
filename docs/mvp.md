@@ -31,6 +31,11 @@ independent of the selected browsing screen. Local/split setup is in [README](..
 
 ## Session List
 
+Sessions and chains share **Unsorted** (initial) and **Known** tabs, with Source,
+flag, protocol and payload preferences stored separately per tab. Source-scoped
+ordered HTTP rules, labels and user ownership are defined in
+[session buckets](session-buckets.md).
+
 Show time, source, endpoints, protocol, byte totals, flags and alert count.
 Merge unique sessions by ID in descending ID order; loaded count is the number
 of unique frontend rows. Capture-time ordering under high RPS remains an open
@@ -52,8 +57,9 @@ Opening detail gives its row a black inner outline. Close with the button or
 Escape; show “Esc to close” beside the button. Wheel input over detail cannot
 scroll the background list, including at boundaries; exposed list space can scroll.
 
-Show C2S and S2C, each with ordinary copy. Text decodes UTF-8, JSON escapes and
-percent-encoded URL components; HTTP path labels use the same readable decoding.
+Show C2S and S2C, each with ordinary copy. Text follows the shared
+[readable-v1 contract](session-filtering-v2.md#canonical-payload-text);
+HTTP path labels use the same readable escape decoding.
 Format JSON off keeps HTTP/standalone JSON compact; on pretty-prints and expands
 JSON object/array string fields. Embedded JSON strings decode Unicode in both
 modes, up to four embedded levels; compact mode keeps them as strings, while
@@ -66,12 +72,12 @@ S2C headers show a gold flag icon and the number of unique flags beside the wind
 title; flagged response headers also use a gold tint. Hide the badge at zero.
 Its localized tooltip reports unique flags and total occurrences, with correct
 EN/RU plural forms. This applies to standalone details and chain windows in Text
-and Hex, independently of Format JSON. Count unique, byte-identical full matches
-within that window's stored S2C only, using the existing backend-provided ranges;
+and Hex, independently of Format JSON. Count unique canonical full matched values
+within that window's S2C only, using backend-provided matches;
 the frontend neither reruns FLAG_REGEX nor makes additional API requests.
-Do not deduplicate across sessions or use display decoding for identity. C2S has
-no new header badge; backend detection and existing aggregate counters retain
-their current semantics. See [#24](https://github.com/Thunboo/newhatch/issues/24).
+Do not deduplicate across sessions. C2S has no header badge. Encoded spellings of
+the same decoded flag share one unique value; occurrence counts still include
+each match. See [#24](https://github.com/Thunboo/newhatch/issues/24).
 
 New HTTP detail and chain windows follow [Atomic HTTP Sessions](http-sessions.md).
 Unrecognized TCP remains inspectable; ambiguous HTTP associations are suppressed.

@@ -274,6 +274,7 @@ pub(super) fn map_session_summary(row: &Row<'_>) -> rusqlite::Result<SessionSumm
     let protocol_value: i64 = row.get(9)?;
     let direction_value: i64 = row.get(13)?;
     Ok(SessionSummary {
+        known_matches: Vec::new(),
         collector_id: row.get(22)?,
         first_payload_c2s_at: row.get(23)?,
         first_payload_s2c_at: row.get(24)?,

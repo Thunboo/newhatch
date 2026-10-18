@@ -8,9 +8,10 @@ is specified [below](#planned-personal-classification-29); it is not implemented
 
 ## Matching
 
-Each removable chip is one trimmed, literal, case-sensitive UTF-8 byte substring.
-Search complete stored C2S/S2C streams, including protocol headers and bodies,
-before UI decoding or JSON formatting. Combine terms with AND: every term must
+Each removable chip is one trimmed, literal, case-sensitive substring of the
+canonical decoded text defined below. Search complete retained C2S/S2C streams,
+including protocol headers and bodies, independently of Format JSON. Combine
+terms with AND: every term must
 occur in either direction of the same session. Terms may match different
 directions, but never join bytes across the C2S/S2C boundary.
 
@@ -20,21 +21,64 @@ Payload chips do not support LogsQL, regex, field expressions or OR;
 operator-looking text is literal. A chain matches only when one member satisfies
 all payload and metadata conditions. Opening it retains all available members as context.
 
+## Canonical payload text
+
+`readable-v1` is the shared Rust/TypeScript contract. Rust owns backend search,
+flag detection and rule fields; frontend display, copy, highlights and HTTP export
+use the same golden examples in test/payload_text/cases.json. The compact form is
+canonical; Format JSON changes presentation only.
+
+1. Decode UTF-8 with replacement characters for invalid sequences and strip one
+   leading UTF-8 BOM.
+2. For a complete JSON payload, or JSON after the first HTTP CRLF/CRLF or LF/LF
+   separator, parse/compact JSON. Preserve ordinary key insertion order, sort
+   integer index keys first and render numbers as JavaScript IEEE-754 JSON values.
+   Values decode percent-encoded UTF-8 once; keys retain JSON-decoded spelling.
+3. Parse JSON object/array strings recursively, up to four embedded levels.
+   Compact mode keeps normalized embedded JSON in strings. Format JSON expands
+   these strings and uses two-space indentation.
+4. When JSON cannot be parsed, decode one layer of JSON escapes, including Unicode
+   surrogate pairs, then one layer of percent encoding. Invalid/lone surrogates
+   become replacement characters. An invalid percent-UTF-8 run stays literal.
+   Non-finite JSON numbers, unpaired JSON surrogates and structures deeper than
+   64 levels use the same fallback on both sides.
+
+There is no repeated percent decoding, case folding, Unicode normalization or
+form-style `+` conversion. A readable `A` finds `%41` and `\u0041`; literal `%41`
+only finds a percent sequence that remains in canonical text (for example `%2541`).
+Search input itself is not decoded. Pretty-printing whitespace is not searchable.
+Raw segment bytes, directional payload routes, HTTP byte framing and Hex are unchanged.
+
+Finalized session flags use FLAG_REGEX over each canonical compact direction.
+`/flag-matches` returns representation=`readable-v1`, start/end UTF-8 byte offsets
+in that direction's canonical text, and each full matched value. The frontend
+maps marks to UTF-16 display positions; it does not apply canonical offsets to raw
+bytes or rerun FLAG_REGEX. Unique badges deduplicate canonical matched values.
+For a byte-mode regex matching part of a UTF-8 character, display marks cover
+that character while start/end retain the exact regex byte range.
+
+Before starting capture/API, the analyzer rebuilds retained flag metadata when
+the contract version or FLAG_REGEX differs from catalog_settings. It reads bounded
+200-row batches and commits short metadata transactions; segments stay unchanged.
+The completion marker is written last, so interruption retries the rebuild.
+Unreadable/corrupt segments stop startup with an error instead of silently mixing
+old/new flag semantics. Initial upgrade or regex changes can delay startup.
+Afterward contains_flag, flag_direction, flag_count and Flags-only agree with the
+same decoded matches used in standalone and chain detail.
+
 ## Text highlighting
 
 In standalone and chain Text windows, highlight every occurrence of the applied
 payload terms in both C2S and S2C, including retained context members. Use the
-same literal, case-sensitive UTF-8 byte matching as filtering, including
+same literal, case-sensitive canonical-text matching as filtering, including
 overlapping occurrences; duplicate chips do not create duplicate markup.
 Draft input and pending chip removals cannot change highlighting before application.
 No applied terms means no additional highlighting. Hex remains unmarked.
 
 The frontend uses already loaded bytes and the applied snapshot, without new API
-requests or changing backend filtering. It carries match marks through UTF-8,
-JSON/percent escape decoding, JSON formatting and embedded-JSON expansion to
-the corresponding visible characters. For example, applied `%41` marks its
-displayed `A`, without marking an unrelated literal `A` elsewhere. Formatting
-and copy/export text retain the existing payload-display contract.
+requests. It marks the canonical compact text, then carries marks through JSON
+formatting and embedded-JSON expansion. Applied `A` marks every displayed `A`,
+including decoded forms. Copy/export use the same text with or without marks.
 
 Payload matches use green #86D9A0 with dark text. Flags retain yellow #F3C840;
 overlapping characters keep the yellow background with a green underline.
@@ -114,7 +158,7 @@ nginx's 32 KiB request-line buffers accommodate percent-encoded full-length
 Unicode lists that exceed its usual 8 KiB buffer.
 
 SQLite prefilters metadata; the analyzer loads each candidate payload once and
-evaluates the whole list over stored streams. Preserve bounded scans, continuation,
+evaluates the whole list over canonical directional text. Preserve bounded scans, continuation,
 chain snapshots and query budgets; frontend-only filtering is insufficient.
 
 ## Planned personal classification (#29)

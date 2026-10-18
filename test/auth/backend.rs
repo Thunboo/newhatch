@@ -14,6 +14,14 @@ use std::net::SocketAddr;
 use tower::ServiceExt;
 
 fn app(expiration: &str, secure: &str) -> (Router, tempfile::TempDir) {
+    app_with_highlighting(expiration, secure, true)
+}
+
+fn app_with_highlighting(
+    expiration: &str,
+    secure: &str,
+    rule_highlighting_enabled: bool,
+) -> (Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let state = ApiState {
         catalog: Catalog::open(dir.path().join("index.sqlite")).unwrap(),
@@ -22,6 +30,7 @@ fn app(expiration: &str, secure: &str) -> (Router, tempfile::TempDir) {
         flag_regex: regex::bytes::Regex::new("FLAG").unwrap(),
         collectors: Default::default(),
         analyzer_mode: newhatch_analyzer::config::AnalyzerMode::Local,
+        rule_highlighting_enabled,
     };
     (
         router(
@@ -178,6 +187,11 @@ async fn every_data_route_and_future_route_is_protected() {
         ("GET", "/api/sessions/1/payload/c2s"),
         ("GET", "/api/sessions/1/payload/s2c"),
         ("GET", "/api/sessions/1/flag-matches"),
+        ("GET", "/api/sessions/1/http-events"),
+        ("GET", "/api/attack-rules"),
+        ("POST", "/api/attack-rules"),
+        ("PUT", "/api/attack-rules/1"),
+        ("DELETE", "/api/attack-rules/1"),
         ("GET", "/api/auth/me"),
         ("POST", "/api/auth/logout"),
         ("GET", "/api/future-route"),
@@ -203,14 +217,15 @@ async fn every_data_route_and_future_route_is_protected() {
 }
 
 fn payload_query(terms: &[String]) -> String {
+    encode_query(&serde_json::to_string(terms).unwrap())
+}
+
+fn encode_query(text: &str) -> String {
     use std::fmt::Write;
-    serde_json::to_string(terms)
-        .unwrap()
-        .bytes()
-        .fold(String::new(), |mut value, byte| {
-            write!(value, "%{byte:02X}").unwrap();
-            value
-        })
+    text.bytes().fold(String::new(), |mut value, byte| {
+        write!(value, "%{byte:02X}").unwrap();
+        value
+    })
 }
 
 #[tokio::test]
@@ -726,5 +741,551 @@ async fn chains_share_auth_boundary_and_validate_filters_and_cursors() {
         .await
         .status(),
         StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn buckets_classify_more_than_2000_members_per_chain_and_per_page() {
+    use newhatch_analyzer::{
+        domain::{CompletedSession, FlagDirection, SessionProtocol, SourceInput},
+        storage::{start_writer, SessionFilter},
+    };
+    let (app, dir) = app("86400s", "false");
+    let catalog = Catalog::open(dir.path().join("index.sqlite")).unwrap();
+    for (name, port) in [("long-chain", 8080), ("many-chains", 9000)] {
+        catalog
+            .create_source(&SourceInput {
+                name: name.into(),
+                port,
+                enabled: true,
+            })
+            .unwrap();
+    }
+    let writer = start_writer(
+        catalog.clone(),
+        dir.path().to_owned(),
+        std::time::Duration::from_secs(1800),
+        3,
+        5000,
+    )
+    .unwrap();
+    for (source_id, chain_count, member_count) in [(1, 1, 2101), (2, 100, 21)] {
+        for chain in 0..chain_count {
+            for member in 0..member_count {
+                let last = member + 1 == member_count;
+                let target = if last { "/hit" } else { "/noise" };
+                let started_at = chain * 4_000_000 + member * 100_000;
+                assert!(writer.try_store(CompletedSession {
+                    collector_id: "test".into(),
+                    source_id,
+                    started_at,
+                    ended_at: started_at + 1,
+                    first_payload_c2s_at: None,
+                    first_payload_s2c_at: None,
+                    client_ip: "10.0.0.2".parse().unwrap(),
+                    client_port: 40000,
+                    server_ip: "10.0.0.1".parse().unwrap(),
+                    server_port: if source_id == 1 { 8080 } else { 9000 },
+                    protocol: SessionProtocol::Http,
+                    c2s: format!("GET {target} HTTP/1.1\r\nHost: test\r\n\r\n").into_bytes(),
+                    s2c: b"HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".to_vec(),
+                    flag_direction: if last {
+                        FlagDirection::C2s
+                    } else {
+                        FlagDirection::None
+                    },
+                    flag_count: usize::from(last),
+                    incomplete: false,
+                    http: Default::default(),
+                }));
+            }
+        }
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while catalog
+            .list_sessions(&SessionFilter {
+                limit: 1,
+                ..Default::default()
+            })
+            .unwrap()
+            .first()
+            .is_none_or(|s| s.id != 4201)
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    drop(writer);
+    let session = login(&app, "").await;
+    for (source_id, chain_count, member_count) in [(1, 1, 2101), (2, 100, 21)] {
+        let mut rule_id = None;
+        for (target, matching) in [("/hit", true), ("/missing", false)] {
+            let rule = catalog
+                .save_rule(
+                    "team",
+                    rule_id,
+                    serde_json::from_value(serde_json::json!({
+                        "source_id": source_id,
+                        "label": "test",
+                        "steps": [[{"field": "path", "op": "equals", "value": target}]]
+                    }))
+                    .unwrap(),
+                )
+                .unwrap()
+                .unwrap();
+            rule_id = Some(rule.id);
+            for feed in ["sessions", "chains"] {
+                for bucket in ["known", "unknown"] {
+                    // Selecting one member per chain forces standalone browsing
+                    // to classify 100 distinct chains instead of reusing one result.
+                    let path = format!("/api/{feed}?source_id={source_id}&contains_flag=true&bucket={bucket}&limit=100");
+                    let response =
+                        call(&app, "127.0.0.1:1", "GET", &path, cookie(&session), "", &[]).await;
+                    assert_eq!(response.status(), StatusCode::OK, "{path}, {target}");
+                    let page: serde_json::Value = serde_json::from_slice(
+                        &to_bytes(response.into_body(), 1_000_000).await.unwrap(),
+                    )
+                    .unwrap();
+                    let items = page["items"].as_array().unwrap();
+                    let accepted = matching == (bucket == "known");
+                    assert_eq!(items.len(), if accepted { chain_count } else { 0 });
+                    for item in items {
+                        if feed == "chains" {
+                            assert_eq!(item["session_count"], member_count);
+                        }
+                        let matches = item["known_matches"].as_array().unwrap();
+                        assert_eq!(matches.len(), usize::from(matching));
+                        if matching {
+                            assert_eq!(matches[0]["rule_id"], rule.id);
+                            let offset = if feed == "chains" {
+                                member_count - 1
+                            } else {
+                                0
+                            };
+                            let expected = item["id"].as_i64().unwrap() + offset;
+                            assert_eq!(matches[0]["events"][0]["session_id"], expected);
+                            assert_eq!(matches[0]["events"][0]["transaction"], 0);
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[tokio::test]
+async fn source_scoped_ordered_rules_reclassify_retained_chains_and_keep_raw_payloads() {
+    check_owned_rules(true).await;
+}
+
+#[tokio::test]
+async fn disabled_rule_highlighting_keeps_buckets_and_labels_without_payload_reads() {
+    check_owned_rules(false).await;
+}
+
+async fn check_owned_rules(highlighting_enabled: bool) {
+    use newhatch_analyzer::{
+        domain::{CompletedSession, FlagDirection, SessionProtocol, SourceInput},
+        storage::{start_writer, SessionFilter},
+    };
+    let (app, dir) = app_with_highlighting("86400s", "false", highlighting_enabled);
+    let catalog = Catalog::open(dir.path().join("index.sqlite")).unwrap();
+    for (name, port) in [("web", 8080), ("other", 9000)] {
+        catalog
+            .create_source(&SourceInput {
+                name: name.into(),
+                port,
+                enabled: true,
+            })
+            .unwrap();
+    }
+    let writer = start_writer(
+        catalog.clone(),
+        dir.path().to_owned(),
+        std::time::Duration::from_secs(1800),
+        3,
+        100,
+    )
+    .unwrap();
+    let targets = [
+        "/register",
+        "/users?id=%2E%2E%2F%2E%2E%2F%2E%2E%2Fetc",
+        "/profile",
+        "/admin",
+        "/users?id=../../../etc",
+        "/profile",
+    ];
+    for (i, target) in targets.iter().enumerate() {
+        let body = if i == 2 || i == 5 {
+            r#"{"result":"root: %46%4C%41%47"}"#
+        } else {
+            "ok"
+        };
+        let request = format!("GET {target} HTTP/1.1\r\nHost: test\r\n\r\n").into_bytes();
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n{body}",
+            body.len()
+        )
+        .into_bytes();
+        assert!(writer.try_store(CompletedSession {
+            collector_id: "test".into(),
+            source_id: if i < 4 { 1 } else { 2 },
+            started_at: i as i64 * 100_000,
+            ended_at: i as i64 * 100_000 + 1,
+            first_payload_c2s_at: None,
+            first_payload_s2c_at: None,
+            client_ip: "10.0.0.2".parse().unwrap(),
+            client_port: 40000,
+            server_ip: "10.0.0.1".parse().unwrap(),
+            server_port: if i < 4 { 8080 } else { 9000 },
+            protocol: SessionProtocol::Http,
+            c2s: request,
+            s2c: response,
+            flag_direction: FlagDirection::None,
+            flag_count: 0,
+            incomplete: false,
+            http: Default::default(),
+        }));
+    }
+    tokio::time::timeout(std::time::Duration::from_secs(10), async {
+        while catalog
+            .list_sessions(&SessionFilter {
+                limit: 1,
+                ..Default::default()
+            })
+            .unwrap()
+            .first()
+            .is_none_or(|s| s.id != 6)
+        {
+            tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    drop(writer);
+    catalog
+        .refresh_flag_metadata(dir.path(), &regex::bytes::Regex::new("FLAG").unwrap())
+        .unwrap();
+    catalog
+        .refresh_flag_metadata(dir.path(), &regex::bytes::Regex::new("FLAG").unwrap())
+        .unwrap();
+    let auth = login(&app, "").await;
+    let auth = cookie(&auth);
+    let get = |path: String| {
+        let app = &app;
+        async move {
+            let response = call(app, "127.0.0.1:1", "GET", &path, auth, "", &[]).await;
+            assert_eq!(response.status(), 200, "{path}");
+            serde_json::from_slice::<serde_json::Value>(
+                &to_bytes(response.into_body(), 100_000).await.unwrap(),
+            )
+            .unwrap()
+        }
+    };
+    for path in ["/api/attack-rules", "/api/sessions/1/http-events"] {
+        assert_eq!(
+            call(&app, "127.0.0.1:1", "GET", path, "", "", &[])
+                .await
+                .status(),
+            401
+        );
+    }
+    assert_eq!(
+        get("/api/sessions?bucket=known".into()).await["items"],
+        serde_json::json!([])
+    );
+    assert_eq!(
+        get("/api/chains?bucket=known&limit=1".into()).await["next_cursor"],
+        serde_json::Value::Null
+    );
+    let definition = serde_json::json!({"source_id":1,"label":"Traversal","steps":[[
+        {"field":"method","op":"equals","value":"GET"},
+        {"field":"path","op":"equals","value":"/users"},
+        {"field":"query","name":"id","op":"contains","value":"../../../"}
+    ],[
+        {"field":"path","op":"equals","value":"/profile"},
+        {"field":"status","op":"equals","value":"200"},
+        {"field":"response_body","op":"contains","value":"root:"}
+    ]]});
+    let response = call(
+        &app,
+        "127.0.0.1:1",
+        "POST",
+        "/api/attack-rules",
+        auth,
+        &definition.to_string(),
+        &[],
+    )
+    .await;
+    assert_eq!(response.status(), 201);
+    let rule: serde_json::Value =
+        serde_json::from_slice(&to_bytes(response.into_body(), 10_000).await.unwrap()).unwrap();
+    assert_eq!(rule["owner"], "team");
+    let id = rule["id"].as_i64().unwrap();
+    let empty_page = get("/api/sessions?bucket=known&limit=1".into()).await;
+    assert_eq!(empty_page["items"], serde_json::json!([]));
+    assert_eq!(empty_page["next_cursor"], 6);
+    let resumed = get("/api/sessions?bucket=known&limit=1&cursor=5".into()).await;
+    assert_eq!(resumed["items"][0]["id"], 4);
+    let reopened = Catalog::open(dir.path().join("index.sqlite")).unwrap();
+    assert_eq!(
+        reopened.list_rules("team").unwrap()[0].input.label,
+        "Traversal"
+    );
+    let known = get("/api/chains?bucket=known&source_id=1&contains_flag=true".into()).await;
+    let version = known["items"][0]["known_matches"][0]["version"]
+        .as_str()
+        .unwrap();
+    let selection = encode_query(&serde_json::json!([[id, version, [[0, 0]]]]).to_string());
+    let highlight_url = format!("/api/sessions/2/rule-matches?selection={selection}");
+    let explanation = get(highlight_url.clone()).await;
+    assert_eq!(explanation["representation"], "readable-v1");
+    assert_eq!(explanation["c2s"][0]["label"], "Traversal");
+    assert_eq!(
+        explanation["c2s"][0]["ranges"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        !highlighting_enabled
+    );
+    assert_eq!(
+        explanation["c2s"][0]["pretty_ranges"]
+            .as_array()
+            .unwrap()
+            .is_empty(),
+        !highlighting_enabled
+    );
+    assert_eq!(explanation["s2c"], serde_json::json!([]));
+    assert_eq!(
+        call(&app, "127.0.0.1:1", "GET", &highlight_url, "", "", &[])
+            .await
+            .status(),
+        401
+    );
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "GET",
+            "/api/sessions/2/rule-matches?selection=invalid",
+            auth,
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        400
+    );
+    assert_eq!(known["items"][0]["session_count"], 4);
+    assert_eq!(
+        known["items"][0]["known_matches"][0]["events"][0]["session_id"],
+        2
+    );
+    assert_eq!(
+        known["items"][0]["known_matches"][0]["events"][1]["session_id"],
+        3
+    );
+    assert_eq!(
+        get("/api/sessions?bucket=known&source_id=1".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert_eq!(
+        get("/api/sessions?bucket=unknown".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let raw = call(
+        &app,
+        "127.0.0.1:1",
+        "GET",
+        "/api/sessions/3/payload/s2c",
+        auth,
+        "",
+        &[],
+    )
+    .await;
+    assert!(
+        String::from_utf8_lossy(&to_bytes(raw.into_body(), 10_000).await.unwrap())
+            .contains("%46%4C%41%47")
+    );
+    let flags = get("/api/sessions/3/flag-matches".into()).await;
+    assert_eq!(flags["representation"], "readable-v1");
+    assert_eq!(flags["s2c"][0]["value"], "FLAG");
+    let search = payload_query(&["FLAG".into()]);
+    assert_eq!(
+        get(format!("/api/sessions?contains_flag=true&payload={search}")).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    let events = get("/api/sessions/2/http-events".into()).await;
+    assert_eq!(events[0]["path"], "/users");
+    assert_eq!(events[0]["query_params"][0][1], "../../../etc");
+    if !highlighting_enabled {
+        // Even an unavailable segment must not prevent label-only explanations.
+        // Step 1 contains both request- and response-side conditions.
+        let stored = catalog.get_session(3).unwrap().unwrap();
+        let segment = dir.path().join("segments").join(&stored.segment_filename);
+        let hidden = segment.with_extension("unavailable");
+        std::fs::rename(&segment, &hidden).unwrap();
+        let selected = encode_query(&serde_json::json!([[id, version, [[1, 0]]]]).to_string());
+        let labels = get(format!("/api/sessions/3/rule-matches?selection={selected}")).await;
+        std::fs::rename(&hidden, &segment).unwrap();
+        for direction in ["c2s", "s2c"] {
+            assert_eq!(
+                labels[direction],
+                serde_json::json!([{
+                    "rule_id": id, "label": "Traversal", "ranges": [], "pretty_ranges": []
+                }])
+            );
+        }
+    }
+    let mut invalid = definition.clone();
+    invalid["steps"][0][0]["op"] = "regex".into();
+    invalid["steps"][0][0]["value"] = "[".into();
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "PUT",
+            &format!("/api/attack-rules/{id}"),
+            auth,
+            &invalid.to_string(),
+            &[]
+        )
+        .await
+        .status(),
+        400
+    );
+    let mut changed = definition.clone();
+    // A different identity's rule is neither listed nor editable through this login.
+    let other_rule = catalog
+        .save_rule(
+            "other-user",
+            None,
+            serde_json::from_value(definition.clone()).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    let other_version = newhatch_analyzer::attack_rules::CompiledRule::new(other_rule.clone())
+        .unwrap()
+        .version();
+    let selection =
+        encode_query(&serde_json::json!([[other_rule.id, other_version, [[0, 0]]]]).to_string());
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "GET",
+            &format!("/api/sessions/2/rule-matches?selection={selection}"),
+            auth,
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        409
+    );
+    assert_eq!(
+        get("/api/attack-rules".into())
+            .await
+            .as_array()
+            .unwrap()
+            .len(),
+        1
+    );
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "DELETE",
+            &format!("/api/attack-rules/{}", other_rule.id),
+            auth,
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        404
+    );
+    let duplicate = catalog
+        .save_rule(
+            "team",
+            None,
+            serde_json::from_value(definition.clone()).unwrap(),
+        )
+        .unwrap()
+        .unwrap();
+    assert_eq!(
+        get("/api/chains?bucket=known&source_id=1".into()).await["items"][0]["known_matches"]
+            .as_array()
+            .unwrap()
+            .len(),
+        2
+    );
+    changed["enabled"] = false.into();
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "PUT",
+            &format!("/api/attack-rules/{id}"),
+            auth,
+            &changed.to_string(),
+            &[]
+        )
+        .await
+        .status(),
+        200
+    );
+    // Explanations from the previous definition must not be reused.
+    assert_eq!(
+        call(&app, "127.0.0.1:1", "GET", &highlight_url, auth, "", &[])
+            .await
+            .status(),
+        409
+    );
+    // Disabling one match leaves the other label active; removing the final
+    // active rule restores the retained chain to Unknown.
+    assert_eq!(
+        get("/api/sessions?bucket=known&source_id=1".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        4
+    );
+    assert!(catalog.delete_rule("team", duplicate.id).unwrap());
+    assert_eq!(
+        get("/api/sessions?bucket=unknown".into()).await["items"]
+            .as_array()
+            .unwrap()
+            .len(),
+        6
+    );
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "DELETE",
+            &format!("/api/attack-rules/{id}"),
+            auth,
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        204
+    );
+    assert!(catalog.list_rules("team").unwrap().is_empty());
+    assert_eq!(
+        get("/api/sessions?bucket=known".into()).await["items"],
+        serde_json::json!([])
     );
 }

@@ -8,6 +8,15 @@ pub fn migrate(connection: &Connection) -> Result<()> {
         PRAGMA foreign_keys = ON;
         PRAGMA busy_timeout = 5000;
 
+        CREATE TABLE IF NOT EXISTS attack_rules (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            owner TEXT NOT NULL,
+            source_id INTEGER NOT NULL REFERENCES sources(id),
+            definition TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_attack_rules_owner ON attack_rules(owner, id);
+        CREATE TABLE IF NOT EXISTS catalog_settings (key TEXT PRIMARY KEY, value TEXT NOT NULL);
+
         CREATE TABLE IF NOT EXISTS sources (
             id          INTEGER PRIMARY KEY,
             name        TEXT NOT NULL,

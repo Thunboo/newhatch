@@ -4,25 +4,23 @@ import type { ReactNode } from "react";
 import curlLogoUrl from "./assets/Curl-logo.svg";
 import pythonLogoUrl from "./assets/python-logo.png";
 import { useI18n } from "./i18n";
-import { decodeDisplayEscapes, decodePayload, displayPayload } from "./payloadDisplay";
 import { payloadHighlights } from "./payloadHighlights";
 import type { HighlightRange } from "./payloadHighlights";
 import { exportCurl, exportPython, parseReplayRequest, replayProblemKeys } from "./requestExport";
 import { ExportLogo, PayloadCopyButton } from "./PayloadCopyButton";
 import type { ReplayTarget } from "./requestExport";
-import type { ByteRange } from "./types";
+import type { ByteRange, WindowRule } from "./types";
+import { RuleLabels } from "./RuleLabels";
 import { formatBytes } from "./format";
 export type PayloadMode = "text" | "hex";
 const NO_PAYLOAD_TERMS: readonly string[] = [];
+const NO_RULES: readonly WindowRule[] = [];
 
-export function Stream({ title, subtitle, direction, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false, payloadTerms = NO_PAYLOAD_TERMS }: { title: string; subtitle?: string; direction: "c2s" | "s2c"; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean; payloadTerms?: readonly string[] }) {
+export function Stream({ title, subtitle, direction, bytes, ranges, mode, formatJson, flagged, replayTarget, chainScrollLane = false, payloadTerms = NO_PAYLOAD_TERMS, rules = NO_RULES }: { title: string; subtitle?: string; direction: "c2s" | "s2c"; bytes: Uint8Array; ranges: ByteRange[]; mode: PayloadMode; formatJson: boolean; flagged: boolean; replayTarget?: ReplayTarget; chainScrollLane?: boolean; payloadTerms?: readonly string[]; rules?: readonly WindowRule[] }) {
   const { t } = useI18n();
   const displayed = useMemo(() => {
-    if (payloadTerms.length) return payloadHighlights(bytes, payloadTerms, ranges, formatJson);
-    const text = displayPayload(bytes, formatJson);
-    const matches = ranges.map((range) => decodeDisplayEscapes(decodePayload(bytes.slice(range.start, range.end)))).filter(Boolean);
-    return { text, ranges: locateFlags(text, matches) };
-  }, [bytes, formatJson, payloadTerms, ranges]);
+    return payloadHighlights(bytes, payloadTerms, ranges, formatJson, rules.flatMap((rule) => formatJson ? rule.pretty_ranges : rule.ranges));
+  }, [bytes, formatJson, payloadTerms, ranges, rules]);
   const displayedText = displayed.text;
   const text = useMemo(() => mode === "hex" ? toHex(bytes) : displayedText, [bytes, displayedText, mode]);
   const replay = useMemo(
@@ -37,7 +35,7 @@ export function Stream({ title, subtitle, direction, bytes, ranges, mode, format
     <section className={["stream", flagged || uniqueFlags > 0 ? "flagged" : "", uniqueFlags > 0 ? "response-flagged" : ""].filter(Boolean).join(" ")}>
       <header>
         <span className="stream-title">
-          <span className="stream-title-line"><span className="stream-title-text">{title}</span>{uniqueFlags > 0 && <ResponseFlagBadge unique={uniqueFlags} occurrences={ranges.length} />}</span>
+          <span className="stream-title-line"><span className="stream-title-text">{title}</span>{uniqueFlags > 0 && <ResponseFlagBadge unique={uniqueFlags} occurrences={ranges.length} />}{rules.length > 0 && <RuleLabels matches={rules} />}</span>
           {subtitle && <small>{subtitle}</small>}
         </span>
         <span className="stream-actions">
@@ -62,7 +60,8 @@ export function Stream({ title, subtitle, direction, bytes, ranges, mode, format
 
 function countUniqueFlags(bytes: Uint8Array, ranges: ByteRange[]): number {
   const flags = new Set<string>();
-  for (const { start, end } of ranges) {
+  for (const { start, end, value } of ranges) {
+    if (value !== undefined) { flags.add(value); continue; }
     // One code unit per captured byte preserves identity even for invalid UTF-8.
     // Chunk conversion avoids argument-size limits for a long regex match.
     const chunks: string[] = [];
@@ -84,19 +83,6 @@ function ResponseFlagBadge({ unique, occurrences }: { unique: number; occurrence
     occurrences: t(occurrenceForm === "one" ? "detail.flagOccurrencesOne" : occurrenceForm === "few" ? "detail.flagOccurrencesFew" : "detail.flagOccurrencesOther", { count: occurrences.toLocaleString(locale) }),
   });
   return <span className="stream-flag-count" role="img" aria-label={summary} title={summary} tabIndex={0}><Flag size={13} aria-hidden="true" /><span>{unique.toLocaleString(locale)}</span></span>;
-}
-
-function locateFlags(text: string, matches: string[]): HighlightRange[] {
-  const positions: HighlightRange[] = [];
-  const cursors = new Map<string, number>();
-  for (const match of matches) {
-    const start = text.indexOf(match, cursors.get(match) ?? 0);
-    if (start < 0) continue;
-    positions.push({ start, end: start + match.length, kind: "flag" });
-    cursors.set(match, start + match.length);
-  }
-  positions.sort((left, right) => left.start - right.start);
-  return positions;
 }
 
 function HighlightedText({ text, positions }: { text: string; positions: HighlightRange[] }) {

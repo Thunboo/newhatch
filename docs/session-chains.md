@@ -37,6 +37,9 @@ One member must satisfy every active metadata/payload filter; opening the chain
 includes other retained members. A flag-only filter therefore preserves preceding
 non-flag context. A page boundary cannot terminate membership.
 [Payload matching and chip application](session-filtering-v2.md) are shared with sessions.
+[Known/Unsorted buckets](session-buckets.md) classify complete unfiltered chains
+using ordered HTTP events. A rule can select a characteristic subsequence;
+ordinary context such as registration need not participate in its signature.
 
 Existing catalogs receive nullable metadata fields without rewriting segments.
 Legacy rows lacking collector identity stay singleton chains; unknown directional

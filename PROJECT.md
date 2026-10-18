@@ -28,6 +28,7 @@ Startup and deployment: [README](README.md).
 | Persistence | SQLite metadata, versioned append-only payload segments and count-based retention; [storage](docs/storage.md) |
 | UI | React/TypeScript, source CRUD/search/sorting, live session browsing, text/hex, JSON formatting, flag highlighting and EN/RU localization; [UX](docs/mvp.md) |
 | Filtering | Literal AND chips for sessions and chains, separate edited/applied sets and backend-supplied limits; [filtering](docs/session-filtering-v2.md) |
+| Triage | Known/Unsorted buckets, source/owner-scoped ordered HTTP rules and labels; [buckets](docs/session-buckets.md) |
 | Chains | Optional whole-session correlation, bounded queries, full-context cards and lazy payload loading; [chains](docs/session-chains.md) |
 | Export | Individual cURL/Python HTTP export and whole-chain Python replay; [Python contract](docs/python-replay.md) |
 | Access | Single-user authentication, loopback analyzer API and nginx team-CIDR ingress; [authentication](docs/authentication.md) |
