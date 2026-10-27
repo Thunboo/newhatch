@@ -18,7 +18,7 @@ use crate::storage::chains::{
 use crate::{
     auth::{self, AuthConfig},
     collector::{CollectorRegistry, CollectorStatus},
-    config::AnalyzerMode,
+    config::{AnalyzerMode, ChainQueryLimits},
     domain::{SessionProtocol, SessionSummary, Source, SourceInput},
     payload_search::{self, PayloadSearch, PayloadSearchLimits},
     storage::{parse_optional_ip, read_payload, Catalog, SessionFilter},
@@ -33,6 +33,7 @@ pub struct ApiState {
     pub collectors: CollectorRegistry,
     pub analyzer_mode: AnalyzerMode,
     pub rule_highlighting_enabled: bool,
+    pub chain_query_limits: ChainQueryLimits,
 }
 
 #[derive(Clone)]
@@ -328,9 +329,10 @@ async fn list_chains(
     let search = PayloadSearch::new(query.payload).map_err(ApiError::bad_request)?;
     let catalog = state.catalog.clone();
     let data_dir = state.data_dir.clone();
+    let limits = state.chain_query_limits;
     Ok(Json(
         chain_blocking(move || {
-            let reader = ChainReader::open(&catalog)?;
+            let reader = ChainReader::open_with_limits(&catalog, limits)?;
             let rules = if query.bucket.is_some() {
                 crate::attack_rules::compile(reader.rules(&owner.0)?)?
             } else {
@@ -386,8 +388,9 @@ async fn list_chain_members(
         return Err(ApiError::bad_request("invalid chain snapshot"));
     }
     let catalog = state.catalog.clone();
+    let limits = state.chain_query_limits;
     let page = chain_blocking(move || {
-        ChainReader::open(&catalog)?.member_page(
+        ChainReader::open_with_limits(&catalog, limits)?.member_page(
             id,
             cursor,
             query.snapshot_id,
@@ -426,8 +429,9 @@ async fn list_sessions(
     if let Some(bucket) = query.bucket {
         let catalog = state.catalog.clone();
         let data_dir = state.data_dir.clone();
+        let limits = state.chain_query_limits;
         page = chain_blocking(move || {
-            let reader = ChainReader::open(&catalog)?;
+            let reader = ChainReader::open_with_limits(&catalog, limits)?;
             let snapshot = reader.snapshot()?;
             let rules = crate::attack_rules::compile(reader.rules(&owner.0)?)?;
             if rules.is_empty() {

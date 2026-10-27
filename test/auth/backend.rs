@@ -8,6 +8,7 @@ use axum::{
 use newhatch_analyzer::{
     api::{router, ApiState},
     auth::AuthConfig,
+    config::ChainQueryLimits,
     storage::Catalog,
 };
 use std::net::SocketAddr;
@@ -22,6 +23,20 @@ fn app_with_highlighting(
     secure: &str,
     rule_highlighting_enabled: bool,
 ) -> (Router, tempfile::TempDir) {
+    app_with_chain_query_limits(
+        expiration,
+        secure,
+        rule_highlighting_enabled,
+        Default::default(),
+    )
+}
+
+fn app_with_chain_query_limits(
+    expiration: &str,
+    secure: &str,
+    rule_highlighting_enabled: bool,
+    chain_query_limits: ChainQueryLimits,
+) -> (Router, tempfile::TempDir) {
     let dir = tempfile::tempdir().unwrap();
     let state = ApiState {
         catalog: Catalog::open(dir.path().join("index.sqlite")).unwrap(),
@@ -31,6 +46,7 @@ fn app_with_highlighting(
         collectors: Default::default(),
         analyzer_mode: newhatch_analyzer::config::AnalyzerMode::Local,
         rule_highlighting_enabled,
+        chain_query_limits,
     };
     (
         router(
@@ -98,6 +114,52 @@ async fn login(app: &Router, cookie: &str) -> String {
 
 fn cookie(header: &str) -> &str {
     header.split(';').next().unwrap()
+}
+
+#[tokio::test]
+async fn configured_chain_budget_exhaustion_returns_503_in_both_feeds_and_members() {
+    let (app, _dir) = app_with_chain_query_limits(
+        "86400s",
+        "false",
+        true,
+        ChainQueryLimits {
+            max_vm_steps: 1,
+            ..Default::default()
+        },
+    );
+    let session = login(&app, "").await;
+    for path in [
+        "/api/chains",
+        "/api/chains?bucket=unknown",
+        "/api/chains/1/sessions?snapshot_id=1",
+        "/api/sessions?bucket=unknown",
+    ] {
+        let response = call(&app, "127.0.0.1:1", "GET", path, cookie(&session), "", &[]).await;
+        assert_eq!(response.status(), StatusCode::SERVICE_UNAVAILABLE, "{path}");
+        let body = to_bytes(response.into_body(), 4096).await.unwrap();
+        let body: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert!(
+            body["error"]
+                .as_str()
+                .unwrap()
+                .contains("chain query budget exceeded"),
+            "{path}: {body}"
+        );
+    }
+    assert_eq!(
+        call(
+            &app,
+            "127.0.0.1:1",
+            "GET",
+            "/api/sessions",
+            cookie(&session),
+            "",
+            &[]
+        )
+        .await
+        .status(),
+        StatusCode::OK
+    );
 }
 
 #[tokio::test]

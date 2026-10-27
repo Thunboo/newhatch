@@ -105,6 +105,7 @@ async fn main() -> anyhow::Result<()> {
             collectors,
             analyzer_mode: config.analyzer_mode,
             rule_highlighting_enabled: config.rule_highlighting_enabled,
+            chain_query_limits: config.chain_query_limits,
         },
         auth,
     )

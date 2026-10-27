@@ -14,7 +14,7 @@ use super::{
     catalog::{blob_to_ip, ip_to_blob, map_session_summary, to_sql_error},
     read_payload, Catalog, SessionFilter,
 };
-use crate::{domain::SessionSummary, payload_search::PayloadSearch};
+use crate::{config::ChainQueryLimits, domain::SessionSummary, payload_search::PayloadSearch};
 
 const WINDOW_MICROS: i64 = 1_000_000;
 const MAX_PAYLOAD_CANDIDATES: usize = 2_000;
@@ -116,6 +116,10 @@ pub struct ChainReader {
     deadline: Instant,
 }
 
+#[derive(Debug, thiserror::Error)]
+#[error("chain query budget exceeded; narrow filters and retry")]
+struct ChainQueryBudgetExceeded;
+
 impl ChainReader {
     pub fn rules(&self, owner: &str) -> Result<Vec<crate::attack_rules::AttackRule>> {
         super::rules::read_rules(&self.connection, owner)
@@ -202,21 +206,26 @@ impl ChainReader {
 
     fn check_classification_deadline(&self) -> Result<()> {
         if Instant::now() >= self.deadline {
-            bail!("classification deadline exceeded; narrow source/client filters");
+            return Err(ChainQueryBudgetExceeded.into());
         }
         Ok(())
     }
     pub fn open(catalog: &Catalog) -> Result<Self> {
+        Self::open_with_limits(catalog, ChainQueryLimits::default())
+    }
+
+    pub fn open_with_limits(catalog: &Catalog, limits: ChainQueryLimits) -> Result<Self> {
         let connection = catalog.connection()?;
         // Keep read work isolated from capture/storage. The deadline and VM budget
         // cover all SQL in a request, including repeated payload-search pages.
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let mut steps = 0usize;
+        let deadline = limits.deadline()?;
+        let interval = limits.max_vm_steps.min(10_000) as i32;
+        let mut steps = 0u64;
         connection.progress_handler(
-            10_000,
+            interval,
             Some(move || {
-                steps += 10_000;
-                steps >= 50_000_000 || Instant::now() >= deadline
+                steps = steps.saturating_add(interval as u64);
+                steps >= limits.max_vm_steps || Instant::now() >= deadline
             }),
         );
         connection.busy_timeout(Duration::from_millis(250))?;
@@ -664,8 +673,11 @@ fn aggregate(matched: &str, target: Option<&str>) -> String {
 }
 
 pub fn is_interrupted(error: &anyhow::Error) -> bool {
-    error.chain().any(|cause| matches!(cause.downcast_ref::<rusqlite::Error>(),
-        Some(rusqlite::Error::SqliteFailure(code, _)) if code.code == rusqlite::ErrorCode::OperationInterrupted))
+    error.downcast_ref::<ChainQueryBudgetExceeded>().is_some()
+        || error.chain().any(|cause| {
+            matches!(cause.downcast_ref::<rusqlite::Error>(),
+                Some(rusqlite::Error::SqliteFailure(code, _)) if code.code == rusqlite::ErrorCode::OperationInterrupted)
+        })
 }
 
 #[cfg(test)]
@@ -881,9 +893,8 @@ mod tests {
         let error = reader
             .classify(&chain, &[rule], f.directory.path())
             .unwrap_err();
-        assert!(error
-            .to_string()
-            .contains("classification deadline exceeded"));
+        assert!(is_interrupted(&error));
+        assert!(error.to_string().contains("chain query budget exceeded"));
     }
 
     #[test]
@@ -1019,14 +1030,57 @@ mod tests {
     fn expensive_read_is_interrupted_without_affecting_storage_or_next_reader() {
         let f = Fixture::new();
         std::fs::create_dir_all(f.directory.path().join("segments")).unwrap();
-        let reader = f.reader();
-        let error = reader.connection.query_row(
-            "WITH RECURSIVE numbers(x) AS (SELECT 0 UNION ALL SELECT x+1 FROM numbers WHERE x<10000000) SELECT SUM(x) FROM numbers",
-            [], |row| row.get::<_, i64>(0),
-        ).unwrap_err();
-        assert!(is_interrupted(&error.into()));
-        drop(reader);
+        for limits in [
+            ChainQueryLimits {
+                timeout: Duration::from_secs(10),
+                max_vm_steps: 20_000,
+            },
+            ChainQueryLimits {
+                timeout: Duration::from_nanos(1),
+                ..Default::default()
+            },
+        ] {
+            let reader = ChainReader::open_with_limits(&f.catalog, limits).unwrap();
+            let error = reader.connection.query_row(
+                "WITH RECURSIVE numbers(x) AS (SELECT 0 UNION ALL SELECT x+1 FROM numbers WHERE x<10000000) SELECT SUM(x) FROM numbers",
+                [], |row| row.get::<_, i64>(0),
+            ).unwrap_err();
+            assert!(is_interrupted(&error.into()));
+        }
         f.add(1, 0, Some("one"), "10.0.0.2", 1, false);
         assert_eq!(f.list(&SessionFilter::default()).items.len(), 1);
+    }
+
+    #[test]
+    fn vm_step_budget_is_shared_by_all_statements_in_a_reader() {
+        let f = Fixture::new();
+        let reader = ChainReader::open_with_limits(
+            &f.catalog,
+            ChainQueryLimits {
+                max_vm_steps: 30_000,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+        let query = "WITH RECURSIVE numbers(x) AS (SELECT 0 UNION ALL SELECT x+1 FROM numbers WHERE x<1000) SELECT SUM(x) FROM numbers";
+        assert_eq!(
+            reader
+                .connection
+                .query_row(query, [], |row| row.get::<_, i64>(0))
+                .unwrap(),
+            500_500
+        );
+        let mut interrupted = false;
+        for _ in 0..5 {
+            if let Err(error) = reader
+                .connection
+                .query_row(query, [], |row| row.get::<_, i64>(0))
+            {
+                assert!(is_interrupted(&error.into()));
+                interrupted = true;
+                break;
+            }
+        }
+        assert!(interrupted, "VM budget must not reset between SQL statements");
     }
 }

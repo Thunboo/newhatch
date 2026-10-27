@@ -22,6 +22,9 @@ directions, collector identity, additive legacy migration, payload-pointer
 preservation, exact one-second boundaries, sliding adjacency, all key components,
 equal-time ordering, filtered full context, list/member pagination, late merging,
 retention, continuation after 2,000 payload candidates and SQL interruption.
+Budget checks cover positive timeout/VM-step configuration, raised defaults,
+per-reader cumulative SQL work, independent timeout/VM interruption and HTTP 503
+from chain list/member reads and session classification under a custom budget.
 Authentication integration tests cover both chain routes and invalid cursors/filters.
 Payload filtering checks cover shared limits, 128/129 Unicode code points,
 duplicate terms, literal case-sensitive AND across both directions, rejection of

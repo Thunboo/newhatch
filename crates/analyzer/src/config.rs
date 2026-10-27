@@ -3,7 +3,7 @@ use std::{
     net::{IpAddr, SocketAddr, ToSocketAddrs},
     path::PathBuf,
     str::FromStr,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use anyhow::{bail, Context, Result};
@@ -24,6 +24,7 @@ pub struct Config {
     pub max_active_flows_per_worker: usize,
     pub max_stream_bytes: usize,
     pub rule_highlighting_enabled: bool,
+    pub chain_query_limits: ChainQueryLimits,
     pub analyzer_mode: AnalyzerMode,
     pub collector_listen_addr: SocketAddr,
     pub collector_allowed_ips: Vec<IpAddr>,
@@ -34,6 +35,46 @@ pub struct Config {
 pub enum AnalyzerMode {
     Local,
     Remote,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct ChainQueryLimits {
+    pub timeout: Duration,
+    pub max_vm_steps: u64,
+}
+
+impl Default for ChainQueryLimits {
+    fn default() -> Self {
+        Self {
+            timeout: Duration::from_secs(10),
+            max_vm_steps: 250_000_000,
+        }
+    }
+}
+
+impl ChainQueryLimits {
+    fn parse(timeout: &str, max_vm_steps: &str) -> Result<Self> {
+        let limits = Self {
+            timeout: parse_duration(timeout).context("invalid CHAIN_QUERY_TIMEOUT")?,
+            max_vm_steps: max_vm_steps
+                .parse()
+                .context("invalid CHAIN_QUERY_MAX_VM_STEPS")?,
+        };
+        limits.deadline()?;
+        Ok(limits)
+    }
+
+    pub(crate) fn deadline(self) -> Result<Instant> {
+        if self.timeout.is_zero() {
+            bail!("CHAIN_QUERY_TIMEOUT must be greater than zero");
+        }
+        if self.max_vm_steps == 0 {
+            bail!("CHAIN_QUERY_MAX_VM_STEPS must be greater than zero");
+        }
+        Instant::now()
+            .checked_add(self.timeout)
+            .context("CHAIN_QUERY_TIMEOUT is too large")
+    }
 }
 
 impl Config {
@@ -98,6 +139,10 @@ impl Config {
             max_active_flows_per_worker: parse_env("MAX_ACTIVE_FLOWS_PER_WORKER", 16_384usize)?,
             max_stream_bytes: parse_size_env("MAX_STREAM_BYTES", "16MiB")?,
             rule_highlighting_enabled: parse_env("RULE_HIGHLIGHTING_ENABLED", true)?,
+            chain_query_limits: ChainQueryLimits::parse(
+                &env_string("CHAIN_QUERY_TIMEOUT", "10s"),
+                &env_string("CHAIN_QUERY_MAX_VM_STEPS", "250000000"),
+            )?,
             analyzer_mode,
             collector_listen_addr,
             collector_allowed_ips,
@@ -211,7 +256,10 @@ fn parse_size_env(name: &str, default: &str) -> Result<usize> {
 
 #[cfg(test)]
 mod tests {
-    use super::{parse_duration, parse_env, parse_size_env, resolve_ip_list, resolve_socket_addr};
+    use super::{
+        parse_duration, parse_env, parse_size_env, resolve_ip_list, resolve_socket_addr,
+        ChainQueryLimits,
+    };
     use std::time::Duration;
 
     #[test]
@@ -223,6 +271,32 @@ mod tests {
     #[test]
     fn rejects_duration_without_unit() {
         assert!(parse_duration("30").is_err());
+    }
+
+    #[test]
+    fn chain_query_limits_have_raised_defaults_and_accept_overrides() {
+        let defaults = ChainQueryLimits::default();
+        assert_eq!(defaults.timeout, Duration::from_secs(10));
+        assert_eq!(defaults.max_vm_steps, 250_000_000);
+        let limits = ChainQueryLimits::parse("1500ms", "500000000").unwrap();
+        assert_eq!(limits.timeout, Duration::from_millis(1_500));
+        assert_eq!(limits.max_vm_steps, 500_000_000);
+    }
+
+    #[test]
+    fn chain_query_limits_reject_disabled_and_invalid_budgets() {
+        for timeout in ["0s", "-1s", "10", "forever", "18446744073709551615h"] {
+            assert!(ChainQueryLimits::parse(timeout, "250000000")
+                .unwrap_err()
+                .to_string()
+                .contains("CHAIN_QUERY_TIMEOUT"));
+        }
+        for steps in ["0", "-1", "", "unlimited", "18446744073709551616"] {
+            assert!(ChainQueryLimits::parse("10s", steps)
+                .unwrap_err()
+                .to_string()
+                .contains("CHAIN_QUERY_MAX_VM_STEPS"));
+        }
     }
 
     #[test]

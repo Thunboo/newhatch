@@ -135,9 +135,18 @@ An open card retains its selected snapshot.
 SQLite window queries form membership before content filters. Only complete key
 filters (source/client IP) may prune input before gap calculation.
 At most two blocking chain readers run concurrently. Each uses a 250 ms lock
-timeout, 2 MiB page cache, file-backed temporary sorting and SQL interruption at
-two seconds or 50 million VM steps. Busy/interrupted queries return 503;
-narrower source/client filters may be needed for large catalogs.
+timeout, 2 MiB page cache and file-backed temporary sorting. Per-request budgets
+are configured by CHAIN_QUERY_TIMEOUT (default 10s; ms/s/m/h units) and
+CHAIN_QUERY_MAX_VM_STEPS (default 250000000). Both must be positive; disabling
+budgets is not supported. They cover all SQL and classification in the same
+reader, including chain construction/listing, member reads and Known/Unsorted
+classification in both session and chain feeds. SQLite progress callbacks
+interrupt work after the time or cumulative VM-step budget is reached;
+classification also checks the shared deadline between members. Exhaustion
+returns HTTP 503 with "chain query budget exceeded" when work cannot continue
+through the existing payload-search cursor. Busy queries also return 503;
+narrower source/client filters or higher configured budgets may be needed for
+large catalogs. Restart/recreate the analyzer after configuration changes.
 
 Payload search scans at most 2,000 metadata-matching candidates in chunks of 200.
 Continuation can resume inside a chain: an empty page with a cursor is valid.
