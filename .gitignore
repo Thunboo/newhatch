@@ -27,6 +27,7 @@ pnpm-debug.log*
 
 # Runtime data
 data/
+data-uralctf-bck/
 
 # OS / editor
 .DS_Store
