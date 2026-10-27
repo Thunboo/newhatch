@@ -1,4 +1,4 @@
-import { Copy, Flag } from "lucide-react";
+import { Copy, Flag, Search } from "lucide-react";
 import { useMemo } from "react";
 import type { ReactNode } from "react";
 import curlLogoUrl from "./assets/Curl-logo.svg";
@@ -35,7 +35,12 @@ export function Stream({ title, subtitle, direction, bytes, ranges, mode, format
     <section className={["stream", flagged || uniqueFlags > 0 ? "flagged" : "", uniqueFlags > 0 ? "response-flagged" : ""].filter(Boolean).join(" ")}>
       <header>
         <span className="stream-title">
-          <span className="stream-title-line"><span className="stream-title-text">{title}</span>{uniqueFlags > 0 && <ResponseFlagBadge unique={uniqueFlags} occurrences={ranges.length} />}{rules.length > 0 && <RuleLabels matches={rules} />}</span>
+          <span className="stream-title-line">
+            <span className="stream-title-text">{title}</span>
+            {uniqueFlags > 0 && <ResponseFlagBadge unique={uniqueFlags} occurrences={ranges.length} />}
+            {displayed.hasPayloadMatch && <span className="stream-payload-match" role="img" aria-label={t("detail.payloadMatch")} title={t("detail.payloadMatch")} tabIndex={0}><Search size={13} aria-hidden="true" /></span>}
+            {rules.length > 0 && <RuleLabels matches={rules} />}
+          </span>
           {subtitle && <small>{subtitle}</small>}
         </span>
         <span className="stream-actions">

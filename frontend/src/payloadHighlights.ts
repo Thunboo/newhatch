@@ -179,7 +179,7 @@ function formatMarked(value: MarkedText, pretty: boolean): MarkedText | null {
   catch { return null; }
 }
 
-export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], flags: ByteRange[], pretty: boolean, ruleRanges: readonly ByteRange[] = []): { text: string; ranges: HighlightRange[] } {
+export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], flags: ByteRange[], pretty: boolean, ruleRanges: readonly ByteRange[] = []): { text: string; ranges: HighlightRange[]; hasPayloadMatch: boolean } {
   // Match the same canonical compact text as Rust. Formatting maps these marks
   // into pretty JSON without decoding percent sequences a second time.
   const rawText = displayPayload(bytes, false);
@@ -191,9 +191,11 @@ export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], f
       markBytes(marks, start, start + value.length, FLAG);
     }
   }
+  let hasPayloadMatch = false;
   for (const term of new Set(terms)) {
     if (!term) continue;
     for (let start = rawText.indexOf(term); start >= 0; start = rawText.indexOf(term, start + 1)) {
+      hasPayloadMatch = true;
       markBytes(marks, start, start + term.length, PAYLOAD);
     }
   }
@@ -234,5 +236,5 @@ export function payloadHighlights(bytes: Uint8Array, terms: readonly string[], f
     if (kind) ranges.push({ start, end, kind: kind === FLAG ? "flag" : kind === PAYLOAD ? "payload" : "both" });
     start = end;
   }
-  return { text: displayed.text, ranges };
+  return { text: displayed.text, ranges, hasPayloadMatch };
 }

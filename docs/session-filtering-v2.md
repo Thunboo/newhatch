@@ -75,6 +75,13 @@ overlapping occurrences; duplicate chips do not create duplicate markup.
 Draft input and pending chip removals cannot change highlighting before application.
 No applied terms means no additional highlighting. Hex remains unmarked.
 
+Standalone and chain C2S/S2C window headers show a small green magnifying glass
+beside the flag badge when that direction's canonical compact text contains any
+applied payload term. The icon has no counter and uses a localized tooltip.
+It remains visible in Text/Hex and with Format JSON on/off. Draft input, pending
+chip removals, flags and rule highlights alone cannot enable it. Reuse the loaded
+payload and the existing canonical search pass, without additional API requests.
+
 The frontend uses already loaded bytes and the applied snapshot, without new API
 requests. It marks the canonical compact text, then carries marks through JSON
 formatting and embedded-JSON expansion. Applied `A` marks every displayed `A`,

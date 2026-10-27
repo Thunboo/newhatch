@@ -226,6 +226,8 @@ button:disabled { cursor: default; opacity: .5; }
 .stream-title-text { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .stream-flag-count { display: inline-flex; align-items: center; gap: 4px; flex-shrink: 0; padding: 1px 5px; color: #f3d574; background: #4a3b15; border: 1px solid #94752b; border-radius: 4px; font-size: 11px; line-height: 16px; }
 .stream-flag-count:focus-visible { outline: 2px solid #f3d574; outline-offset: 2px; }
+.stream-payload-match { display: inline-flex; align-items: center; justify-content: center; flex-shrink: 0; height: 20px; padding: 1px 4px; color: #86d9a0; background: #203c2b; border: 1px solid #4f865f; border-radius: 4px; }
+.stream-payload-match:focus-visible { outline: 2px solid #86d9a0; outline-offset: 2px; }
 .stream.response-flagged > header { color: #e6cc83; background: #302918; border-bottom-color: #695423; }
 .stream-actions { display: flex; align-items: center; gap: 8px; flex-shrink: 0; margin-left: 8px; }
 .stream-actions button { width: 26px; height: 26px; display: grid; place-items: center; color: #aeb5bd; background: transparent; border: 1px solid #41474e; border-radius: 4px; }
