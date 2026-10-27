@@ -1,12 +1,12 @@
-# Нюхач
+# Нюхач / newhatch
 
-`newhatch` is a lightweight live-traffic analyzer for Attack/Defence CTF competitions. The user-facing name is **Нюхач**.
+`newhatch` is a lightweight live-traffic analyzer for Attack/Defence CTF competitions.
+
+[RU Readme](README.RU.md)
 
 ![Reconstructed session details](docs/images/session-detail.png)
 
-See [PROJECT.md](PROJECT.md) for the product brief, current implementation and architectural constraints. Detailed design documents live in [`docs/`](docs/).
-
-## Login Setup
+## Setup
 
 Create `.env` and set the login credentials:
 
@@ -14,72 +14,39 @@ Create `.env` and set the login credentials:
 cp .env.example .env
 ```
 
-```env
+```py
 NEWHATCH_USERNAME=admin
 NEWHATCH_PASSWORD=admin123
-SESSION_EXPIRACY=86400s
-AUTH_ALLOWED_SUBNETS=100.0.0.0/8
 ```
-
-Use your own password and actual team CIDR. An empty `AUTH_ALLOWED_SUBNETS` allows only clients that nginx sees as loopback.
 
 ## Quick Start (All-in-One)
 
-The capture path is Linux-only.
-
-For keyboard-only local control, install `newhatchctl` from the latest release:
+For keyboard-only local control, install [newhatchctl](newhatchctl-src/README.md) from the latest release:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/Thunboo/newhatch/main/install/unix.sh | bash
 newhatchctl
 ```
 
-It manages collector/analyzer/frontend startup, recreation, stopping, status,
-configuration drift and logs. See [newhatchctl](newhatchctl-src/README.md)
-for installation, `NEWHATCH_DIR`, source builds and controls. The one-command
-installer requires a published release; source builds are available independently.
-
-To start containers directly on the target vulnbox:
+To start service directly on the vulnbox:
 
 ```bash
-# Configure CAPTURE_INTERFACE, FLAG_REGEX and authentication in .env first.
+# (!!!) Configure CAPTURE_INTERFACE, FLAG_REGEX and creds in .env first
 docker compose up -d --build analyzer frontend
 ```
 
-Open `http://localhost:8080`, sign in, then add monitored services on the Sources screen.
+Open `http://localhost:8080`, sign in, then add monitored services on the Sources screen:
 
 ![Capture sources](docs/images/sources.png)
 
-The UI supports English and Russian. Without a saved preference it follows the browser language; after sign-in, use the language button immediately above Sign out to persist a choice.
-
-On Sessions, Enter / **Add to filter** adds a search chip and applies the displayed
-set. Removing a chip waits for **Refresh** or the next application action.
-**Group into chains** opens related whole-session traffic with full context;
-scroll between pairs using the card or the right side of a payload window.
-See [filtering](docs/session-filtering-v2.md) and [chain browsing](docs/session-chains.md).
-
-New HTTP traffic uses [atomic sessions](docs/http-sessions.md): each stored
-session has one request and its corresponding response, including on keep-alive
-connections.
-
-To disable rule-match text highlighting, set `RULE_HIGHLIGHTING_ENABLED=false`
-in `.env`, recreate the analyzer with `docker compose up -d --force-recreate analyzer`,
-then refresh the browser. Bucket classification and labels remain enabled.
-See [rule highlighting](docs/session-buckets.md#labels-and-rule-explanations).
-
-C2S windows offer cURL/Python export; the chain-toolbar Python action exports all
-supported requests. Run `python3 replay.py` for captured destinations or
-`python3 replay.py <IP/FQDN>` to replace hosts while preserving ports.
-See [Python replay](docs/python-replay.md) for Host, response output and cookies.
-
 ## Split Collector Deployment
 
-The default `ANALYZER=local` keeps capture and analysis on one host in a single `analyzer` container. For a split deployment (that lowers the load on vulnbox by design), use the following configuration:
+The default `ANALYZER=local` keeps capture and analysis on one host in a single `analyzer` container. For a split deployment (lowers the load on vulnbox), use the following configuration:
 
 ### Receiver (not the Vulnbox)
 
 Prepare `.env`:
-```env
+```python
 ANALYZER=remote
 LISTEN_CONNSTR=0.0.0.0:39090
 # Optional IPs or FQDNs. Empty accepts collector traffic from any host.
@@ -94,12 +61,10 @@ docker compose up -d --build analyzer frontend
 ### Vulnbox
 
 On the vulnbox, configure and start only the lightweight collector:
-```env
+```python
 CAPTURE_INTERFACE=eth0
-COLLECTOR_ID=vulnbox-1
+COLLECTOR_ID=vulnbox-1 # Optional
 ANALYZER_CONNSTR=ANALYZER_IP_OR_FQDN:39090
-# Bounded packet buffer; full queues drop new packets. Default: 8192.
-QUEUE_CAPACITY=8192
 ```
 
 ```bash
@@ -111,31 +76,33 @@ docker compose --profile collector up -d --build collector
 - TCP port `39090` (Or other reconfigured one) between the collector and analyzer must be open;
 - `ANALYZER_CONNSTR` accepts either `IP:port` or `FQDN:port` and resolves DNS again on reconnect. `LISTEN_CONNSTR` also accepts either form;
 - A non-empty `ALLOWED_COLLECTORS` accepts comma-separated IPs and FQDNs; 
-- Names are resolved when analyzer starts, so restart it after their DNS records change. An empty value accepts any host.
-- This initial collector-receiver transport is unencrypted and has no PSK (task is in Backlog), so use it only on the trusted players/VPN network. Sources remain managed in the analyzer UI and are pushed to connected collectors automatically.
+- Names are resolved when analyzer starts, so restart it after their DNS records change. An empty value accepts any host;
+- Collector-Receiver transport is unencrypted (Backlog task), so use it only on the trusted players/VPN network.;
+- Sources remain managed in the analyzer UI and are pushed to connected collectors automatically.
 
 ## Useful Checks
 
 ```bash
-docker compose config --quiet
-docker compose --profile test config --quiet
 docker compose ps
 docker compose logs -f analyzer
-curl http://localhost:8080/api/health
+curl http://analyzer-host:8080/api/health
 ```
-
-Authentication tests and an isolated multi-subnet Docker fixture are in [`test/auth/`](test/auth/README.md).
 
 ### Flag Capture Test
 
-The opt-in nginx fixture is documented in [`test/flag_test/README.md`](test/flag_test/README.md):
+The opt-in nginx fixture is documented in [`test/flag_test/README.md`](test/flag_test/README.md)
 
-## Adding Suricata (not ready)
+## Project info
 
-Suricata is optional passive IDS enrichment and is not required for capture or flag detection. Start the complete default stack, including Suricata, with:
+See [PROJECT.md](PROJECT.md) for the product brief, current implementation and architectural constraints. Detailed design documents live in [`docs/`](docs/).
 
-```bash
-docker compose up -d --build
-```
+### Main menu - Sessions and Functions:
 
-Its current filter is configured separately through `SURICATA_BPF_FILTER`; EVE ingestion and session correlation are not implemented yet.
+- **Sessions viewer** - click on desired sessions / sessions chains to check its contents.
+- **Group into chains** - toggle related traffic grouping (kill-chains). In preview - scroll between sessions using the card or the right side of a payload window.
+- **Filtering** - Add text filters via search bar. Filter match is colored green in Session preview window.
+
+C2S windows offer cURL/Python export; the chain-toolbar Python action exports all supported requests. 
+
+Run `python3 replay.py` for captured destinations or `python3 replay.py <IP/FQDN>` to replace hosts while preserving ports.
+See [Python replay](docs/python-replay.md) for Host, response output and cookies.
